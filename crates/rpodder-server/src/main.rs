@@ -61,6 +61,8 @@ fn api_router(state: AppState) -> Router {
         .route("/subscriptions/{username_json}", get(routes::subscriptions::get_user_subscriptions))
         // Advanced subscription API
         .route("/api/2/subscriptions/{username}/{deviceid_json}", get(routes::subscriptions::download_subscription_changes).post(routes::subscriptions::upload_subscription_changes))
+        // Episode actions API
+        .route("/api/2/episodes/{username_json}", get(routes::episodes::download_episode_actions).post(routes::episodes::upload_episode_actions))
         .route_layer(axum_mw::from_fn(
             middleware::auth::require_auth_layer(state.clone()),
         ));

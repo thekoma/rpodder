@@ -586,6 +586,285 @@ impl repo::SubscriptionRepo for PgRepo {
     }
 }
 
+// ---------------------------------------------------------------------------
+// EpisodeRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct EpisodeRow {
+    id: Uuid,
+    podcast_id: Uuid,
+    guid: Option<String>,
+    title: String,
+    description: String,
+    link: Option<String>,
+    released: Option<DateTime<Utc>>,
+    duration: Option<i64>,
+    filesize: Option<i64>,
+    mimetype: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<EpisodeRow> for Episode {
+    fn from(r: EpisodeRow) -> Self {
+        Episode {
+            id: r.id,
+            podcast_id: r.podcast_id,
+            guid: r.guid,
+            title: r.title,
+            description: r.description,
+            link: r.link,
+            released: r.released,
+            duration: r.duration,
+            filesize: r.filesize,
+            mimetype: r.mimetype,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
+impl repo::EpisodeRepo for PgRepo {
+    async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
+        // Check if episode URL already exists
+        let existing: Option<EpisodeRow> = sqlx::query_as(
+            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
+                    e.released, e.duration, e.filesize, e.mimetype, e.created_at, e.updated_at
+             FROM episodes e
+             JOIN episode_urls eu ON eu.episode_id = e.id
+             WHERE eu.url = $1",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        if let Some(row) = existing {
+            return Ok((row.into(), false));
+        }
+
+        let id = Uuid::now_v7();
+        let url_id = Uuid::now_v7();
+        let now = Utc::now();
+
+        let row: EpisodeRow = sqlx::query_as(
+            "INSERT INTO episodes (id, podcast_id, title, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $4)
+             RETURNING id, podcast_id, guid, title, description, link,
+                       released, duration, filesize, mimetype, created_at, updated_at",
+        )
+        .bind(id)
+        .bind(podcast_id)
+        .bind(url)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        sqlx::query(
+            "INSERT INTO episode_urls (id, episode_id, url, \"order\")
+             VALUES ($1, $2, $3, 0)",
+        )
+        .bind(url_id)
+        .bind(id)
+        .bind(url)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        Ok((row.into(), true))
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Episode>> {
+        let row: Option<EpisodeRow> = sqlx::query_as(
+            "SELECT id, podcast_id, guid, title, description, link,
+                    released, duration, filesize, mimetype, created_at, updated_at
+             FROM episodes WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn list_for_podcast(&self, podcast_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Episode>> {
+        let rows: Vec<EpisodeRow> = sqlx::query_as(
+            "SELECT id, podcast_id, guid, title, description, link,
+                    released, duration, filesize, mimetype, created_at, updated_at
+             FROM episodes WHERE podcast_id = $1
+             ORDER BY released DESC NULLS LAST
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(podcast_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn update(&self, episode: &Episode) -> Result<()> {
+        sqlx::query(
+            "UPDATE episodes SET guid = $2, title = $3, description = $4, link = $5,
+                    released = $6, duration = $7, filesize = $8, mimetype = $9, updated_at = $10
+             WHERE id = $1",
+        )
+        .bind(episode.id)
+        .bind(&episode.guid)
+        .bind(&episode.title)
+        .bind(&episode.description)
+        .bind(&episode.link)
+        .bind(episode.released)
+        .bind(episode.duration)
+        .bind(episode.filesize)
+        .bind(&episode.mimetype)
+        .bind(episode.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EpisodeActionRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct EpActionRow {
+    id: Uuid,
+    user_id: Uuid,
+    device_id: Option<Uuid>,
+    episode_id: Uuid,
+    action: String,
+    podcast_ref_url: Option<String>,
+    episode_ref_url: Option<String>,
+    started: Option<i32>,
+    position: Option<i32>,
+    total: Option<i32>,
+    timestamp: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
+fn parse_action_type(s: &str) -> EpisodeActionType {
+    match s {
+        "download" => EpisodeActionType::Download,
+        "play" => EpisodeActionType::Play,
+        "delete" => EpisodeActionType::Delete,
+        _ => EpisodeActionType::New,
+    }
+}
+
+fn action_type_str(a: EpisodeActionType) -> &'static str {
+    match a {
+        EpisodeActionType::Download => "download",
+        EpisodeActionType::Play => "play",
+        EpisodeActionType::Delete => "delete",
+        EpisodeActionType::New => "new",
+    }
+}
+
+impl From<EpActionRow> for EpisodeAction {
+    fn from(r: EpActionRow) -> Self {
+        EpisodeAction {
+            id: r.id,
+            user_id: r.user_id,
+            device_id: r.device_id,
+            episode_id: r.episode_id,
+            action: parse_action_type(&r.action),
+            podcast_ref_url: r.podcast_ref_url,
+            episode_ref_url: r.episode_ref_url,
+            started: r.started,
+            position: r.position,
+            total: r.total,
+            timestamp: r.timestamp,
+            created_at: r.created_at,
+        }
+    }
+}
+
+impl repo::EpisodeActionRepo for PgRepo {
+    async fn create(&self, action: &EpisodeAction) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO episode_actions
+                (id, user_id, device_id, episode_id, action, podcast_ref_url, episode_ref_url,
+                 started, position, total, timestamp, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             ON CONFLICT (user_id, episode_id, COALESCE(device_id, '00000000-0000-0000-0000-000000000000'), action, timestamp)
+             DO UPDATE SET position = EXCLUDED.position, started = EXCLUDED.started, total = EXCLUDED.total",
+        )
+        .bind(action.id)
+        .bind(action.user_id)
+        .bind(action.device_id)
+        .bind(action.episode_id)
+        .bind(action_type_str(action.action))
+        .bind(&action.podcast_ref_url)
+        .bind(&action.episode_ref_url)
+        .bind(action.started)
+        .bind(action.position)
+        .bind(action.total)
+        .bind(action.timestamp)
+        .bind(action.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list(
+        &self,
+        user_id: Uuid,
+        device_id: Option<Uuid>,
+        podcast_id: Option<Uuid>,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<EpisodeAction>> {
+        // Build query dynamically based on filters
+        let mut sql = String::from(
+            "SELECT ea.id, ea.user_id, ea.device_id, ea.episode_id, ea.action,
+                    ea.podcast_ref_url, ea.episode_ref_url,
+                    ea.started, ea.position, ea.total, ea.timestamp, ea.created_at
+             FROM episode_actions ea
+             WHERE ea.user_id = $1",
+        );
+        let mut param_idx = 2u32;
+
+        if device_id.is_some() {
+            sql.push_str(&format!(" AND ea.device_id = ${param_idx}"));
+            param_idx += 1;
+        }
+        if podcast_id.is_some() {
+            sql.push_str(&format!(
+                " AND ea.episode_id IN (SELECT id FROM episodes WHERE podcast_id = ${param_idx})"
+            ));
+            param_idx += 1;
+        }
+        if since.is_some() {
+            sql.push_str(&format!(" AND ea.timestamp > ${param_idx}"));
+            param_idx += 1;
+        }
+        sql.push_str(&format!(" ORDER BY ea.timestamp LIMIT ${param_idx}"));
+
+        let mut q = sqlx::query_as::<_, EpActionRow>(&sql).bind(user_id);
+        if let Some(did) = device_id {
+            q = q.bind(did);
+        }
+        if let Some(pid) = podcast_id {
+            q = q.bind(pid);
+        }
+        if let Some(s) = since {
+            q = q.bind(s);
+        }
+        q = q.bind(limit);
+
+        let rows = q.fetch_all(&self.pool).await.map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
 impl repo::SessionRepo for PgRepo {
     async fn create(&self, session: &Session) -> Result<()> {
         sqlx::query(

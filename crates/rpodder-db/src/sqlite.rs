@@ -607,6 +607,298 @@ impl repo::SubscriptionRepo for SqliteRepo {
 }
 
 // ---------------------------------------------------------------------------
+// EpisodeRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct SqliteEpisodeRow {
+    id: String,
+    podcast_id: String,
+    guid: Option<String>,
+    title: String,
+    description: String,
+    link: Option<String>,
+    released: Option<String>,
+    duration: Option<i64>,
+    filesize: Option<i64>,
+    mimetype: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<SqliteEpisodeRow> for Episode {
+    fn from(r: SqliteEpisodeRow) -> Self {
+        Episode {
+            id: r.id.parse().unwrap_or_default(),
+            podcast_id: r.podcast_id.parse().unwrap_or_default(),
+            guid: r.guid,
+            title: r.title,
+            description: r.description,
+            link: r.link,
+            released: r.released.and_then(|s| s.parse().ok()),
+            duration: r.duration,
+            filesize: r.filesize,
+            mimetype: r.mimetype,
+            created_at: r.created_at.parse().unwrap_or_default(),
+            updated_at: r.updated_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+impl repo::EpisodeRepo for SqliteRepo {
+    async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
+        let existing: Option<SqliteEpisodeRow> = sqlx::query_as(
+            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
+                    e.released, e.duration, e.filesize, e.mimetype, e.created_at, e.updated_at
+             FROM episodes e
+             JOIN episode_urls eu ON eu.episode_id = e.id
+             WHERE eu.url = ?",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if let Some(row) = existing {
+            return Ok((row.into(), false));
+        }
+
+        let id = Uuid::now_v7();
+        let url_id = Uuid::now_v7();
+        let now = Utc::now();
+        let now_s = now.to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO episodes (id, podcast_id, title, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(uuid_str(&id))
+        .bind(uuid_str(&podcast_id))
+        .bind(url)
+        .bind(&now_s)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        sqlx::query(
+            "INSERT INTO episode_urls (id, episode_id, url, \"order\")
+             VALUES (?, ?, ?, 0)",
+        )
+        .bind(uuid_str(&url_id))
+        .bind(uuid_str(&id))
+        .bind(url)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let episode = Episode {
+            id,
+            podcast_id,
+            guid: None,
+            title: url.to_string(),
+            description: String::new(),
+            link: None,
+            released: None,
+            duration: None,
+            filesize: None,
+            mimetype: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        Ok((episode, true))
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Episode>> {
+        let row: Option<SqliteEpisodeRow> = sqlx::query_as(
+            "SELECT id, podcast_id, guid, title, description, link,
+                    released, duration, filesize, mimetype, created_at, updated_at
+             FROM episodes WHERE id = ?",
+        )
+        .bind(uuid_str(&id))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn list_for_podcast(&self, podcast_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Episode>> {
+        let rows: Vec<SqliteEpisodeRow> = sqlx::query_as(
+            "SELECT id, podcast_id, guid, title, description, link,
+                    released, duration, filesize, mimetype, created_at, updated_at
+             FROM episodes WHERE podcast_id = ?
+             ORDER BY released DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(uuid_str(&podcast_id))
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn update(&self, episode: &Episode) -> Result<()> {
+        sqlx::query(
+            "UPDATE episodes SET guid = ?, title = ?, description = ?, link = ?,
+                    released = ?, duration = ?, filesize = ?, mimetype = ?, updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(&episode.guid)
+        .bind(&episode.title)
+        .bind(&episode.description)
+        .bind(&episode.link)
+        .bind(episode.released.map(|t| t.to_rfc3339()))
+        .bind(episode.duration)
+        .bind(episode.filesize)
+        .bind(&episode.mimetype)
+        .bind(episode.updated_at.to_rfc3339())
+        .bind(uuid_str(&episode.id))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EpisodeActionRepo
+// ---------------------------------------------------------------------------
+
+fn parse_action_type(s: &str) -> EpisodeActionType {
+    match s {
+        "download" => EpisodeActionType::Download,
+        "play" => EpisodeActionType::Play,
+        "delete" => EpisodeActionType::Delete,
+        _ => EpisodeActionType::New,
+    }
+}
+
+fn action_type_str(a: EpisodeActionType) -> &'static str {
+    match a {
+        EpisodeActionType::Download => "download",
+        EpisodeActionType::Play => "play",
+        EpisodeActionType::Delete => "delete",
+        EpisodeActionType::New => "new",
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteEpActionRow {
+    id: String,
+    user_id: String,
+    device_id: Option<String>,
+    episode_id: String,
+    action: String,
+    podcast_ref_url: Option<String>,
+    episode_ref_url: Option<String>,
+    started: Option<i32>,
+    position: Option<i32>,
+    total: Option<i32>,
+    timestamp: String,
+    created_at: String,
+}
+
+impl From<SqliteEpActionRow> for EpisodeAction {
+    fn from(r: SqliteEpActionRow) -> Self {
+        EpisodeAction {
+            id: r.id.parse().unwrap_or_default(),
+            user_id: r.user_id.parse().unwrap_or_default(),
+            device_id: r.device_id.and_then(|s| s.parse().ok()),
+            episode_id: r.episode_id.parse().unwrap_or_default(),
+            action: parse_action_type(&r.action),
+            podcast_ref_url: r.podcast_ref_url,
+            episode_ref_url: r.episode_ref_url,
+            started: r.started,
+            position: r.position,
+            total: r.total,
+            timestamp: r.timestamp.parse().unwrap_or_default(),
+            created_at: r.created_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+impl repo::EpisodeActionRepo for SqliteRepo {
+    async fn create(&self, action: &EpisodeAction) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO episode_actions
+                (id, user_id, device_id, episode_id, action, podcast_ref_url, episode_ref_url,
+                 started, position, total, timestamp, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, episode_id, COALESCE(device_id, ''), action, timestamp)
+             DO UPDATE SET position = excluded.position, started = excluded.started, total = excluded.total",
+        )
+        .bind(uuid_str(&action.id))
+        .bind(uuid_str(&action.user_id))
+        .bind(action.device_id.map(|d| uuid_str(&d)))
+        .bind(uuid_str(&action.episode_id))
+        .bind(action_type_str(action.action))
+        .bind(&action.podcast_ref_url)
+        .bind(&action.episode_ref_url)
+        .bind(action.started)
+        .bind(action.position)
+        .bind(action.total)
+        .bind(action.timestamp.to_rfc3339())
+        .bind(action.created_at.to_rfc3339())
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn list(
+        &self,
+        user_id: Uuid,
+        device_id: Option<Uuid>,
+        podcast_id: Option<Uuid>,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<EpisodeAction>> {
+        // SQLite doesn't support numbered params, so we build a query with ?
+        // and bind in order. We use a simpler approach: always filter, use impossible defaults.
+        let user_id_s = uuid_str(&user_id);
+
+        let mut conditions = vec!["ea.user_id = ?".to_string()];
+        let mut bind_values: Vec<String> = vec![user_id_s];
+
+        if let Some(did) = device_id {
+            conditions.push("ea.device_id = ?".to_string());
+            bind_values.push(uuid_str(&did));
+        }
+        if let Some(pid) = podcast_id {
+            conditions.push("ea.episode_id IN (SELECT id FROM episodes WHERE podcast_id = ?)".to_string());
+            bind_values.push(uuid_str(&pid));
+        }
+        if let Some(s) = since {
+            conditions.push("ea.timestamp > ?".to_string());
+            bind_values.push(s.to_rfc3339());
+        }
+
+        let sql = format!(
+            "SELECT ea.id, ea.user_id, ea.device_id, ea.episode_id, ea.action,
+                    ea.podcast_ref_url, ea.episode_ref_url,
+                    ea.started, ea.position, ea.total, ea.timestamp, ea.created_at
+             FROM episode_actions ea
+             WHERE {}
+             ORDER BY ea.timestamp
+             LIMIT ?",
+            conditions.join(" AND ")
+        );
+
+        let mut q = sqlx::query_as::<_, SqliteEpActionRow>(&sql);
+        for v in &bind_values {
+            q = q.bind(v);
+        }
+        q = q.bind(limit);
+
+        let rows = q.fetch_all(&self.pool).await.map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SessionRepo
 // ---------------------------------------------------------------------------
 
@@ -691,7 +983,7 @@ impl From<SqliteSessionRow> for Session {
 mod tests {
     use super::*;
     use chrono::Duration;
-    use rpodder_core::repo::{DeviceRepo, PodcastRepo, SessionRepo, SubscriptionRepo, UserRepo};
+    use rpodder_core::repo::{DeviceRepo, EpisodeActionRepo, EpisodeRepo, PodcastRepo, SessionRepo, SubscriptionRepo, UserRepo};
 
     async fn setup() -> SqliteRepo {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -1203,5 +1495,183 @@ mod tests {
 
         let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, after).await.unwrap();
         assert!(changes.is_empty());
+    }
+
+    // === EpisodeRepo tests ===
+
+    #[tokio::test]
+    async fn get_or_create_episode_for_url() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+
+        let (episode, created) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        assert!(created);
+        assert_eq!(episode.title, "http://test.com/ep1.mp3");
+
+        let (episode2, created2) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        assert!(!created2);
+        assert_eq!(episode2.id, episode.id);
+    }
+
+    #[tokio::test]
+    async fn find_episode_by_id() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+
+        let found = EpisodeRepo::find_by_id(&repo, episode.id).await.unwrap().unwrap();
+        assert_eq!(found.id, episode.id);
+
+        let not_found = EpisodeRepo::find_by_id(&repo, Uuid::now_v7()).await.unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_episodes_for_podcast() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+
+        for i in 0..3 {
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &format!("http://test.com/ep{i}.mp3")).await.unwrap();
+        }
+
+        let eps = EpisodeRepo::list_for_podcast(&repo, podcast.id, 10, 0).await.unwrap();
+        assert_eq!(eps.len(), 3);
+    }
+
+    // === EpisodeActionRepo tests ===
+
+    #[tokio::test]
+    async fn create_and_list_episode_actions() {
+        let repo = setup().await;
+        let (user, device, _) = setup_subscription_fixtures(&repo).await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+
+        let action = EpisodeAction {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: Some(device.id),
+            episode_id: episode.id,
+            action: EpisodeActionType::Play,
+            podcast_ref_url: Some("http://test.com/feed".into()),
+            episode_ref_url: Some("http://test.com/ep1.mp3".into()),
+            started: Some(0),
+            position: Some(120),
+            total: Some(3600),
+            timestamp: Utc::now(),
+            created_at: Utc::now(),
+        };
+        EpisodeActionRepo::create(&repo, &action).await.unwrap();
+
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action, EpisodeActionType::Play);
+        assert_eq!(actions[0].position, Some(120));
+    }
+
+    #[tokio::test]
+    async fn episode_action_deduplication() {
+        let repo = setup().await;
+        let (user, device, _) = setup_subscription_fixtures(&repo).await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+
+        let ts = Utc::now();
+        let action = EpisodeAction {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: Some(device.id),
+            episode_id: episode.id,
+            action: EpisodeActionType::Play,
+            podcast_ref_url: None,
+            episode_ref_url: None,
+            started: Some(0),
+            position: Some(100),
+            total: Some(3600),
+            timestamp: ts,
+            created_at: Utc::now(),
+        };
+        EpisodeActionRepo::create(&repo, &action).await.unwrap();
+
+        // Same user+episode+device+action+timestamp, different position → should update
+        let action2 = EpisodeAction {
+            id: Uuid::now_v7(),
+            position: Some(200),
+            ..action.clone()
+        };
+        EpisodeActionRepo::create(&repo, &action2).await.unwrap();
+
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].position, Some(200));
+    }
+
+    #[tokio::test]
+    async fn episode_action_filter_by_device() {
+        let repo = setup().await;
+        let (user, device, _) = setup_subscription_fixtures(&repo).await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3").await.unwrap();
+
+        // Action with device
+        let a1 = EpisodeAction {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: Some(device.id),
+            episode_id: episode.id,
+            action: EpisodeActionType::Download,
+            podcast_ref_url: None, episode_ref_url: None,
+            started: None, position: None, total: None,
+            timestamp: Utc::now(),
+            created_at: Utc::now(),
+        };
+        EpisodeActionRepo::create(&repo, &a1).await.unwrap();
+
+        // Action without device
+        let a2 = EpisodeAction {
+            id: Uuid::now_v7(),
+            device_id: None,
+            action: EpisodeActionType::New,
+            timestamp: Utc::now() + Duration::seconds(1),
+            ..a1.clone()
+        };
+        EpisodeActionRepo::create(&repo, &a2).await.unwrap();
+
+        let all = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        assert_eq!(all.len(), 2);
+
+        let filtered = EpisodeActionRepo::list(&repo, user.id, Some(device.id), None, None, 100).await.unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].action, EpisodeActionType::Download);
+    }
+
+    #[tokio::test]
+    async fn episode_action_filter_by_since() {
+        let repo = setup().await;
+        let (user, device, _) = setup_subscription_fixtures(&repo).await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3").await.unwrap();
+
+        let before = Utc::now();
+
+        let action = EpisodeAction {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: Some(device.id),
+            episode_id: episode.id,
+            action: EpisodeActionType::Play,
+            podcast_ref_url: None, episode_ref_url: None,
+            started: Some(0), position: Some(60), total: Some(300),
+            timestamp: Utc::now(),
+            created_at: Utc::now(),
+        };
+        EpisodeActionRepo::create(&repo, &action).await.unwrap();
+
+        let since_before = EpisodeActionRepo::list(&repo, user.id, None, None, Some(before), 100).await.unwrap();
+        assert_eq!(since_before.len(), 1);
+
+        let since_after = EpisodeActionRepo::list(&repo, user.id, None, None, Some(Utc::now() + Duration::seconds(1)), 100).await.unwrap();
+        assert!(since_after.is_empty());
     }
 }

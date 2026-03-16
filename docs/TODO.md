@@ -59,12 +59,12 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [ ] URL normalization (strip trailing slashes, force https, etc.)
 
 ### 1.5 Episode Actions
-- [ ] Implement `EpisodeRepo.get_or_create_for_url` for both backends
-- [ ] Implement `EpisodeActionRepo` for both backends
-- [ ] `POST /api/2/episodes/{username}.json` handler (upload actions)
-- [ ] `GET /api/2/episodes/{username}.json` handler (download actions with since/device/podcast filters)
-- [ ] Episode action deduplication
-- [ ] Validate play action fields (started, position, total)
+- [x] Implement `EpisodeRepo.get_or_create_for_url` for both backends
+- [x] Implement `EpisodeActionRepo` for both backends
+- [x] `POST /api/2/episodes/{username}.json` handler (upload actions)
+- [x] `GET /api/2/episodes/{username}.json` handler (download actions with since/device/podcast filters)
+- [x] Episode action deduplication
+- [x] Validate play action fields (started, position, total)
 
 ### 1.6 Server Bootstrap
 - [ ] Configuration loading (env vars + config file)
