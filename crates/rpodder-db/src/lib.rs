@@ -94,6 +94,16 @@ impl Db {
                 "#;
                 sqlx::raw_sql(repair_sql).execute(pool).await?;
                 info!("FTS5 index rebuilt successfully");
+
+                // Update subscriber counts for all podcasts
+                sqlx::query(
+                    "UPDATE podcasts SET subscribers = COALESCE((
+                        SELECT COUNT(DISTINCT s.user_id) FROM subscriptions s WHERE s.podcast_id = podcasts.id
+                     ), 0)",
+                )
+                .execute(pool)
+                .await?;
+                info!("Subscriber counts updated");
             }
             Db::Postgres(_) => {
                 info!("No repair needed for PostgreSQL");

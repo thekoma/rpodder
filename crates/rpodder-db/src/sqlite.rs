@@ -566,6 +566,17 @@ impl repo::SubscriptionRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+        // Update subscriber count
+        let _ = sqlx::query(
+            "UPDATE podcasts SET subscribers = (
+                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = ?
+             ) WHERE id = ?",
+        )
+        .bind(uuid_str(&podcast_id))
+        .bind(uuid_str(&podcast_id))
+        .execute(&self.pool)
+        .await;
+
         Ok(())
     }
 
@@ -608,6 +619,17 @@ impl repo::SubscriptionRepo for SqliteRepo {
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // Update subscriber count
+        let _ = sqlx::query(
+            "UPDATE podcasts SET subscribers = (
+                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = ?
+             ) WHERE id = ?",
+        )
+        .bind(uuid_str(&podcast_id))
+        .bind(uuid_str(&podcast_id))
+        .execute(&self.pool)
+        .await;
 
         Ok(())
     }

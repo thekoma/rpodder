@@ -99,11 +99,12 @@ pub async fn search(
     Query(params): Query<SearchQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let podcasts = with_repo!(state, |repo| {
-        PodcastRepo::search(&repo, &params.q, 20).await
+        PodcastRepo::search(&repo, &params.q, 60).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let results = podcasts_to_responses(&state, podcasts).await;
+    let mut results = podcasts_to_responses(&state, podcasts).await;
+    results.truncate(20);
 
     Ok(Json(results))
 }
@@ -120,12 +121,14 @@ pub async fn toplist(
     let count: i64 = count_str.parse().unwrap_or(50);
     let count = count.clamp(1, 100);
 
+    // Fetch more than needed because privacy filter may remove some
     let podcasts = with_repo!(state, |repo| {
-        PodcastRepo::toplist(&repo, count, None).await
+        PodcastRepo::toplist(&repo, count * 3, None).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let results = podcasts_to_responses(&state, podcasts).await;
+    let mut results = podcasts_to_responses(&state, podcasts).await;
+    results.truncate(count as usize);
 
     Ok(Json(results))
 }

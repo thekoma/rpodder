@@ -535,6 +535,16 @@ impl repo::SubscriptionRepo for PgRepo {
         .await
         .map_err(db_err)?;
 
+        // Update subscriber count
+        let _ = sqlx::query(
+            "UPDATE podcasts SET subscribers = (
+                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = $1
+             ) WHERE id = $1",
+        )
+        .bind(podcast_id)
+        .execute(&self.pool)
+        .await;
+
         Ok(())
     }
 
@@ -577,6 +587,16 @@ impl repo::SubscriptionRepo for PgRepo {
         .execute(&self.pool)
         .await
         .map_err(db_err)?;
+
+        // Update subscriber count
+        let _ = sqlx::query(
+            "UPDATE podcasts SET subscribers = (
+                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = $1
+             ) WHERE id = $1",
+        )
+        .bind(podcast_id)
+        .execute(&self.pool)
+        .await;
 
         Ok(())
     }
