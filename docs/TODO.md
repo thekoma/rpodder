@@ -67,19 +67,19 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] Validate play action fields (started, position, total)
 
 ### 1.6 Server Bootstrap
-- [ ] Configuration loading (env vars + config file)
-- [ ] CLI with clap (serve, user create, user delete, migrate)
-- [ ] axum router with all Phase 1 routes
-- [ ] CORS middleware
-- [ ] Request/response logging (tower-http tracing)
-- [ ] Graceful shutdown
-- [ ] Docker build (multi-stage, static musl binary)
+- [x] Configuration loading (env vars + config file)
+- [x] CLI with clap (serve, user create, user delete, migrate)
+- [x] axum router with all Phase 1 routes
+- [x] CORS middleware
+- [x] Request/response logging (tower-http tracing)
+- [x] Graceful shutdown
+- [x] Docker build (multi-stage, static musl binary)
 
 ### 1.7 Testing
-- [ ] Integration tests: auth flow (login, use session, logout)
-- [ ] Integration tests: subscription CRUD + delta sync
-- [ ] Integration tests: episode action upload + download
-- [ ] Integration tests: device CRUD
+- [x] Integration tests: auth flow (login, use session, logout)
+- [x] Integration tests: subscription CRUD + delta sync
+- [x] Integration tests: episode action upload + download
+- [x] Integration tests: device CRUD
 - [ ] Test with AntennaPod against running instance
 - [ ] Test with gPodder desktop against running instance
 

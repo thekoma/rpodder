@@ -28,9 +28,12 @@ impl Db {
             info!("Connected to PostgreSQL");
             Ok(Db::Postgres(pool))
         } else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
+            // Ensure create_if_missing is set for file-based SQLite
+            let connect_opts = url.parse::<sqlx::sqlite::SqliteConnectOptions>()?
+                .create_if_missing(true);
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
                 .max_connections(5)
-                .connect(url)
+                .connect_with(connect_opts)
                 .await?;
             // Enable WAL mode and foreign keys for SQLite
             sqlx::query("PRAGMA journal_mode=WAL")

@@ -1,3 +1,4 @@
+mod config;
 mod middleware;
 mod routes;
 mod state;
@@ -10,6 +11,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use clap::{Parser, Subcommand};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -17,35 +19,152 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 use rpodder_db::Db;
 use state::AppState;
 
+/// rpodder — a modern gpodder.net-compatible podcast sync server
+#[derive(Parser)]
+#[command(name = "rpodder", version, about)]
+struct Cli {
+    /// Path to config file (TOML)
+    #[arg(short, long, global = true)]
+    config: Option<String>,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start the HTTP server
+    Serve,
+
+    /// Run database migrations
+    Migrate,
+
+    /// User management
+    User {
+        #[command(subcommand)]
+        action: UserAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum UserAction {
+    /// Create a new user
+    Create {
+        /// Username
+        username: String,
+        /// Password
+        password: String,
+        /// Email (optional)
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Delete a user
+    Delete {
+        /// Username
+        username: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "rpodder=debug,tower_http=debug".into()))
+        .with(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "rpodder=info,tower_http=debug".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let database_url = std::env::var("RPODDER_DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://rpodder:rpodder@localhost:5432/rpodder".into());
-    let host = std::env::var("RPODDER_HOST").unwrap_or_else(|_| "127.0.0.1".into());
-    let port: u16 = std::env::var("RPODDER_PORT")
-        .unwrap_or_else(|_| "3005".into())
-        .parse()?;
+    let cfg = config::AppConfig::load(cli.config.as_deref())?;
 
-    let db = Db::connect(&database_url).await?;
+    match cli.command {
+        Commands::Serve => cmd_serve(cfg).await,
+        Commands::Migrate => cmd_migrate(cfg).await,
+        Commands::User { action } => cmd_user(cfg, action).await,
+    }
+}
 
-    if std::env::var("RPODDER_RUN_MIGRATIONS").unwrap_or_default() == "true" {
-        let migrations_dir = std::env::var("RPODDER_MIGRATIONS_DIR")
-            .unwrap_or_else(|_| "migrations".into());
-        db.migrate(&migrations_dir).await?;
+async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
+    let db = Db::connect(&cfg.database_url).await?;
+
+    if cfg.run_migrations {
+        tracing::info!("running migrations from {}", cfg.migrations_dir);
+        db.migrate(&cfg.migrations_dir).await?;
     }
 
     let state = AppState { db: Arc::new(db) };
     let app = api_router(state);
 
-    let addr: SocketAddr = format!("{host}:{port}").parse()?;
+    let addr: SocketAddr = format!("{}:{}", cfg.host, cfg.port).parse()?;
     tracing::info!("rpodder listening on {addr}");
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("server shut down gracefully");
+    Ok(())
+}
+
+async fn cmd_migrate(cfg: config::AppConfig) -> anyhow::Result<()> {
+    let db = Db::connect(&cfg.database_url).await?;
+    tracing::info!("running migrations from {}", cfg.migrations_dir);
+    db.migrate(&cfg.migrations_dir).await?;
+    tracing::info!("migrations complete");
+    Ok(())
+}
+
+async fn cmd_user(cfg: config::AppConfig, action: UserAction) -> anyhow::Result<()> {
+    use rpodder_core::repo::UserRepo;
+    use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo};
+
+    let db = Db::connect(&cfg.database_url).await?;
+
+    match action {
+        UserAction::Create {
+            username,
+            password,
+            email,
+        } => {
+            let hash = middleware::auth::hash_password(&password)
+                .map_err(|e| anyhow::anyhow!("failed to hash password: {e}"))?;
+
+            match &db {
+                Db::Postgres(pool) => {
+                    let repo = PgRepo::new(pool.clone());
+                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?;
+                }
+                Db::Sqlite(pool) => {
+                    let repo = SqliteRepo::new(pool.clone());
+                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?;
+                }
+            }
+
+            tracing::info!("user '{}' created", username);
+        }
+        UserAction::Delete { username } => {
+            // For now, just deactivate the user
+            match &db {
+                Db::Postgres(pool) => {
+                    sqlx::query("UPDATE users SET is_active = false WHERE LOWER(username) = LOWER($1)")
+                        .bind(&username)
+                        .execute(pool)
+                        .await?;
+                }
+                Db::Sqlite(pool) => {
+                    sqlx::query("UPDATE users SET is_active = 0 WHERE username = ? COLLATE NOCASE")
+                        .bind(&username)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+
+            tracing::info!("user '{}' deactivated", username);
+        }
+    }
 
     Ok(())
 }
@@ -53,27 +172,77 @@ async fn main() -> anyhow::Result<()> {
 fn api_router(state: AppState) -> Router {
     // Routes that require authentication
     let authenticated = Router::new()
-        .route("/api/2/auth/{username}/login.json", post(routes::auth::login))
-        .route("/api/2/devices/{username}/{deviceid_json}", post(routes::devices::update_device))
-        .route("/api/2/devices/{username_json}", get(routes::devices::list_devices))
+        .route(
+            "/api/2/auth/{username}/login.json",
+            post(routes::auth::login),
+        )
+        .route(
+            "/api/2/devices/{username}/{deviceid_json}",
+            post(routes::devices::update_device),
+        )
+        .route(
+            "/api/2/devices/{username_json}",
+            get(routes::devices::list_devices),
+        )
         // Simple subscription API
-        .route("/subscriptions/{username}/{deviceid_json}", get(routes::subscriptions::get_device_subscriptions).put(routes::subscriptions::put_device_subscriptions))
-        .route("/subscriptions/{username_json}", get(routes::subscriptions::get_user_subscriptions))
+        .route(
+            "/subscriptions/{username}/{deviceid_json}",
+            get(routes::subscriptions::get_device_subscriptions)
+                .put(routes::subscriptions::put_device_subscriptions),
+        )
+        .route(
+            "/subscriptions/{username_json}",
+            get(routes::subscriptions::get_user_subscriptions),
+        )
         // Advanced subscription API
-        .route("/api/2/subscriptions/{username}/{deviceid_json}", get(routes::subscriptions::download_subscription_changes).post(routes::subscriptions::upload_subscription_changes))
+        .route(
+            "/api/2/subscriptions/{username}/{deviceid_json}",
+            get(routes::subscriptions::download_subscription_changes)
+                .post(routes::subscriptions::upload_subscription_changes),
+        )
         // Episode actions API
-        .route("/api/2/episodes/{username_json}", get(routes::episodes::download_episode_actions).post(routes::episodes::upload_episode_actions))
+        .route(
+            "/api/2/episodes/{username_json}",
+            get(routes::episodes::download_episode_actions)
+                .post(routes::episodes::upload_episode_actions),
+        )
         .route_layer(axum_mw::from_fn(
             middleware::auth::require_auth_layer(state.clone()),
         ));
 
     // Public routes (no auth required)
-    let public = Router::new()
-        .route("/api/2/auth/{username}/logout.json", post(routes::auth::logout));
+    let public = Router::new().route(
+        "/api/2/auth/{username}/logout.json",
+        post(routes::auth::logout),
+    );
 
     authenticated
         .merge(public)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("received Ctrl+C"),
+        _ = terminate => tracing::info!("received SIGTERM"),
+    }
 }

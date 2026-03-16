@@ -1,0 +1,18 @@
+# rpodder configuration
+# Copy to rpodder.toml and modify as needed.
+# All settings can also be set via RPODDER_* environment variables.
+
+# Database URL
+# PostgreSQL: postgres://user:pass@host:5432/rpodder
+# SQLite:     sqlite://rpodder.db
+database_url = "sqlite://rpodder.db"
+
+# Server bind address
+host = "127.0.0.1"
+port = 3005
+
+# Path to migrations directory
+migrations_dir = "migrations"
+
+# Run migrations on startup (useful in Docker)
+run_migrations = false

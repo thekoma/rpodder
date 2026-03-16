@@ -28,8 +28,9 @@ config = { workspace = true }
 anyhow = { workspace = true }
 argon2 = { workspace = true }
 rand = { workspace = true }
+clap = { workspace = true }
+sqlx = { workspace = true }
 base64 = "0.22"
 
 [dev-dependencies]
-sqlx = { workspace = true }
 tower = { workspace = true, features = ["util"] }
