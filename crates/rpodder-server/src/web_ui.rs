@@ -18,7 +18,8 @@ struct WebAssets;
 /// Handler that serves embedded static files.
 /// Falls through to index.html for SPA client-side routing.
 pub async fn serve_ui(req: Request) -> Response {
-    let path = req.uri().path().trim_start_matches("/ui/").trim_start_matches("/ui");
+    let raw_path = req.uri().path();
+    let path = raw_path.trim_start_matches('/');
     let path = if path.is_empty() { "index.html" } else { path };
 
     // Try exact file match first

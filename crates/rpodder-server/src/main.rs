@@ -265,7 +265,7 @@ fn api_router(state: AppState) -> Router {
 
     // Public routes (no auth required)
     let public = Router::new()
-        .route("/", get(routes::admin::status_page))
+        .route("/admin", get(routes::admin::status_page))
         .route("/health", get(routes::health::health))
         .route(
             "/api/2/auth/{username}/logout.json",

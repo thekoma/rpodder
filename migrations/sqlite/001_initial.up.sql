@@ -6,7 +6,7 @@
 -- Users
 -- =========================================================================
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id              TEXT PRIMARY KEY NOT NULL,
     username        TEXT NOT NULL,
     password_hash   TEXT NOT NULL,
@@ -15,14 +15,14 @@ CREATE TABLE users (
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE UNIQUE INDEX idx_users_username ON users (username COLLATE NOCASE);
-CREATE UNIQUE INDEX idx_users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username COLLATE NOCASE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE) WHERE email IS NOT NULL;
 
 -- =========================================================================
 -- Sessions
 -- =========================================================================
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token       TEXT NOT NULL UNIQUE,
@@ -30,14 +30,14 @@ CREATE TABLE sessions (
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_sessions_token ON sessions (token);
-CREATE INDEX idx_sessions_expires ON sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions (token);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
 
 -- =========================================================================
 -- Sync Groups
 -- =========================================================================
 
-CREATE TABLE sync_groups (
+CREATE TABLE IF NOT EXISTS sync_groups (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -47,7 +47,7 @@ CREATE TABLE sync_groups (
 -- Devices
 -- =========================================================================
 
-CREATE TABLE devices (
+CREATE TABLE IF NOT EXISTS devices (
     id              TEXT PRIMARY KEY NOT NULL,
     user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id       TEXT NOT NULL,
@@ -58,13 +58,13 @@ CREATE TABLE devices (
     updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE UNIQUE INDEX idx_devices_user_uid ON devices (user_id, device_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_user_uid ON devices (user_id, device_id);
 
 -- =========================================================================
 -- Podcasts
 -- =========================================================================
 
-CREATE TABLE podcasts (
+CREATE TABLE IF NOT EXISTS podcasts (
     id                      TEXT PRIMARY KEY NOT NULL,
     title                   TEXT NOT NULL DEFAULT '',
     description             TEXT NOT NULL DEFAULT '',
@@ -80,14 +80,14 @@ CREATE TABLE podcasts (
     updated_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_podcasts_subscribers ON podcasts (subscribers DESC);
-CREATE INDEX idx_podcasts_last_update ON podcasts (last_update);
+CREATE INDEX IF NOT EXISTS idx_podcasts_subscribers ON podcasts (subscribers DESC);
+CREATE INDEX IF NOT EXISTS idx_podcasts_last_update ON podcasts (last_update);
 
 -- =========================================================================
 -- Podcast URLs
 -- =========================================================================
 
-CREATE TABLE podcast_urls (
+CREATE TABLE IF NOT EXISTS podcast_urls (
     id          TEXT PRIMARY KEY NOT NULL,
     podcast_id  TEXT NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
     url         TEXT NOT NULL UNIQUE,
@@ -96,13 +96,13 @@ CREATE TABLE podcast_urls (
     UNIQUE (podcast_id, "order")
 );
 
-CREATE INDEX idx_podcast_urls_podcast ON podcast_urls (podcast_id);
+CREATE INDEX IF NOT EXISTS idx_podcast_urls_podcast ON podcast_urls (podcast_id);
 
 -- =========================================================================
 -- Episodes
 -- =========================================================================
 
-CREATE TABLE episodes (
+CREATE TABLE IF NOT EXISTS episodes (
     id          TEXT PRIMARY KEY NOT NULL,
     podcast_id  TEXT NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
     guid        TEXT,
@@ -117,15 +117,15 @@ CREATE TABLE episodes (
     updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_episodes_podcast ON episodes (podcast_id);
-CREATE INDEX idx_episodes_podcast_released ON episodes (podcast_id, released DESC);
-CREATE INDEX idx_episodes_guid ON episodes (podcast_id, guid) WHERE guid IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_episodes_podcast ON episodes (podcast_id);
+CREATE INDEX IF NOT EXISTS idx_episodes_podcast_released ON episodes (podcast_id, released DESC);
+CREATE INDEX IF NOT EXISTS idx_episodes_guid ON episodes (podcast_id, guid) WHERE guid IS NOT NULL;
 
 -- =========================================================================
 -- Episode URLs
 -- =========================================================================
 
-CREATE TABLE episode_urls (
+CREATE TABLE IF NOT EXISTS episode_urls (
     id          TEXT PRIMARY KEY NOT NULL,
     episode_id  TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
     url         TEXT NOT NULL UNIQUE,
@@ -134,13 +134,13 @@ CREATE TABLE episode_urls (
     UNIQUE (episode_id, "order")
 );
 
-CREATE INDEX idx_episode_urls_episode ON episode_urls (episode_id);
+CREATE INDEX IF NOT EXISTS idx_episode_urls_episode ON episode_urls (episode_id);
 
 -- =========================================================================
 -- Subscriptions
 -- =========================================================================
 
-CREATE TABLE subscriptions (
+CREATE TABLE IF NOT EXISTS subscriptions (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id   TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -151,15 +151,15 @@ CREATE TABLE subscriptions (
     UNIQUE (user_id, device_id, podcast_id)
 );
 
-CREATE INDEX idx_subscriptions_user ON subscriptions (user_id);
-CREATE INDEX idx_subscriptions_user_device ON subscriptions (user_id, device_id);
-CREATE INDEX idx_subscriptions_podcast ON subscriptions (podcast_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_device ON subscriptions (user_id, device_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_podcast ON subscriptions (podcast_id);
 
 -- =========================================================================
 -- Subscription Changes (append-only)
 -- =========================================================================
 
-CREATE TABLE subscription_changes (
+CREATE TABLE IF NOT EXISTS subscription_changes (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id   TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -169,13 +169,13 @@ CREATE TABLE subscription_changes (
     timestamp   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_subchanges_user_device_ts ON subscription_changes (user_id, device_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_subchanges_user_device_ts ON subscription_changes (user_id, device_id, timestamp);
 
 -- =========================================================================
 -- Episode Actions (append-only)
 -- =========================================================================
 
-CREATE TABLE episode_actions (
+CREATE TABLE IF NOT EXISTS episode_actions (
     id              TEXT PRIMARY KEY NOT NULL,
     user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_id       TEXT REFERENCES devices(id) ON DELETE SET NULL,
@@ -190,18 +190,18 @@ CREATE TABLE episode_actions (
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_epactions_user_ts ON episode_actions (user_id, timestamp);
-CREATE INDEX idx_epactions_user_device ON episode_actions (user_id, device_id, timestamp);
-CREATE INDEX idx_epactions_user_episode ON episode_actions (user_id, episode_id);
+CREATE INDEX IF NOT EXISTS idx_epactions_user_ts ON episode_actions (user_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_epactions_user_device ON episode_actions (user_id, device_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_epactions_user_episode ON episode_actions (user_id, episode_id);
 -- Deduplication: same user+episode+device+action+timestamp should not exist twice
-CREATE UNIQUE INDEX idx_epactions_dedup
+CREATE UNIQUE INDEX IF NOT EXISTS idx_epactions_dedup
     ON episode_actions (user_id, episode_id, COALESCE(device_id, ''), action, timestamp);
 
 -- =========================================================================
 -- User Settings
 -- =========================================================================
 
-CREATE TABLE user_settings (
+CREATE TABLE IF NOT EXISTS user_settings (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scope       TEXT NOT NULL CHECK (scope IN ('account','device','podcast','episode')),
@@ -210,13 +210,13 @@ CREATE TABLE user_settings (
     updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE UNIQUE INDEX idx_user_settings_scope ON user_settings (user_id, scope, COALESCE(scope_id, ''));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_scope ON user_settings (user_id, scope, COALESCE(scope_id, ''));
 
 -- =========================================================================
 -- Tags
 -- =========================================================================
 
-CREATE TABLE tags (
+CREATE TABLE IF NOT EXISTS tags (
     id          TEXT PRIMARY KEY NOT NULL,
     tag         TEXT NOT NULL,
     source      TEXT NOT NULL CHECK (source IN ('feed','user')),
@@ -226,14 +226,14 @@ CREATE TABLE tags (
     UNIQUE (tag, source, user_id, podcast_id)
 );
 
-CREATE INDEX idx_tags_podcast ON tags (podcast_id);
-CREATE INDEX idx_tags_tag ON tags (tag);
+CREATE INDEX IF NOT EXISTS idx_tags_podcast ON tags (podcast_id);
+CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags (tag);
 
 -- =========================================================================
 -- Podcast Lists
 -- =========================================================================
 
-CREATE TABLE podcast_lists (
+CREATE TABLE IF NOT EXISTS podcast_lists (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title       TEXT NOT NULL,
@@ -244,7 +244,7 @@ CREATE TABLE podcast_lists (
     UNIQUE (user_id, slug)
 );
 
-CREATE TABLE podcast_list_entries (
+CREATE TABLE IF NOT EXISTS podcast_list_entries (
     id          TEXT PRIMARY KEY NOT NULL,
     list_id     TEXT NOT NULL REFERENCES podcast_lists(id) ON DELETE CASCADE,
     podcast_id  TEXT NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
@@ -253,13 +253,13 @@ CREATE TABLE podcast_list_entries (
     UNIQUE (list_id, podcast_id)
 );
 
-CREATE INDEX idx_plist_entries_list ON podcast_list_entries (list_id, "order");
+CREATE INDEX IF NOT EXISTS idx_plist_entries_list ON podcast_list_entries (list_id, "order");
 
 -- =========================================================================
 -- Chapters
 -- =========================================================================
 
-CREATE TABLE chapters (
+CREATE TABLE IF NOT EXISTS chapters (
     id              TEXT PRIMARY KEY NOT NULL,
     user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     episode_id      TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
@@ -270,13 +270,13 @@ CREATE TABLE chapters (
     created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX idx_chapters_user_episode ON chapters (user_id, episode_id);
+CREATE INDEX IF NOT EXISTS idx_chapters_user_episode ON chapters (user_id, episode_id);
 
 -- =========================================================================
 -- Favorite Episodes
 -- =========================================================================
 
-CREATE TABLE favorite_episodes (
+CREATE TABLE IF NOT EXISTS favorite_episodes (
     id          TEXT PRIMARY KEY NOT NULL,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     episode_id  TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
@@ -289,7 +289,7 @@ CREATE TABLE favorite_episodes (
 -- Categories
 -- =========================================================================
 
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id          TEXT PRIMARY KEY NOT NULL,
     tag         TEXT NOT NULL UNIQUE,
     updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -299,7 +299,7 @@ CREATE TABLE categories (
 -- FTS5 virtual table for podcast search (SQLite-specific)
 -- =========================================================================
 
-CREATE VIRTUAL TABLE podcasts_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS podcasts_fts USING fts5(
     title,
     author,
     description,
@@ -308,17 +308,17 @@ CREATE VIRTUAL TABLE podcasts_fts USING fts5(
 );
 
 -- Triggers to keep FTS index in sync with podcasts table
-CREATE TRIGGER trg_podcasts_fts_insert AFTER INSERT ON podcasts BEGIN
+CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_insert AFTER INSERT ON podcasts BEGIN
     INSERT INTO podcasts_fts(rowid, title, author, description)
     VALUES (NEW.rowid, NEW.title, NEW.author, NEW.description);
 END;
 
-CREATE TRIGGER trg_podcasts_fts_update AFTER UPDATE OF title, author, description ON podcasts BEGIN
+CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_update AFTER UPDATE OF title, author, description ON podcasts BEGIN
     DELETE FROM podcasts_fts WHERE rowid = OLD.rowid;
     INSERT INTO podcasts_fts(rowid, title, author, description)
     VALUES (NEW.rowid, NEW.title, NEW.author, NEW.description);
 END;
 
-CREATE TRIGGER trg_podcasts_fts_delete AFTER DELETE ON podcasts BEGIN
+CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_delete AFTER DELETE ON podcasts BEGIN
     DELETE FROM podcasts_fts WHERE rowid = OLD.rowid;
 END;
