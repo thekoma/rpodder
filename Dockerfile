@@ -1,7 +1,18 @@
 # --------------------------------------------------------------------------
-# Stage 1: Build
+# Stage 1: Build frontend (Svelte + Tailwind)
 # --------------------------------------------------------------------------
-FROM rust:1.86-bookworm AS builder
+FROM oven/bun:1 AS frontend
+
+WORKDIR /web
+COPY web/package.json ./
+RUN bun install
+COPY web/ .
+RUN bun run build
+
+# --------------------------------------------------------------------------
+# Stage 2: Build backend (Rust)
+# --------------------------------------------------------------------------
+FROM rust:bookworm AS builder
 
 WORKDIR /build
 
@@ -18,10 +29,15 @@ RUN mkdir -p crates/rpodder-core/src   && echo "" > crates/rpodder-core/src/lib.
  && mkdir -p crates/rpodder-feed/src   && echo "" > crates/rpodder-feed/src/lib.rs \
  && mkdir -p crates/rpodder-server/src && echo "fn main() {}" > crates/rpodder-server/src/main.rs
 
+# Create empty web/dist so rust-embed compiles during dep caching
+RUN mkdir -p web/dist && touch web/dist/index.html
+
 RUN cargo build --release 2>/dev/null || true
 
-# Now copy real source and build
+# Now copy real source and built frontend
 COPY crates/ crates/
+COPY --from=frontend /web/dist/ web/dist/
+
 # Touch files so cargo detects changes vs the dummy sources
 RUN touch crates/rpodder-core/src/lib.rs \
           crates/rpodder-db/src/lib.rs \
@@ -31,7 +47,7 @@ RUN touch crates/rpodder-core/src/lib.rs \
 RUN cargo build --release --bin rpodder
 
 # --------------------------------------------------------------------------
-# Stage 2: Runtime
+# Stage 3: Runtime
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 

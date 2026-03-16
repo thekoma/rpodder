@@ -1,9 +1,9 @@
 # --------------------------------------------------------------------------
 # Development Dockerfile: uses cargo-watch for live reload
 # --------------------------------------------------------------------------
-FROM rust:1.86-bookworm
+FROM rust:bookworm
 
-RUN cargo install cargo-watch
+RUN cargo install cargo-watch --locked
 
 WORKDIR /app
 
