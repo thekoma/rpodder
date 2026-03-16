@@ -124,30 +124,30 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 ## Phase 3 — Advanced Features
 
 ### 3.1 Device Synchronization
-- [ ] Implement `SyncGroupRepo` for both backends
-- [ ] `GET /api/2/sync-devices/{username}.json` handler
-- [ ] `POST /api/2/sync-devices/{username}.json` handler
+- [x] Implement `SyncGroupRepo` for both backends
+- [x] `GET /api/2/sync-devices/{username}.json` handler
+- [x] `POST /api/2/sync-devices/{username}.json` handler
 - [ ] Propagate subscriptions across synced devices
 - [ ] `GET /api/2/updates/{username}/{deviceid}.json` handler (combined updates)
 
 ### 3.2 Settings API
-- [ ] Implement `SettingsRepo` for both backends
-- [ ] `GET /api/2/settings/{username}/{scope}.json` handler
-- [ ] `POST /api/2/settings/{username}/{scope}.json` handler
-- [ ] Scope resolution: account / device / podcast / episode
+- [x] Implement `SettingsRepo` for both backends
+- [x] `GET /api/2/settings/{username}/{scope}.json` handler
+- [x] `POST /api/2/settings/{username}/{scope}.json` handler
+- [x] Scope resolution: account / device / podcast / episode
 
 ### 3.3 Podcast Lists
-- [ ] Implement `PodcastListRepo` for both backends
+- [x] Implement `PodcastListRepo` for both backends
 - [ ] CRUD handlers for `/api/2/lists/...`
 
 ### 3.4 Chapters
-- [ ] Implement `ChapterRepo` for both backends
+- [x] Implement `ChapterRepo` for both backends
 - [ ] `GET /api/2/chapters/{username}.json` handler
 - [ ] `POST /api/2/chapters/{username}.json` handler
 
 ### 3.5 Favorites
-- [ ] Implement `FavoriteRepo` for both backends
-- [ ] `GET /api/2/favorites/{username}.json` handler
+- [x] Implement `FavoriteRepo` for both backends
+- [x] `GET /api/2/favorites/{username}.json` handler
 
 ## Phase 4 — Production Readiness
 

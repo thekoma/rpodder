@@ -3,4 +3,7 @@ pub mod auth;
 pub mod devices;
 pub mod directory;
 pub mod episodes;
+pub mod favorites;
+pub mod settings;
 pub mod subscriptions;
+pub mod sync;

@@ -210,11 +210,14 @@ fn api_router(state: AppState) -> Router {
             get(routes::subscriptions::download_subscription_changes)
                 .post(routes::subscriptions::upload_subscription_changes),
         )
-        // Suggestions (needs auth for per-user recommendations)
-        .route(
-            "/suggestions/{count_json}",
-            get(routes::directory::suggestions),
-        )
+        // Suggestions
+        .route("/suggestions/{count_json}", get(routes::directory::suggestions))
+        // Sync devices
+        .route("/api/2/sync-devices/{username_json}", get(routes::sync::get_sync_status).post(routes::sync::update_sync_status))
+        // Settings
+        .route("/api/2/settings/{username}/{scope_json}", get(routes::settings::get_settings).post(routes::settings::update_settings))
+        // Favorites
+        .route("/api/2/favorites/{username_json}", get(routes::favorites::get_favorites))
         // Episode actions API
         .route(
             "/api/2/episodes/{username_json}",

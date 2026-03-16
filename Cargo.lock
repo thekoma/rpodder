@@ -2041,6 +2041,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "rpodder-core",
+ "serde_json",
  "sqlx",
  "thiserror",
  "tokio",

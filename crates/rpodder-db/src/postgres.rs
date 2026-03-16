@@ -935,6 +935,359 @@ impl repo::TagRepo for PgRepo {
     }
 }
 
+// ---------------------------------------------------------------------------
+// SyncGroupRepo
+// ---------------------------------------------------------------------------
+
+impl repo::SyncGroupRepo for PgRepo {
+    async fn create_group(&self, user_id: Uuid, device_ids: &[Uuid]) -> Result<SyncGroup> {
+        let id = Uuid::now_v7();
+        let now = Utc::now();
+
+        sqlx::query(
+            "INSERT INTO sync_groups (id, user_id, created_at) VALUES ($1, $2, $3)",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(now)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        for did in device_ids {
+            sqlx::query("UPDATE devices SET sync_group_id = $1 WHERE id = $2 AND user_id = $3")
+                .bind(id)
+                .bind(did)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await
+                .map_err(db_err)?;
+        }
+
+        Ok(SyncGroup { id, user_id, created_at: now })
+    }
+
+    async fn get_groups_for_user(&self, user_id: Uuid) -> Result<Vec<(SyncGroup, Vec<Device>)>> {
+        let groups: Vec<(Uuid, Uuid, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, user_id, created_at FROM sync_groups WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        let mut result = Vec::new();
+        for (id, uid, created_at) in groups {
+            let devices: Vec<DeviceRow> = sqlx::query_as(
+                "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+                 FROM devices WHERE sync_group_id = $1",
+            )
+            .bind(id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?;
+
+            let group = SyncGroup { id, user_id: uid, created_at };
+            result.push((group, devices.into_iter().map(Into::into).collect()));
+        }
+        Ok(result)
+    }
+
+    async fn remove_device_from_group(&self, device_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE devices SET sync_group_id = NULL WHERE id = $1")
+            .bind(device_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SettingsRepo
+// ---------------------------------------------------------------------------
+
+fn scope_str(s: SettingsScope) -> &'static str {
+    match s {
+        SettingsScope::Account => "account",
+        SettingsScope::Device => "device",
+        SettingsScope::Podcast => "podcast",
+        SettingsScope::Episode => "episode",
+    }
+}
+
+fn parse_scope(s: &str) -> SettingsScope {
+    match s {
+        "device" => SettingsScope::Device,
+        "podcast" => SettingsScope::Podcast,
+        "episode" => SettingsScope::Episode,
+        _ => SettingsScope::Account,
+    }
+}
+
+impl repo::SettingsRepo for PgRepo {
+    async fn get(&self, user_id: Uuid, scope: SettingsScope, scope_id: Option<Uuid>) -> Result<Option<UserSettings>> {
+        let row: Option<(Uuid, Uuid, String, Option<Uuid>, String, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, user_id, scope, scope_id, settings::text, updated_at
+             FROM user_settings
+             WHERE user_id = $1 AND scope = $2 AND COALESCE(scope_id, '00000000-0000-0000-0000-000000000000') = COALESCE($3, '00000000-0000-0000-0000-000000000000')",
+        )
+        .bind(user_id)
+        .bind(scope_str(scope))
+        .bind(scope_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        Ok(row.map(|(id, user_id, scope_s, scope_id, settings_s, updated_at)| UserSettings {
+            id, user_id,
+            scope: parse_scope(&scope_s),
+            scope_id,
+            settings: serde_json::from_str(&settings_s).unwrap_or_default(),
+            updated_at,
+        }))
+    }
+
+    async fn save(&self, settings: &UserSettings) -> Result<()> {
+        let settings_str = settings.settings.to_string();
+        sqlx::query(
+            "INSERT INTO user_settings (id, user_id, scope, scope_id, settings, updated_at)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+             ON CONFLICT (user_id, scope, COALESCE(scope_id, '00000000-0000-0000-0000-000000000000'))
+             DO UPDATE SET settings = EXCLUDED.settings, updated_at = EXCLUDED.updated_at",
+        )
+        .bind(settings.id)
+        .bind(settings.user_id)
+        .bind(scope_str(settings.scope))
+        .bind(settings.scope_id)
+        .bind(&settings_str)
+        .bind(settings.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PodcastListRepo
+// ---------------------------------------------------------------------------
+
+impl repo::PodcastListRepo for PgRepo {
+    async fn create(&self, list: &PodcastList) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO podcast_lists (id, user_id, title, slug, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(list.id)
+        .bind(list.user_id)
+        .bind(&list.title)
+        .bind(&list.slug)
+        .bind(list.created_at)
+        .bind(list.updated_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn find_by_slug(&self, user_id: Uuid, slug: &str) -> Result<Option<PodcastList>> {
+        let row: Option<(Uuid, Uuid, String, String, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, user_id, title, slug, created_at, updated_at
+             FROM podcast_lists WHERE user_id = $1 AND slug = $2",
+        )
+        .bind(user_id)
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        Ok(row.map(|(id, user_id, title, slug, created_at, updated_at)| PodcastList {
+            id, user_id, title, slug, created_at, updated_at,
+        }))
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<PodcastList>> {
+        let rows: Vec<(Uuid, Uuid, String, String, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, user_id, title, slug, created_at, updated_at
+             FROM podcast_lists WHERE user_id = $1 ORDER BY created_at",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+
+        Ok(rows.into_iter().map(|(id, user_id, title, slug, created_at, updated_at)| PodcastList {
+            id, user_id, title, slug, created_at, updated_at,
+        }).collect())
+    }
+
+    async fn set_entries(&self, list_id: Uuid, podcast_ids: &[Uuid]) -> Result<()> {
+        sqlx::query("DELETE FROM podcast_list_entries WHERE list_id = $1")
+            .bind(list_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+
+        for (i, pid) in podcast_ids.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO podcast_list_entries (id, list_id, podcast_id, \"order\") VALUES ($1, $2, $3, $4)",
+            )
+            .bind(Uuid::now_v7())
+            .bind(list_id)
+            .bind(pid)
+            .bind(i as i32)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    async fn get_entries(&self, list_id: Uuid) -> Result<Vec<Podcast>> {
+        let rows: Vec<PodcastRow> = sqlx::query_as(
+            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+                    p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
+                    p.created_at, p.updated_at
+             FROM podcasts p
+             JOIN podcast_list_entries ple ON ple.podcast_id = p.id
+             WHERE ple.list_id = $1
+             ORDER BY ple.\"order\"",
+        )
+        .bind(list_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn delete(&self, list_id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM podcast_lists WHERE id = $1")
+            .bind(list_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ChapterRepo
+// ---------------------------------------------------------------------------
+
+impl repo::ChapterRepo for PgRepo {
+    async fn upsert(&self, chapter: &Chapter) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO chapters (id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (id) DO UPDATE SET label = EXCLUDED.label, advertisement = EXCLUDED.advertisement",
+        )
+        .bind(chapter.id)
+        .bind(chapter.user_id)
+        .bind(chapter.episode_id)
+        .bind(chapter.start_sec)
+        .bind(chapter.end_sec)
+        .bind(&chapter.label)
+        .bind(chapter.advertisement)
+        .bind(chapter.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_for_episode(&self, user_id: Uuid, episode_id: Uuid, since: Option<DateTime<Utc>>) -> Result<Vec<Chapter>> {
+        let rows: Vec<(Uuid, Uuid, Uuid, i32, i32, String, bool, DateTime<Utc>)> = if let Some(since) = since {
+            sqlx::query_as(
+                "SELECT id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at
+                 FROM chapters WHERE user_id = $1 AND episode_id = $2 AND created_at > $3
+                 ORDER BY start_sec",
+            )
+            .bind(user_id)
+            .bind(episode_id)
+            .bind(since)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?
+        } else {
+            sqlx::query_as(
+                "SELECT id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at
+                 FROM chapters WHERE user_id = $1 AND episode_id = $2
+                 ORDER BY start_sec",
+            )
+            .bind(user_id)
+            .bind(episode_id)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?
+        };
+
+        Ok(rows.into_iter().map(|(id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at)| Chapter {
+            id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at,
+        }).collect())
+    }
+
+    async fn delete(&self, user_id: Uuid, episode_id: Uuid, start_sec: i32, end_sec: i32) -> Result<()> {
+        sqlx::query(
+            "DELETE FROM chapters WHERE user_id = $1 AND episode_id = $2 AND start_sec = $3 AND end_sec = $4",
+        )
+        .bind(user_id)
+        .bind(episode_id)
+        .bind(start_sec)
+        .bind(end_sec)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FavoriteRepo
+// ---------------------------------------------------------------------------
+
+impl repo::FavoriteRepo for PgRepo {
+    async fn add(&self, user_id: Uuid, episode_id: Uuid) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO favorite_episodes (id, user_id, episode_id) VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, episode_id) DO NOTHING",
+        )
+        .bind(Uuid::now_v7())
+        .bind(user_id)
+        .bind(episode_id)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn remove(&self, user_id: Uuid, episode_id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM favorite_episodes WHERE user_id = $1 AND episode_id = $2")
+            .bind(user_id)
+            .bind(episode_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Episode>> {
+        let rows: Vec<EpisodeRow> = sqlx::query_as(
+            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
+                    e.released, e.duration, e.filesize, e.mimetype, e.created_at, e.updated_at
+             FROM episodes e
+             JOIN favorite_episodes fe ON fe.episode_id = e.id
+             WHERE fe.user_id = $1
+             ORDER BY fe.created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
 impl repo::SessionRepo for PgRepo {
     async fn create(&self, session: &Session) -> Result<()> {
         sqlx::query(
