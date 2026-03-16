@@ -289,6 +289,10 @@ fn api_router(state: AppState) -> Router {
             "/api/2/data/episode.json",
             get(routes::directory::episode_data),
         )
+        .route(
+            "/api/2/data/podcast/episodes.json",
+            get(routes::directory::podcast_episodes),
+        )
         .route("/api/2/tags/{count_json}", get(routes::directory::top_tags))
         .route(
             "/api/2/tag/{tag}/{count_json}",

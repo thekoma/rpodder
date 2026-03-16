@@ -122,7 +122,7 @@
         </div>
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {#each topPodcasts as podcast}
-            <div class="bg-surface border border-border rounded-lg p-3 hover:bg-surface-hover transition-colors cursor-pointer">
+            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-lg p-3 hover:bg-surface-hover transition-colors cursor-pointer no-underline text-text block">
               {#if podcast.logo_url}
                 <img src={podcast.logo_url} alt={podcast.title} class="w-full aspect-square object-cover rounded-md mb-2" loading="lazy" />
               {:else}
@@ -130,7 +130,7 @@
               {/if}
               <h3 class="font-medium text-xs line-clamp-2">{podcast.title}</h3>
               {#if podcast.author}<p class="text-xs text-text-dim truncate mt-0.5">{podcast.author}</p>{/if}
-            </div>
+            </a>
           {/each}
         </div>
       </div>

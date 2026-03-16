@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{PodcastRepo, SubscriptionRepo, TagRepo};
+use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
 
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
@@ -102,10 +102,7 @@ pub async fn search(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let results: Vec<PodcastResponse> = podcasts
-        .into_iter()
-        .map(|p| podcast_to_response(p, ""))
-        .collect();
+    let results = podcasts_to_responses(&state, podcasts).await;
 
     Ok(Json(results))
 }
@@ -127,10 +124,7 @@ pub async fn toplist(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let results: Vec<PodcastResponse> = podcasts
-        .into_iter()
-        .map(|p| podcast_to_response(p, ""))
-        .collect();
+    let results = podcasts_to_responses(&state, podcasts).await;
 
     Ok(Json(results))
 }
@@ -150,6 +144,82 @@ pub async fn podcast_data(
     .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(podcast_to_response(podcast, &params.url)))
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/2/data/podcast/episodes.json?url=X&page=0&per_page=50
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct PodcastEpisodesQuery {
+    pub url: String,
+    pub page: Option<i64>,
+    pub per_page: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EpisodeListItem {
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub released: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mimetype: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PodcastEpisodesResponse {
+    pub podcast: PodcastResponse,
+    pub episodes: Vec<EpisodeListItem>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+pub async fn podcast_episodes(
+    State(state): State<AppState>,
+    Query(params): Query<PodcastEpisodesQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let podcast = with_repo!(state, |repo| {
+        PodcastRepo::find_by_url(&repo, &params.url).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    let page = params.page.unwrap_or(0);
+    let per_page = params.per_page.unwrap_or(50).clamp(1, 100);
+    let offset = page * per_page;
+
+    let episodes = with_repo!(state, |repo| {
+        EpisodeRepo::list_for_podcast(&repo, podcast.id, per_page, offset).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let episode_items: Vec<EpisodeListItem> = episodes
+        .into_iter()
+        .map(|e| EpisodeListItem {
+            title: e.title,
+            description: if e.description.is_empty() {
+                None
+            } else {
+                Some(e.description)
+            },
+            released: e.released.map(|r| r.to_rfc3339()),
+            duration: e.duration,
+            mimetype: e.mimetype,
+        })
+        .collect();
+
+    Ok(Json(PodcastEpisodesResponse {
+        podcast: podcast_to_response(podcast, &params.url),
+        episodes: episode_items,
+        total: 0, // TODO: count total episodes
+        page,
+        per_page,
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -272,10 +342,7 @@ pub async fn podcasts_for_tag(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let results: Vec<PodcastResponse> = podcasts
-        .into_iter()
-        .map(|p| podcast_to_response(p, ""))
-        .collect();
+    let results = podcasts_to_responses(&state, podcasts).await;
 
     Ok(Json(results))
 }
@@ -309,10 +376,7 @@ pub async fn suggestions(
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let results: Vec<PodcastResponse> = podcasts
-            .into_iter()
-            .map(|p| podcast_to_response(p, ""))
-            .collect();
+        let results = podcasts_to_responses(&state, podcasts).await;
 
         return Ok(Json(results));
     }
@@ -356,11 +420,11 @@ pub async fn suggestions(
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        let results: Vec<PodcastResponse> = podcasts
+        let filtered: Vec<_> = podcasts
             .into_iter()
             .filter(|p| !subscribed_ids.contains(&p.id))
-            .map(|p| podcast_to_response(p, ""))
             .collect();
+        let results = podcasts_to_responses(&state, filtered).await;
 
         return Ok(Json(results));
     }
@@ -422,10 +486,7 @@ pub async fn suggestions(
         }
     };
 
-    let results: Vec<PodcastResponse> = suggested
-        .into_iter()
-        .map(|p| podcast_to_response(p, ""))
-        .collect();
+    let results = podcasts_to_responses(&state, suggested).await;
 
     Ok(Json(results))
 }
@@ -519,4 +580,37 @@ fn podcast_to_response(p: rpodder_core::types::Podcast, url_hint: &str) -> Podca
         author: p.author,
         language: p.language,
     }
+}
+
+/// Convert podcasts to responses, looking up feed URLs from the DB.
+async fn podcasts_to_responses(
+    state: &AppState,
+    podcasts: Vec<rpodder_core::types::Podcast>,
+) -> Vec<PodcastResponse> {
+    let mut results = Vec::with_capacity(podcasts.len());
+    for p in podcasts {
+        let url = lookup_podcast_url(state, p.id).await.unwrap_or_default();
+        results.push(podcast_to_response(p, &url));
+    }
+    results
+}
+
+async fn lookup_podcast_url(state: &AppState, podcast_id: uuid::Uuid) -> Option<String> {
+    let result: Option<(String,)> = match &*state.db {
+        Db::Postgres(pool) => {
+            sqlx::query_as("SELECT url FROM podcast_urls WHERE podcast_id = $1 AND \"order\" = 0")
+                .bind(podcast_id)
+                .fetch_optional(pool)
+                .await
+                .ok()?
+        }
+        Db::Sqlite(pool) => {
+            sqlx::query_as("SELECT url FROM podcast_urls WHERE podcast_id = ? AND \"order\" = 0")
+                .bind(podcast_id.to_string())
+                .fetch_optional(pool)
+                .await
+                .ok()?
+        }
+    };
+    result.map(|(url,)| url)
 }

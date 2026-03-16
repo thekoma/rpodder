@@ -91,6 +91,32 @@ export async function getPodcastInfo(url: string): Promise<PodcastInfo | null> {
   }
 }
 
+export interface EpisodeListItem {
+  title: string;
+  description?: string;
+  released?: string;
+  duration?: number;
+  mimetype?: string;
+}
+
+export interface PodcastEpisodesResponse {
+  podcast: PodcastInfo;
+  episodes: EpisodeListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export async function getPodcastEpisodes(url: string, page: number = 0): Promise<PodcastEpisodesResponse | null> {
+  try {
+    const resp = await request(`/api/2/data/podcast/episodes.json?url=${encodeURIComponent(url)}&page=${page}&per_page=30`);
+    if (!resp.ok) return null;
+    return resp.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   const resp = await request(`/search.json?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return [];
