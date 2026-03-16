@@ -20,6 +20,10 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
 
+      # Create empty web/dist so rust-embed compiles without frontend build
+      - name: Create web dist placeholder
+        run: mkdir -p web/dist && touch web/dist/index.html
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
