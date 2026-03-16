@@ -56,6 +56,11 @@ fn api_router(state: AppState) -> Router {
         .route("/api/2/auth/{username}/login.json", post(routes::auth::login))
         .route("/api/2/devices/{username}/{deviceid_json}", post(routes::devices::update_device))
         .route("/api/2/devices/{username_json}", get(routes::devices::list_devices))
+        // Simple subscription API
+        .route("/subscriptions/{username}/{deviceid_json}", get(routes::subscriptions::get_device_subscriptions).put(routes::subscriptions::put_device_subscriptions))
+        .route("/subscriptions/{username_json}", get(routes::subscriptions::get_user_subscriptions))
+        // Advanced subscription API
+        .route("/api/2/subscriptions/{username}/{deviceid_json}", get(routes::subscriptions::download_subscription_changes).post(routes::subscriptions::upload_subscription_changes))
         .route_layer(axum_mw::from_fn(
             middleware::auth::require_auth_layer(state.clone()),
         ));

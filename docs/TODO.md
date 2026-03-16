@@ -47,15 +47,15 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] `GET /api/2/devices/{username}.json` handler (list)
 
 ### 1.4 Subscriptions
-- [ ] Implement `PodcastRepo.get_or_create_for_url` for both backends
-- [ ] Implement `SubscriptionRepo` for both backends
-- [ ] Simple API: `GET /subscriptions/{user}/{device}.json` (get current list)
-- [ ] Simple API: `PUT /subscriptions/{user}/{device}.json` (replace list)
-- [ ] Simple API: `GET /subscriptions/{user}.json` (all user subscriptions)
+- [x] Implement `PodcastRepo.get_or_create_for_url` for both backends
+- [x] Implement `SubscriptionRepo` for both backends
+- [x] Simple API: `GET /subscriptions/{user}/{device}.json` (get current list)
+- [x] Simple API: `PUT /subscriptions/{user}/{device}.json` (replace list)
+- [x] Simple API: `GET /subscriptions/{user}.json` (all user subscriptions)
 - [ ] OPML format support for subscriptions (import/export)
 - [ ] TXT format support for subscriptions
-- [ ] Advanced API: `POST /api/2/subscriptions/{user}/{device}.json` (delta upload)
-- [ ] Advanced API: `GET /api/2/subscriptions/{user}/{device}.json?since=T` (delta download)
+- [x] Advanced API: `POST /api/2/subscriptions/{user}/{device}.json` (delta upload)
+- [x] Advanced API: `GET /api/2/subscriptions/{user}/{device}.json?since=T` (delta download)
 - [ ] URL normalization (strip trailing slashes, force https, etc.)
 
 ### 1.5 Episode Actions

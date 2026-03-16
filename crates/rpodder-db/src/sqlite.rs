@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -233,6 +233,380 @@ impl repo::DeviceRepo for SqliteRepo {
 }
 
 // ---------------------------------------------------------------------------
+// PodcastRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct SqlitePodcastRow {
+    id: String,
+    title: String,
+    description: String,
+    link: Option<String>,
+    language: Option<String>,
+    logo_url: Option<String>,
+    author: Option<String>,
+    subscribers: i64,
+    episode_count: i64,
+    last_update: Option<String>,
+    update_interval_hours: i32,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<SqlitePodcastRow> for Podcast {
+    fn from(r: SqlitePodcastRow) -> Self {
+        Podcast {
+            id: r.id.parse().unwrap_or_default(),
+            title: r.title,
+            description: r.description,
+            link: r.link,
+            language: r.language,
+            logo_url: r.logo_url,
+            author: r.author,
+            subscribers: r.subscribers,
+            episode_count: r.episode_count,
+            last_update: r.last_update.and_then(|s| s.parse().ok()),
+            update_interval_hours: r.update_interval_hours,
+            created_at: r.created_at.parse().unwrap_or_default(),
+            updated_at: r.updated_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+impl repo::PodcastRepo for SqliteRepo {
+    async fn get_or_create_for_url(&self, url: &str) -> Result<(Podcast, bool)> {
+        if let Some(podcast) = self.find_by_url(url).await? {
+            return Ok((podcast, false));
+        }
+
+        let id = Uuid::now_v7();
+        let url_id = Uuid::now_v7();
+        let now = Utc::now();
+        let now_s = now.to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO podcasts (id, title, created_at, updated_at)
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(uuid_str(&id))
+        .bind(url)
+        .bind(&now_s)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        sqlx::query(
+            "INSERT INTO podcast_urls (id, podcast_id, url, \"order\")
+             VALUES (?, ?, ?, 0)",
+        )
+        .bind(uuid_str(&url_id))
+        .bind(uuid_str(&id))
+        .bind(url)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let podcast = Podcast {
+            id,
+            title: url.to_string(),
+            description: String::new(),
+            link: None,
+            language: None,
+            logo_url: None,
+            author: None,
+            subscribers: 0,
+            episode_count: 0,
+            last_update: None,
+            update_interval_hours: 168,
+            created_at: now,
+            updated_at: now,
+        };
+
+        Ok((podcast, true))
+    }
+
+    async fn find_by_url(&self, url: &str) -> Result<Option<Podcast>> {
+        let row: Option<SqlitePodcastRow> = sqlx::query_as(
+            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+                    p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
+                    p.created_at, p.updated_at
+             FROM podcasts p
+             JOIN podcast_urls pu ON pu.podcast_id = p.id
+             WHERE pu.url = ?",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Podcast>> {
+        let row: Option<SqlitePodcastRow> = sqlx::query_as(
+            "SELECT id, title, description, link, language, logo_url, author,
+                    subscribers, episode_count, last_update, update_interval_hours,
+                    created_at, updated_at
+             FROM podcasts WHERE id = ?",
+        )
+        .bind(uuid_str(&id))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn update(&self, podcast: &Podcast) -> Result<()> {
+        sqlx::query(
+            "UPDATE podcasts SET title = ?, description = ?, link = ?, language = ?,
+                    logo_url = ?, author = ?, subscribers = ?, episode_count = ?,
+                    last_update = ?, update_interval_hours = ?, updated_at = ?
+             WHERE id = ?",
+        )
+        .bind(&podcast.title)
+        .bind(&podcast.description)
+        .bind(&podcast.link)
+        .bind(&podcast.language)
+        .bind(&podcast.logo_url)
+        .bind(&podcast.author)
+        .bind(podcast.subscribers)
+        .bind(podcast.episode_count)
+        .bind(podcast.last_update.map(|t| t.to_rfc3339()))
+        .bind(podcast.update_interval_hours)
+        .bind(podcast.updated_at.to_rfc3339())
+        .bind(uuid_str(&podcast.id))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn toplist(&self, count: i64, language: Option<&str>) -> Result<Vec<Podcast>> {
+        let rows: Vec<SqlitePodcastRow> = if let Some(lang) = language {
+            sqlx::query_as(
+                "SELECT id, title, description, link, language, logo_url, author,
+                        subscribers, episode_count, last_update, update_interval_hours,
+                        created_at, updated_at
+                 FROM podcasts WHERE language = ? ORDER BY subscribers DESC LIMIT ?",
+            )
+            .bind(lang)
+            .bind(count)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        } else {
+            sqlx::query_as(
+                "SELECT id, title, description, link, language, logo_url, author,
+                        subscribers, episode_count, last_update, update_interval_hours,
+                        created_at, updated_at
+                 FROM podcasts ORDER BY subscribers DESC LIMIT ?",
+            )
+            .bind(count)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?
+        };
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn search(&self, query: &str, limit: i64) -> Result<Vec<Podcast>> {
+        let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
+            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+                    p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
+                    p.created_at, p.updated_at
+             FROM podcasts p
+             JOIN podcasts_fts fts ON fts.rowid = (SELECT rowid FROM podcasts WHERE id = p.id)
+             WHERE podcasts_fts MATCH ?
+             ORDER BY p.subscribers DESC LIMIT ?",
+        )
+        .bind(query)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SubscriptionRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct SqliteSubscriptionRow {
+    id: String,
+    user_id: String,
+    device_id: String,
+    podcast_id: String,
+    ref_url: String,
+    created_at: String,
+}
+
+impl From<SqliteSubscriptionRow> for Subscription {
+    fn from(r: SqliteSubscriptionRow) -> Self {
+        Subscription {
+            id: r.id.parse().unwrap_or_default(),
+            user_id: r.user_id.parse().unwrap_or_default(),
+            device_id: r.device_id.parse().unwrap_or_default(),
+            podcast_id: r.podcast_id.parse().unwrap_or_default(),
+            ref_url: r.ref_url,
+            created_at: r.created_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteSubChangeRow {
+    id: String,
+    user_id: String,
+    device_id: String,
+    podcast_id: String,
+    action: String,
+    ref_url: String,
+    timestamp: String,
+}
+
+impl From<SqliteSubChangeRow> for SubscriptionChange {
+    fn from(r: SqliteSubChangeRow) -> Self {
+        SubscriptionChange {
+            id: r.id.parse().unwrap_or_default(),
+            user_id: r.user_id.parse().unwrap_or_default(),
+            device_id: r.device_id.parse().unwrap_or_default(),
+            podcast_id: r.podcast_id.parse().unwrap_or_default(),
+            action: match r.action.as_str() {
+                "subscribe" => SubscriptionAction::Subscribe,
+                _ => SubscriptionAction::Unsubscribe,
+            },
+            ref_url: r.ref_url,
+            timestamp: r.timestamp.parse().unwrap_or_default(),
+        }
+    }
+}
+
+impl repo::SubscriptionRepo for SqliteRepo {
+    async fn subscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid, ref_url: &str) -> Result<()> {
+        let sub_id = Uuid::now_v7();
+        sqlx::query(
+            "INSERT INTO subscriptions (id, user_id, device_id, podcast_id, ref_url)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, device_id, podcast_id) DO NOTHING",
+        )
+        .bind(uuid_str(&sub_id))
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(uuid_str(&podcast_id))
+        .bind(ref_url)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let change_id = Uuid::now_v7();
+        let now_s = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url, timestamp)
+             VALUES (?, ?, ?, ?, 'subscribe', ?, ?)",
+        )
+        .bind(uuid_str(&change_id))
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(uuid_str(&podcast_id))
+        .bind(ref_url)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn unsubscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid) -> Result<()> {
+        let row: Option<SqliteSubscriptionRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, podcast_id, ref_url, created_at
+             FROM subscriptions WHERE user_id = ? AND device_id = ? AND podcast_id = ?",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(uuid_str(&podcast_id))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let ref_url = row.map(|r| r.ref_url).unwrap_or_default();
+
+        sqlx::query(
+            "DELETE FROM subscriptions WHERE user_id = ? AND device_id = ? AND podcast_id = ?",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(uuid_str(&podcast_id))
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let change_id = Uuid::now_v7();
+        let now_s = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url, timestamp)
+             VALUES (?, ?, ?, ?, 'unsubscribe', ?, ?)",
+        )
+        .bind(uuid_str(&change_id))
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(uuid_str(&podcast_id))
+        .bind(&ref_url)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(())
+    }
+
+    async fn list_for_device(&self, user_id: Uuid, device_id: Uuid) -> Result<Vec<Subscription>> {
+        let rows: Vec<SqliteSubscriptionRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, podcast_id, ref_url, created_at
+             FROM subscriptions WHERE user_id = ? AND device_id = ?",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Subscription>> {
+        let rows: Vec<SqliteSubscriptionRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, podcast_id, ref_url, created_at
+             FROM subscriptions WHERE user_id = ?
+             GROUP BY podcast_id
+             ORDER BY created_at",
+        )
+        .bind(uuid_str(&user_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn changes_since(&self, user_id: Uuid, device_id: Uuid, since: DateTime<Utc>) -> Result<Vec<SubscriptionChange>> {
+        let rows: Vec<SqliteSubChangeRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, podcast_id, action, ref_url, timestamp
+             FROM subscription_changes
+             WHERE user_id = ? AND device_id = ? AND timestamp > ?
+             ORDER BY timestamp",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(uuid_str(&device_id))
+        .bind(since.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SessionRepo
 // ---------------------------------------------------------------------------
 
@@ -317,7 +691,7 @@ impl From<SqliteSessionRow> for Session {
 mod tests {
     use super::*;
     use chrono::Duration;
-    use rpodder_core::repo::{DeviceRepo, SessionRepo, UserRepo};
+    use rpodder_core::repo::{DeviceRepo, PodcastRepo, SessionRepo, SubscriptionRepo, UserRepo};
 
     async fn setup() -> SqliteRepo {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -367,14 +741,14 @@ mod tests {
         let repo = setup().await;
         let user = UserRepo::create(&repo, "Charlie", "hash", None).await.unwrap();
 
-        let found = repo.find_by_id(user.id).await.unwrap().unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
         assert_eq!(found.username, "Charlie");
     }
 
     #[tokio::test]
     async fn find_by_id_not_found() {
         let repo = setup().await;
-        let found = repo.find_by_id(Uuid::now_v7()).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, Uuid::now_v7()).await.unwrap();
         assert!(found.is_none());
     }
 
@@ -673,5 +1047,161 @@ mod tests {
             let found = DeviceRepo::find_by_uid(&repo, user.id, &did).await.unwrap().unwrap();
             assert_eq!(found.device_type, dt, "roundtrip failed for {:?}", dt);
         }
+    }
+
+    // === PodcastRepo tests ===
+
+    #[tokio::test]
+    async fn get_or_create_podcast_for_url() {
+        let repo = setup().await;
+        let (podcast, created) = PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml").await.unwrap();
+        assert!(created);
+        assert_eq!(podcast.title, "http://example.com/feed.xml");
+
+        // Second call should return existing
+        let (podcast2, created2) = PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml").await.unwrap();
+        assert!(!created2);
+        assert_eq!(podcast2.id, podcast.id);
+    }
+
+    #[tokio::test]
+    async fn find_podcast_by_url() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/rss").await.unwrap();
+
+        let found = PodcastRepo::find_by_url(&repo, "http://test.com/rss").await.unwrap().unwrap();
+        assert_eq!(found.id, podcast.id);
+
+        let not_found = PodcastRepo::find_by_url(&repo, "http://other.com/rss").await.unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_podcast_by_id() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+
+        let found = PodcastRepo::find_by_id(&repo, podcast.id).await.unwrap().unwrap();
+        assert_eq!(found.title, "http://test.com/feed");
+
+        let not_found = PodcastRepo::find_by_id(&repo, Uuid::now_v7()).await.unwrap();
+        assert!(not_found.is_none());
+    }
+
+    // === SubscriptionRepo tests ===
+
+    /// Helper: create user + device + podcast for subscription tests
+    async fn setup_subscription_fixtures(repo: &SqliteRepo) -> (User, Device, Podcast) {
+        let user = UserRepo::create(repo, "SubUser", "hash", None).await.unwrap();
+        let now = Utc::now();
+        let device = Device {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: "phone".to_string(),
+            caption: "Phone".to_string(),
+            device_type: DeviceType::Mobile,
+            sync_group_id: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let device = DeviceRepo::upsert(repo, &device).await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(repo, "http://example.com/feed.xml").await.unwrap();
+        (user, device, podcast)
+    }
+
+    #[tokio::test]
+    async fn subscribe_and_list() {
+        let repo = setup().await;
+        let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
+
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].ref_url, "http://example.com/feed.xml");
+    }
+
+    #[tokio::test]
+    async fn subscribe_idempotent() {
+        let repo = setup().await;
+        let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
+
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        assert_eq!(subs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn unsubscribe() {
+        let repo = setup().await;
+        let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
+
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id).await.unwrap();
+
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        assert!(subs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_subscriptions_for_user() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "MultiSubUser", "hash", None).await.unwrap();
+        let now = Utc::now();
+
+        // Two devices
+        let dev1 = DeviceRepo::upsert(&repo, &Device {
+            id: Uuid::now_v7(), user_id: user.id, device_id: "dev1".into(),
+            caption: "".into(), device_type: DeviceType::Other,
+            sync_group_id: None, created_at: now, updated_at: now,
+        }).await.unwrap();
+        let dev2 = DeviceRepo::upsert(&repo, &Device {
+            id: Uuid::now_v7(), user_id: user.id, device_id: "dev2".into(),
+            caption: "".into(), device_type: DeviceType::Other,
+            sync_group_id: None, created_at: now, updated_at: now,
+        }).await.unwrap();
+
+        // Same podcast on both devices
+        let (p1, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed1.com").await.unwrap();
+        let (p2, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed2.com").await.unwrap();
+
+        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p1.id, "http://feed1.com").await.unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, dev2.id, p1.id, "http://feed1.com").await.unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p2.id, "http://feed2.com").await.unwrap();
+
+        // list_for_user should deduplicate by podcast
+        let subs = SubscriptionRepo::list_for_user(&repo, user.id).await.unwrap();
+        assert_eq!(subs.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn changes_since_tracks_history() {
+        let repo = setup().await;
+        let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
+
+        let before = Utc::now() - Duration::seconds(1);
+
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id).await.unwrap();
+
+        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, before).await.unwrap();
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].action, SubscriptionAction::Subscribe);
+        assert_eq!(changes[1].action, SubscriptionAction::Unsubscribe);
+    }
+
+    #[tokio::test]
+    async fn changes_since_filters_by_time() {
+        let repo = setup().await;
+        let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
+
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+
+        let after = Utc::now() + Duration::seconds(1);
+
+        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, after).await.unwrap();
+        assert!(changes.is_empty());
     }
 }
