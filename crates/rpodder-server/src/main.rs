@@ -1,4 +1,5 @@
 mod config;
+mod feed_updater;
 mod middleware;
 mod routes;
 mod state;
@@ -94,8 +95,17 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         db.migrate(&cfg.migrations_dir).await?;
     }
 
-    let state = AppState { db: Arc::new(db) };
+    let db = Arc::new(db);
+    let state = AppState { db: db.clone() };
     let app = api_router(state);
+
+    // Spawn background feed updater (every 30 minutes)
+    let db_for_updater = db.clone();
+    tokio::spawn(async move {
+        // Wait a bit before first update to let the server start
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        feed_updater::run_feed_update_loop(db_for_updater, 1800).await;
+    });
 
     let addr: SocketAddr = format!("{}:{}", cfg.host, cfg.port).parse()?;
     tracing::info!("rpodder listening on {addr}");
@@ -216,7 +226,12 @@ fn api_router(state: AppState) -> Router {
         .route(
             "/api/2/auth/{username}/logout.json",
             post(routes::auth::logout),
-        );
+        )
+        // Directory & search (public)
+        .route("/search.json", get(routes::directory::search))
+        .route("/toplist/{count_json}", get(routes::directory::toplist))
+        .route("/api/2/data/podcast.json", get(routes::directory::podcast_data))
+        .route("/api/2/data/episode.json", get(routes::directory::episode_data));
 
     authenticated
         .merge(public)

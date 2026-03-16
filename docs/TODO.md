@@ -88,28 +88,28 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 Goal: the server fetches and indexes podcast feeds, enabling search and discovery.
 
 ### 2.1 Feed Fetching
-- [ ] HTTP client with conditional GET (ETag, Last-Modified, If-None-Match)
-- [ ] RSS/Atom parsing via feed-rs → Podcast + Episode domain types
-- [ ] Update podcast metadata from feed (title, description, logo, language, author)
-- [ ] Create/update episodes from feed entries
-- [ ] Handle feed URL redirects (update canonical URL)
+- [x] HTTP client with conditional GET (ETag, Last-Modified, If-None-Match)
+- [x] RSS/Atom parsing via feed-rs → Podcast + Episode domain types
+- [x] Update podcast metadata from feed (title, description, logo, language, author)
+- [x] Create/update episodes from feed entries
+- [x] Handle feed URL redirects (update canonical URL)
 - [ ] Rate limiting per host
 - [ ] Retry with exponential backoff
 - [ ] Adaptive update interval (faster for active feeds, slower for stale)
 
 ### 2.2 Background Scheduler
-- [ ] Periodic feed update task (tokio spawn, configurable interval)
-- [ ] Priority queue: podcasts with more subscribers update first
-- [ ] Track last update time and next scheduled update
+- [x] Periodic feed update task (tokio spawn, configurable interval)
+- [x] Priority queue: podcasts with more subscribers update first
+- [x] Track last update time and next scheduled update
 - [ ] Manual trigger endpoint (admin only)
 
 ### 2.3 Search & Directory API
-- [ ] PostgreSQL full-text search index on podcasts (title, description, author)
-- [ ] SQLite FTS5 index on podcasts
-- [ ] `GET /search.json?q=query` handler
-- [ ] `GET /toplist/{count}.json` handler (sorted by subscriber count)
-- [ ] `GET /api/2/data/podcast.json?url=X` handler (podcast info)
-- [ ] `GET /api/2/data/episode.json?podcast=X&url=Y` handler (episode info)
+- [x] PostgreSQL full-text search index on podcasts (title, description, author)
+- [x] SQLite FTS5 index on podcasts
+- [x] `GET /search.json?q=query` handler
+- [x] `GET /toplist/{count}.json` handler (sorted by subscriber count)
+- [x] `GET /api/2/data/podcast.json?url=X` handler (podcast info)
+- [x] `GET /api/2/data/episode.json?podcast=X&url=Y` handler (episode info)
 
 ### 2.4 Tags
 - [ ] Implement `TagRepo` for both backends
