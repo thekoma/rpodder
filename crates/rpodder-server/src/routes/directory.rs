@@ -1,15 +1,15 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Json,
 };
 use serde::{Deserialize, Serialize};
 
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
 
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
@@ -236,10 +236,8 @@ pub async fn top_tags(
     let count: i64 = count_str.parse().unwrap_or(50);
     let count = count.min(200).max(1);
 
-    let tags = with_repo!(state, |repo| {
-        TagRepo::top_tags(&repo, count).await
-    })
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tags = with_repo!(state, |repo| { TagRepo::top_tags(&repo, count).await })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let results: Vec<TagResponse> = tags
         .into_iter()
@@ -315,18 +313,18 @@ pub async fn suggestions(
     let tags: Vec<String> = match &*state.db {
         Db::Postgres(pool) => {
             let sub_ids: Vec<uuid::Uuid> = subscribed_ids.iter().copied().collect();
-            let rows: Vec<(String,)> = sqlx::query_as(
-                "SELECT DISTINCT tag FROM tags WHERE podcast_id = ANY($1)",
-            )
-            .bind(&sub_ids)
-            .fetch_all(pool)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let rows: Vec<(String,)> =
+                sqlx::query_as("SELECT DISTINCT tag FROM tags WHERE podcast_id = ANY($1)")
+                    .bind(&sub_ids)
+                    .fetch_all(pool)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             rows.into_iter().map(|(t,)| t).collect()
         }
         Db::Sqlite(pool) => {
             // SQLite doesn't have ANY, build IN clause
-            let placeholders: Vec<String> = subscribed_ids.iter().map(|_| "?".to_string()).collect();
+            let placeholders: Vec<String> =
+                subscribed_ids.iter().map(|_| "?".to_string()).collect();
             let sql = format!(
                 "SELECT DISTINCT tag FROM tags WHERE podcast_id IN ({})",
                 placeholders.join(",")
@@ -335,7 +333,10 @@ pub async fn suggestions(
             for id in &subscribed_ids {
                 q = q.bind(id.to_string());
             }
-            let rows = q.fetch_all(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let rows = q
+                .fetch_all(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             rows.into_iter().map(|(t,)| t).collect()
         }
     };
@@ -382,7 +383,8 @@ pub async fn suggestions(
         }
         Db::Sqlite(pool) => {
             let tag_placeholders: Vec<String> = tags.iter().map(|_| "?".to_string()).collect();
-            let sub_placeholders: Vec<String> = subscribed_ids.iter().map(|_| "?".to_string()).collect();
+            let sub_placeholders: Vec<String> =
+                subscribed_ids.iter().map(|_| "?".to_string()).collect();
             let sql = format!(
                 "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                         p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
@@ -403,7 +405,8 @@ pub async fn suggestions(
                 q = q.bind(id.to_string());
             }
             q = q.bind(count);
-            q.fetch_all(pool).await
+            q.fetch_all(pool)
+                .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
                 .into_iter()
                 .map(Into::into)

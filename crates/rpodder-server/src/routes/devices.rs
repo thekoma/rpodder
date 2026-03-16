@@ -1,8 +1,8 @@
 use axum::{
+    Extension,
     extract::{Json, Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use rpodder_core::types::{Device, DeviceType};
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 #[derive(Debug, Deserialize)]
 pub struct DeviceUpdateRequest {

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Body,
-    http::{header, Request, StatusCode},
+    http::{Request, StatusCode, header},
     middleware as axum_mw,
     routing::post,
-    Router,
 };
 use chrono::{Duration, Utc};
 use tower::ServiceExt;
@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use rpodder_core::repo::{SessionRepo, UserRepo};
 use rpodder_core::types::Session;
-use rpodder_db::{sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, sqlite::SqliteRepo};
 
 // We test against the server crate's internals, so we replicate the router setup
 // to avoid needing to expose everything as pub.
@@ -23,7 +23,10 @@ async fn setup_db() -> Db {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     let schema = std::fs::read_to_string("../../migrations/sqlite/001_initial.up.sql").unwrap();
     sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
-    sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await.unwrap();
+    sqlx::query("PRAGMA foreign_keys=ON")
+        .execute(&pool)
+        .await
+        .unwrap();
     Db::Sqlite(pool)
 }
 
@@ -36,8 +39,8 @@ fn repo(db: &Db) -> SqliteRepo {
 
 /// Hash a password with argon2 for test users.
 fn hash_password(password: &str) -> String {
-    use argon2::password_hash::rand_core::OsRng;
     use argon2::password_hash::SaltString;
+    use argon2::password_hash::rand_core::OsRng;
     use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -48,8 +51,8 @@ fn hash_password(password: &str) -> String {
 
 fn basic_auth_header(username: &str, password: &str) -> String {
     use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD
-        .encode(format!("{username}:{password}"));
+    let encoded =
+        base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
     format!("Basic {encoded}")
 }
 
@@ -91,7 +94,10 @@ async fn login_with_wrong_password_returns_401() {
             Request::builder()
                 .method("POST")
                 .uri("/api/2/auth/testuser/login.json")
-                .header(header::AUTHORIZATION, basic_auth_header("testuser", "wrong"))
+                .header(
+                    header::AUTHORIZATION,
+                    basic_auth_header("testuser", "wrong"),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -117,7 +123,10 @@ async fn login_with_correct_password_returns_200_with_session_cookie() {
             Request::builder()
                 .method("POST")
                 .uri("/api/2/auth/testuser/login.json")
-                .header(header::AUTHORIZATION, basic_auth_header("testuser", "mypassword"))
+                .header(
+                    header::AUTHORIZATION,
+                    basic_auth_header("testuser", "mypassword"),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -141,7 +150,9 @@ async fn login_with_correct_password_returns_200_with_session_cookie() {
 async fn login_with_wrong_username_in_path_returns_403() {
     let db = setup_db().await;
     let r = repo(&db);
-    UserRepo::create(&r, "alice", &hash_password("pass"), None).await.unwrap();
+    UserRepo::create(&r, "alice", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     let state = rpodder_server_test_state(db);
     let app = test_router(state);
@@ -166,7 +177,9 @@ async fn login_with_wrong_username_in_path_returns_403() {
 async fn login_case_insensitive_username() {
     let db = setup_db().await;
     let r = repo(&db);
-    UserRepo::create(&r, "CamelCase", &hash_password("pass"), None).await.unwrap();
+    UserRepo::create(&r, "CamelCase", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     let state = rpodder_server_test_state(db);
     let app = test_router(state);
@@ -176,7 +189,10 @@ async fn login_case_insensitive_username() {
             Request::builder()
                 .method("POST")
                 .uri("/api/2/auth/camelcase/login.json")
-                .header(header::AUTHORIZATION, basic_auth_header("camelcase", "pass"))
+                .header(
+                    header::AUTHORIZATION,
+                    basic_auth_header("camelcase", "pass"),
+                )
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -190,7 +206,9 @@ async fn login_case_insensitive_username() {
 async fn session_cookie_authenticates_subsequent_requests() {
     let db = setup_db().await;
     let r = repo(&db);
-    let user = UserRepo::create(&r, "sessuser", &hash_password("pass"), None).await.unwrap();
+    let user = UserRepo::create(&r, "sessuser", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     // Insert a session directly
     let session = Session {
@@ -225,7 +243,9 @@ async fn session_cookie_authenticates_subsequent_requests() {
 async fn expired_session_cookie_returns_401() {
     let db = setup_db().await;
     let r = repo(&db);
-    let user = UserRepo::create(&r, "expuser", &hash_password("pass"), None).await.unwrap();
+    let user = UserRepo::create(&r, "expuser", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     let session = Session {
         id: Uuid::now_v7(),
@@ -258,7 +278,9 @@ async fn expired_session_cookie_returns_401() {
 async fn logout_clears_session() {
     let db = setup_db().await;
     let r = repo(&db);
-    let user = UserRepo::create(&r, "logoutuser", &hash_password("pass"), None).await.unwrap();
+    let user = UserRepo::create(&r, "logoutuser", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     let session = Session {
         id: Uuid::now_v7(),
@@ -317,12 +339,17 @@ async fn logout_without_cookie_returns_200() {
 async fn inactive_user_cannot_login() {
     let db = setup_db().await;
     let r = repo(&db);
-    let user = UserRepo::create(&r, "inactive", &hash_password("pass"), None).await.unwrap();
+    let user = UserRepo::create(&r, "inactive", &hash_password("pass"), None)
+        .await
+        .unwrap();
 
     // Deactivate the user directly in DB
     sqlx::query("UPDATE users SET is_active = 0 WHERE id = ?")
         .bind(user.id.to_string())
-        .execute(match &db { Db::Sqlite(p) => p, _ => panic!() })
+        .execute(match &db {
+            Db::Sqlite(p) => p,
+            _ => panic!(),
+        })
         .await
         .unwrap();
 
@@ -361,9 +388,9 @@ mod test_handlers {
     use super::*;
     use axum::{
         extract::{Path, Request, State},
-        http::{header, StatusCode},
-        response::{IntoResponse, Response},
+        http::{StatusCode, header},
         middleware::Next,
+        response::{IntoResponse, Response},
     };
     use rpodder_core::repo::SessionRepo;
 
@@ -372,7 +399,12 @@ mod test_handlers {
 
     pub fn require_auth_layer(
         state: TestAppState,
-    ) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> + Clone + Send {
+    ) -> impl Fn(
+        Request,
+        Next,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+    + Clone
+    + Send {
         move |req, next| {
             let state = state.clone();
             Box::pin(require_auth_inner(state, req, next))
@@ -414,29 +446,42 @@ mod test_handlers {
         let auth_header = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
         let encoded = auth_header.strip_prefix("Basic ")?;
         let decoded = String::from_utf8(
-            base64::engine::general_purpose::STANDARD.decode(encoded).ok()?,
-        ).ok()?;
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .ok()?,
+        )
+        .ok()?;
         let (username, password) = decoded.split_once(':')?;
         Some((username.to_string(), password.to_string()))
     }
 
-    async fn resolve_session(state: &TestAppState, token: &str) -> Option<rpodder_core::types::User> {
+    async fn resolve_session(
+        state: &TestAppState,
+        token: &str,
+    ) -> Option<rpodder_core::types::User> {
         use rpodder_core::repo::UserRepo;
         let r = super::repo(&state.db);
         let session = SessionRepo::find_by_token(&r, token).await.ok()??;
         UserRepo::find_by_id(&r, session.user_id).await.ok()?
     }
 
-    async fn resolve_basic_auth(state: &TestAppState, username: &str, password: &str) -> Option<rpodder_core::types::User> {
-        use rpodder_core::repo::UserRepo;
+    async fn resolve_basic_auth(
+        state: &TestAppState,
+        username: &str,
+        password: &str,
+    ) -> Option<rpodder_core::types::User> {
         use argon2::{Argon2, PasswordHash, PasswordVerifier};
+        use rpodder_core::repo::UserRepo;
         let r = super::repo(&state.db);
         let user = UserRepo::find_by_username(&r, username).await.ok()??;
         if !user.is_active {
             return None;
         }
         let parsed = PasswordHash::new(&user.password_hash).ok()?;
-        if Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok() {
+        if Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .is_ok()
+        {
             Some(user)
         } else {
             None
@@ -461,7 +506,9 @@ mod test_handlers {
         };
 
         let r = super::repo(&state.db);
-        SessionRepo::create(&r, &session).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        SessionRepo::create(&r, &session)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         let cookie = format!(
             "sessionid={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
@@ -472,10 +519,7 @@ mod test_handlers {
         Ok((StatusCode::OK, [(header::SET_COOKIE, cookie)], "").into_response())
     }
 
-    pub async fn logout(
-        State(state): State<TestAppState>,
-        req: Request,
-    ) -> StatusCode {
+    pub async fn logout(State(state): State<TestAppState>, req: Request) -> StatusCode {
         let token = req
             .headers()
             .get(header::COOKIE)
@@ -499,13 +543,18 @@ mod test_handlers {
 
 fn test_router(state: TestAppState) -> Router {
     let authenticated = Router::new()
-        .route("/api/2/auth/{username}/login.json", post(test_handlers::login))
-        .route_layer(axum_mw::from_fn(
-            test_handlers::require_auth_layer(state.clone()),
-        ));
+        .route(
+            "/api/2/auth/{username}/login.json",
+            post(test_handlers::login),
+        )
+        .route_layer(axum_mw::from_fn(test_handlers::require_auth_layer(
+            state.clone(),
+        )));
 
-    let public = Router::new()
-        .route("/api/2/auth/{username}/logout.json", post(test_handlers::logout));
+    let public = Router::new().route(
+        "/api/2/auth/{username}/logout.json",
+        post(test_handlers::logout),
+    );
 
     authenticated.merge(public).with_state(state)
 }

@@ -1,6 +1,6 @@
 //! HTTP feed fetcher with conditional GET and redirect handling.
 
-use reqwest::{header, Client, StatusCode};
+use reqwest::{Client, StatusCode, header};
 use tracing::{debug, warn};
 
 /// Result of fetching a feed.

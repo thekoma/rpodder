@@ -1,8 +1,8 @@
 use axum::{
-    extract::{Path, Request, State},
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
     Extension,
+    extract::{Path, Request, State},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use chrono::{Duration, Utc};
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use rpodder_core::types::Session;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 /// POST /api/2/auth/{username}/login.json
 ///
@@ -55,18 +55,11 @@ pub async fn login(
         365 * 24 * 3600,
     );
 
-    Ok((
-        StatusCode::OK,
-        [(header::SET_COOKIE, cookie)],
-        "",
-    ).into_response())
+    Ok((StatusCode::OK, [(header::SET_COOKIE, cookie)], "").into_response())
 }
 
 /// POST /api/2/auth/{username}/logout.json
-pub async fn logout(
-    State(state): State<AppState>,
-    req: Request,
-) -> StatusCode {
+pub async fn logout(State(state): State<AppState>, req: Request) -> StatusCode {
     // Extract session token from cookie
     let token = req
         .headers()

@@ -87,10 +87,7 @@ mod tests {
     #[test]
     fn root_path_kept() {
         // Don't strip the single slash for root
-        assert_eq!(
-            normalize_url("http://example.com/"),
-            "http://example.com/"
-        );
+        assert_eq!(normalize_url("http://example.com/"), "http://example.com/");
     }
 
     #[test]

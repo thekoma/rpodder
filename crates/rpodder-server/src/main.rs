@@ -8,14 +8,13 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    middleware as axum_mw,
+    Router, middleware as axum_mw,
     routing::{get, post},
-    Router,
 };
 use clap::{Parser, Subcommand};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use rpodder_db::Db;
 use state::AppState;
@@ -159,10 +158,12 @@ async fn cmd_user(cfg: config::AppConfig, action: UserAction) -> anyhow::Result<
             // For now, just deactivate the user
             match &db {
                 Db::Postgres(pool) => {
-                    sqlx::query("UPDATE users SET is_active = false WHERE LOWER(username) = LOWER($1)")
-                        .bind(&username)
-                        .execute(pool)
-                        .await?;
+                    sqlx::query(
+                        "UPDATE users SET is_active = false WHERE LOWER(username) = LOWER($1)",
+                    )
+                    .bind(&username)
+                    .execute(pool)
+                    .await?;
                 }
                 Db::Sqlite(pool) => {
                     sqlx::query("UPDATE users SET is_active = 0 WHERE username = ? COLLATE NOCASE")
@@ -211,28 +212,54 @@ fn api_router(state: AppState) -> Router {
                 .post(routes::subscriptions::upload_subscription_changes),
         )
         // Suggestions
-        .route("/suggestions/{count_json}", get(routes::directory::suggestions))
+        .route(
+            "/suggestions/{count_json}",
+            get(routes::directory::suggestions),
+        )
         // Sync devices
-        .route("/api/2/sync-devices/{username_json}", get(routes::sync::get_sync_status).post(routes::sync::update_sync_status))
+        .route(
+            "/api/2/sync-devices/{username_json}",
+            get(routes::sync::get_sync_status).post(routes::sync::update_sync_status),
+        )
         // Settings
-        .route("/api/2/settings/{username}/{scope_json}", get(routes::settings::get_settings).post(routes::settings::update_settings))
+        .route(
+            "/api/2/settings/{username}/{scope_json}",
+            get(routes::settings::get_settings).post(routes::settings::update_settings),
+        )
         // Favorites
-        .route("/api/2/favorites/{username_json}", get(routes::favorites::get_favorites))
+        .route(
+            "/api/2/favorites/{username_json}",
+            get(routes::favorites::get_favorites),
+        )
         // Chapters
-        .route("/api/2/chapters/{username_json}", get(routes::chapters::get_chapters).post(routes::chapters::update_chapters))
+        .route(
+            "/api/2/chapters/{username_json}",
+            get(routes::chapters::get_chapters).post(routes::chapters::update_chapters),
+        )
         // Podcast lists
-        .route("/api/2/lists/{username}/create.json", post(routes::lists::create_list))
-        .route("/api/2/lists/{username_json}", get(routes::lists::get_lists))
-        .route("/api/2/lists/{username}/list/{slug_json}", get(routes::lists::get_list).put(routes::lists::update_list).delete(routes::lists::delete_list))
+        .route(
+            "/api/2/lists/{username}/create.json",
+            post(routes::lists::create_list),
+        )
+        .route(
+            "/api/2/lists/{username_json}",
+            get(routes::lists::get_lists),
+        )
+        .route(
+            "/api/2/lists/{username}/list/{slug_json}",
+            get(routes::lists::get_list)
+                .put(routes::lists::update_list)
+                .delete(routes::lists::delete_list),
+        )
         // Episode actions API
         .route(
             "/api/2/episodes/{username_json}",
             get(routes::episodes::download_episode_actions)
                 .post(routes::episodes::upload_episode_actions),
         )
-        .route_layer(axum_mw::from_fn(
-            middleware::auth::require_auth_layer(state.clone()),
-        ));
+        .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
+            state.clone(),
+        )));
 
     // Public routes (no auth required)
     let public = Router::new()
@@ -245,10 +272,19 @@ fn api_router(state: AppState) -> Router {
         // Directory & search (public)
         .route("/search.json", get(routes::directory::search))
         .route("/toplist/{count_json}", get(routes::directory::toplist))
-        .route("/api/2/data/podcast.json", get(routes::directory::podcast_data))
-        .route("/api/2/data/episode.json", get(routes::directory::episode_data))
+        .route(
+            "/api/2/data/podcast.json",
+            get(routes::directory::podcast_data),
+        )
+        .route(
+            "/api/2/data/episode.json",
+            get(routes::directory::episode_data),
+        )
         .route("/api/2/tags/{count_json}", get(routes::directory::top_tags))
-        .route("/api/2/tag/{tag}/{count_json}", get(routes::directory::podcasts_for_tag));
+        .route(
+            "/api/2/tag/{tag}/{count_json}",
+            get(routes::directory::podcasts_for_tag),
+        );
 
     authenticated
         .merge(public)

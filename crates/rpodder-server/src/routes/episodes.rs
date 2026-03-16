@@ -1,8 +1,8 @@
 use axum::{
+    Extension,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension,
 };
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -130,8 +130,7 @@ pub async fn upload_episode_actions(
     let update_urls: Vec<Vec<String>> = Vec::new();
 
     for action_input in &body.actions {
-        let action_type = parse_action_type(&action_input.action)
-            .ok_or(StatusCode::BAD_REQUEST)?;
+        let action_type = parse_action_type(&action_input.action).ok_or(StatusCode::BAD_REQUEST)?;
 
         // Validate play action fields
         if action_type == EpisodeActionType::Play {
@@ -173,9 +172,18 @@ pub async fn upload_episode_actions(
             .as_deref()
             .and_then(|ts| {
                 // Try ISO 8601 formats
-                ts.parse().ok()
-                    .or_else(|| chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S").ok().map(|ndt| ndt.and_utc()))
-                    .or_else(|| chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S").ok().map(|ndt| ndt.and_utc()))
+                ts.parse()
+                    .ok()
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
+                            .ok()
+                            .map(|ndt| ndt.and_utc())
+                    })
+                    .or_else(|| {
+                        chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S")
+                            .ok()
+                            .map(|ndt| ndt.and_utc())
+                    })
             })
             .unwrap_or_else(Utc::now);
 
@@ -251,8 +259,15 @@ pub async fn download_episode_actions(
     };
 
     let actions = with_repo!(state, |repo| {
-        EpisodeActionRepo::list(&repo, auth_user.0.id, device_uuid, podcast_uuid, since, 1000)
-            .await
+        EpisodeActionRepo::list(
+            &repo,
+            auth_user.0.id,
+            device_uuid,
+            podcast_uuid,
+            since,
+            1000,
+        )
+        .await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

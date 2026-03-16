@@ -1,9 +1,9 @@
 use axum::{
+    Extension,
     body::Body,
     extract::{Json, Path, Query, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
-    Extension,
 };
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -14,7 +14,7 @@ use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 // ---------------------------------------------------------------------------
 // Request / response types
@@ -278,8 +278,7 @@ pub async fn put_device_subscriptions(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
             with_repo!(state, |repo| {
-                SubscriptionRepo::subscribe(&repo, auth_user.0.id, device.id, podcast.id, url)
-                    .await
+                SubscriptionRepo::subscribe(&repo, auth_user.0.id, device.id, podcast.id, url).await
             })
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
@@ -340,10 +339,8 @@ pub async fn upload_subscription_changes(
     let remove_urls: Vec<String> = body.remove.iter().map(|u| normalize_url(u)).collect();
 
     for url in &remove_urls {
-        let podcast = with_repo!(state, |repo| {
-            PodcastRepo::find_by_url(&repo, url).await
-        })
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let podcast = with_repo!(state, |repo| { PodcastRepo::find_by_url(&repo, url).await })
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if let Some(podcast) = podcast {
             with_repo!(state, |repo| {

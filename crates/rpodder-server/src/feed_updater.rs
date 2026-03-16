@@ -9,7 +9,7 @@ use uuid::Uuid;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
 use rpodder_core::types::{Episode, Tag, TagSource};
 use rpodder_core::url::normalize_url;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 use rpodder_feed::{FeedFetcher, parse_feed};
 
 macro_rules! with_repo {
@@ -66,9 +66,7 @@ pub async fn update_podcast_feed(
     podcast.last_update = Some(Utc::now());
     podcast.updated_at = Utc::now();
 
-    with_repo!(db, |repo| {
-        PodcastRepo::update(&repo, &podcast).await
-    })?;
+    with_repo!(db, |repo| { PodcastRepo::update(&repo, &podcast).await })?;
 
     // Update tags from feed categories
     if !parsed.categories.is_empty() {
@@ -94,10 +92,7 @@ pub async fn update_podcast_feed(
     // Update episodes
     let mut episode_count = 0i64;
     for parsed_ep in &parsed.episodes {
-        let ep_url = parsed_ep
-            .media_url
-            .as_deref()
-            .or(parsed_ep.link.as_deref());
+        let ep_url = parsed_ep.media_url.as_deref().or(parsed_ep.link.as_deref());
 
         let Some(ep_url) = ep_url else {
             continue;
@@ -120,9 +115,7 @@ pub async fn update_podcast_feed(
         episode.mimetype = parsed_ep.mimetype.clone();
         episode.updated_at = Utc::now();
 
-        with_repo!(db, |repo| {
-            EpisodeRepo::update(&repo, &episode).await
-        })?;
+        with_repo!(db, |repo| { EpisodeRepo::update(&repo, &episode).await })?;
 
         episode_count += 1;
     }
@@ -130,9 +123,7 @@ pub async fn update_podcast_feed(
     // Update episode count
     podcast.episode_count = episode_count;
     podcast.updated_at = Utc::now();
-    with_repo!(db, |repo| {
-        PodcastRepo::update(&repo, &podcast).await
-    })?;
+    with_repo!(db, |repo| { PodcastRepo::update(&repo, &podcast).await })?;
 
     info!(
         url = podcast_url,

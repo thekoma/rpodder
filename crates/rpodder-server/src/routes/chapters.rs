@@ -1,8 +1,8 @@
 use axum::{
+    Extension,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension,
 };
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
@@ -13,13 +13,19 @@ use rpodder_core::types::Chapter;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
         match &*$state.db {
-            Db::Postgres(pool) => { let $repo = PgRepo::new(pool.clone()); $body }
-            Db::Sqlite(pool) => { let $repo = SqliteRepo::new(pool.clone()); $body }
+            Db::Postgres(pool) => {
+                let $repo = PgRepo::new(pool.clone());
+                $body
+            }
+            Db::Sqlite(pool) => {
+                let $repo = SqliteRepo::new(pool.clone());
+                $body
+            }
         }
     };
 }
@@ -160,10 +166,8 @@ pub async fn update_chapters(
                 created_at: Utc::now(),
             };
 
-            with_repo!(state, |repo| {
-                ChapterRepo::upsert(&repo, &chapter).await
-            })
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            with_repo!(state, |repo| { ChapterRepo::upsert(&repo, &chapter).await })
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
     }
 
@@ -182,12 +186,15 @@ pub async fn update_chapters(
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
                 with_repo!(state, |repo| {
-                    ChapterRepo::delete(&repo, auth_user.0.id, episode.id, input.start, input.end).await
+                    ChapterRepo::delete(&repo, auth_user.0.id, episode.id, input.start, input.end)
+                        .await
                 })
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             }
         }
     }
 
-    Ok(Json(serde_json::json!({ "timestamp": Utc::now().timestamp() })))
+    Ok(Json(
+        serde_json::json!({ "timestamp": Utc::now().timestamp() }),
+    ))
 }

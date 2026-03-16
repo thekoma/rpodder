@@ -1,6 +1,6 @@
 use axum::{
     extract::Request,
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -9,7 +9,7 @@ use rpodder_core::repo::{SessionRepo, UserRepo};
 use rpodder_core::types::User;
 
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 /// Key used to store the authenticated user in request extensions.
 #[derive(Clone)]
@@ -18,7 +18,9 @@ pub struct AuthUser(pub User);
 /// Creates an auth middleware closure that captures the AppState.
 pub fn require_auth_layer(
     state: AppState,
-) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> + Clone + Send {
+) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
++ Clone
++ Send {
     move |req, next| {
         let state = state.clone();
         Box::pin(require_auth(state, req, next))
@@ -125,8 +127,8 @@ fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 pub fn hash_password(password: &str) -> std::result::Result<String, argon2::password_hash::Error> {
-    use argon2::password_hash::rand_core::OsRng;
     use argon2::password_hash::SaltString;
+    use argon2::password_hash::rand_core::OsRng;
     use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default().hash_password(password.as_bytes(), &salt)?;

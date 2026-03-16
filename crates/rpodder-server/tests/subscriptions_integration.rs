@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Body,
-    http::{header, Request, StatusCode},
+    http::{Request, StatusCode, header},
     middleware as axum_mw,
     routing::get,
-    Router,
 };
 use chrono::{Duration, Utc};
 use serde_json::Value;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use rpodder_core::repo::{DeviceRepo, PodcastRepo, SessionRepo, SubscriptionRepo, UserRepo};
 use rpodder_core::types::{Device, DeviceType, Session};
-use rpodder_db::{sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, sqlite::SqliteRepo};
 
 // === Shared test infrastructure ===
 
@@ -37,8 +37,8 @@ fn repo(db: &Db) -> SqliteRepo {
 }
 
 fn hash_password(password: &str) -> String {
-    use argon2::password_hash::rand_core::OsRng;
     use argon2::password_hash::SaltString;
+    use argon2::password_hash::rand_core::OsRng;
     use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -91,11 +91,11 @@ struct TestAppState {
 mod test_handlers {
     use super::*;
     use axum::{
+        Extension,
         extract::{Json, Path, Query, Request, State},
-        http::{header, StatusCode},
+        http::{StatusCode, header},
         middleware::Next,
         response::{IntoResponse, Response},
-        Extension,
     };
     use chrono::TimeZone;
     use rpodder_core::types::SubscriptionAction;
@@ -106,9 +106,12 @@ mod test_handlers {
 
     pub fn require_auth_layer(
         state: TestAppState,
-    ) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
-           + Clone
-           + Send {
+    ) -> impl Fn(
+        Request,
+        Next,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+    + Clone
+    + Send {
         move |req, next| {
             let state = state.clone();
             Box::pin(require_auth_inner(state, req, next))
@@ -344,9 +347,9 @@ fn test_router(state: TestAppState) -> Router {
             "/api/2/subscriptions/{username}/{deviceid_json}",
             get(test_handlers::download_changes).post(test_handlers::upload_changes),
         )
-        .route_layer(axum_mw::from_fn(
-            test_handlers::require_auth_layer(state.clone()),
-        ));
+        .route_layer(axum_mw::from_fn(test_handlers::require_auth_layer(
+            state.clone(),
+        )));
 
     authenticated.with_state(state)
 }
@@ -362,9 +365,7 @@ async fn get_device_subscriptions_empty() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "alice").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
     let app = test_router(state);
 
     let resp = app
@@ -392,9 +393,7 @@ async fn put_and_get_device_subscriptions() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "bob").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
 
     // PUT subscriptions
     let app = test_router(state.clone());
@@ -441,9 +440,7 @@ async fn put_replaces_subscriptions() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "carol").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
 
     // Initial subscriptions
     let app = test_router(state.clone());
@@ -526,9 +523,7 @@ async fn get_user_subscriptions_across_devices() {
     .await
     .unwrap();
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
 
     // Subscribe phone to feed1
     let app = test_router(state.clone());
@@ -585,9 +580,7 @@ async fn delta_upload_and_download() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "eve").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
 
     let since_ts = Utc::now().timestamp() - 1;
 
@@ -650,9 +643,7 @@ async fn delta_upload_remove() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "frank").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
 
     // First add a feed
     let app = test_router(state.clone());
@@ -711,9 +702,7 @@ async fn nonexistent_device_returns_404() {
     let db = setup_db().await;
     let (token, _dev) = create_test_user(&db, "ghost").await;
 
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
     let app = test_router(state);
 
     let resp = app
@@ -733,9 +722,7 @@ async fn nonexistent_device_returns_404() {
 #[tokio::test]
 async fn unauthenticated_returns_401() {
     let db = setup_db().await;
-    let state = TestAppState {
-        db: Arc::new(db),
-    };
+    let state = TestAppState { db: Arc::new(db) };
     let app = test_router(state);
 
     let resp = app

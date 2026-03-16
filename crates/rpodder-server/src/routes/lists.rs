@@ -1,8 +1,8 @@
 use axum::{
+    Extension,
     extract::{Json, Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -13,13 +13,19 @@ use rpodder_core::types::PodcastList;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
         match &*$state.db {
-            Db::Postgres(pool) => { let $repo = PgRepo::new(pool.clone()); $body }
-            Db::Sqlite(pool) => { let $repo = SqliteRepo::new(pool.clone()); $body }
+            Db::Postgres(pool) => {
+                let $repo = PgRepo::new(pool.clone());
+                $body
+            }
+            Db::Sqlite(pool) => {
+                let $repo = SqliteRepo::new(pool.clone());
+                $body
+            }
         }
     };
 }
@@ -98,11 +104,14 @@ pub async fn create_list(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok((StatusCode::CREATED, Json(ListSummary {
-        title: list.title,
-        slug: list.slug.clone(),
-        web: format!("/api/2/lists/{}/{}", username, list.slug),
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(ListSummary {
+            title: list.title,
+            slug: list.slug.clone(),
+            web: format!("/api/2/lists/{}/{}", username, list.slug),
+        }),
+    ))
 }
 
 /// GET /api/2/lists/{username}.json

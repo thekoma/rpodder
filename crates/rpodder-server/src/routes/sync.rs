@@ -1,8 +1,8 @@
 use axum::{
+    Extension,
     extract::{Json, Path, State},
     http::StatusCode,
     response::IntoResponse,
-    Extension,
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,13 +10,19 @@ use rpodder_core::repo::{DeviceRepo, SyncGroupRepo};
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
         match &*$state.db {
-            Db::Postgres(pool) => { let $repo = PgRepo::new(pool.clone()); $body }
-            Db::Sqlite(pool) => { let $repo = SqliteRepo::new(pool.clone()); $body }
+            Db::Postgres(pool) => {
+                let $repo = PgRepo::new(pool.clone());
+                $body
+            }
+            Db::Sqlite(pool) => {
+                let $repo = SqliteRepo::new(pool.clone());
+                $body
+            }
         }
     };
 }

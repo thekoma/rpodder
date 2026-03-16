@@ -1,9 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 
 use crate::state::AppState;
@@ -17,23 +12,11 @@ pub struct HealthResponse {
 }
 
 /// GET /health — lightweight health check for load balancers
-pub async fn health(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
+pub async fn health(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     // Quick DB check
     let db_ok = match &*state.db {
-        Db::Postgres(pool) => {
-            sqlx::query("SELECT 1")
-                .execute(pool)
-                .await
-                .is_ok()
-        }
-        Db::Sqlite(pool) => {
-            sqlx::query("SELECT 1")
-                .execute(pool)
-                .await
-                .is_ok()
-        }
+        Db::Postgres(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
+        Db::Sqlite(pool) => sqlx::query("SELECT 1").execute(pool).await.is_ok(),
     };
 
     if !db_ok {

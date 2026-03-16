@@ -32,20 +32,11 @@ pub struct ParsedEpisode {
 pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
     let feed = feed_rs::parser::parse(xml.as_bytes()).map_err(ParseError::Parse)?;
 
-    let title = feed
-        .title
-        .map(|t| t.content)
-        .unwrap_or_default();
+    let title = feed.title.map(|t| t.content).unwrap_or_default();
 
-    let description = feed
-        .description
-        .map(|t| t.content)
-        .unwrap_or_default();
+    let description = feed.description.map(|t| t.content).unwrap_or_default();
 
-    let link = feed
-        .links
-        .first()
-        .map(|l| l.href.clone());
+    let link = feed.links.first().map(|l| l.href.clone());
 
     let language = feed.language.clone();
 
@@ -55,16 +46,9 @@ pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
         .map(|img| img.uri.clone())
         .or_else(|| feed.icon.as_ref().map(|img| img.uri.clone()));
 
-    let author = feed
-        .authors
-        .first()
-        .map(|a| a.name.clone());
+    let author = feed.authors.first().map(|a| a.name.clone());
 
-    let categories: Vec<String> = feed
-        .categories
-        .iter()
-        .map(|c| c.term.clone())
-        .collect();
+    let categories: Vec<String> = feed.categories.iter().map(|c| c.term.clone()).collect();
 
     let episodes: Vec<ParsedEpisode> = feed
         .entries
@@ -109,9 +93,7 @@ pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
                 .and_then(|mc| mc.duration)
                 .map(|d| d.as_secs() as i64);
 
-            let filesize = media_content
-                .and_then(|mc| mc.size)
-                .map(|s| s as i64);
+            let filesize = media_content.and_then(|mc| mc.size).map(|s| s as i64);
 
             let mimetype = media_content
                 .and_then(|mc| mc.content_type.as_ref())

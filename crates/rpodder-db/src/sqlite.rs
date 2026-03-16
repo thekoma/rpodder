@@ -26,7 +26,12 @@ fn uuid_str(u: &Uuid) -> String {
 // ---------------------------------------------------------------------------
 
 impl repo::UserRepo for SqliteRepo {
-    async fn create(&self, username: &str, password_hash: &str, email: Option<&str>) -> Result<User> {
+    async fn create(
+        &self,
+        username: &str,
+        password_hash: &str,
+        email: Option<&str>,
+    ) -> Result<User> {
         let id = Uuid::now_v7();
         let id_s = uuid_str(&id);
         let now = Utc::now();
@@ -484,7 +489,13 @@ impl From<SqliteSubChangeRow> for SubscriptionChange {
 }
 
 impl repo::SubscriptionRepo for SqliteRepo {
-    async fn subscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid, ref_url: &str) -> Result<()> {
+    async fn subscribe(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        podcast_id: Uuid,
+        ref_url: &str,
+    ) -> Result<()> {
         let sub_id = Uuid::now_v7();
         sqlx::query(
             "INSERT INTO subscriptions (id, user_id, device_id, podcast_id, ref_url)
@@ -589,7 +600,12 @@ impl repo::SubscriptionRepo for SqliteRepo {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn changes_since(&self, user_id: Uuid, device_id: Uuid, since: DateTime<Utc>) -> Result<Vec<SubscriptionChange>> {
+    async fn changes_since(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<SubscriptionChange>> {
         let rows: Vec<SqliteSubChangeRow> = sqlx::query_as(
             "SELECT id, user_id, device_id, podcast_id, action, ref_url, timestamp
              FROM subscription_changes
@@ -723,7 +739,12 @@ impl repo::EpisodeRepo for SqliteRepo {
         Ok(row.map(Into::into))
     }
 
-    async fn list_for_podcast(&self, podcast_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Episode>> {
+    async fn list_for_podcast(
+        &self,
+        podcast_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Episode>> {
         let rows: Vec<SqliteEpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
                     released, duration, filesize, mimetype, created_at, updated_at
@@ -868,7 +889,9 @@ impl repo::EpisodeActionRepo for SqliteRepo {
             bind_values.push(uuid_str(&did));
         }
         if let Some(pid) = podcast_id {
-            conditions.push("ea.episode_id IN (SELECT id FROM episodes WHERE podcast_id = ?)".to_string());
+            conditions.push(
+                "ea.episode_id IN (SELECT id FROM episodes WHERE podcast_id = ?)".to_string(),
+            );
             bind_values.push(uuid_str(&pid));
         }
         if let Some(s) = since {
@@ -893,7 +916,10 @@ impl repo::EpisodeActionRepo for SqliteRepo {
         }
         q = q.bind(limit);
 
-        let rows = q.fetch_all(&self.pool).await.map_err(|e| AppError::Internal(e.to_string()))?;
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 }
@@ -994,17 +1020,20 @@ impl repo::SyncGroupRepo for SqliteRepo {
                 .map_err(|e| AppError::Internal(e.to_string()))?;
         }
 
-        Ok(SyncGroup { id, user_id, created_at: now })
+        Ok(SyncGroup {
+            id,
+            user_id,
+            created_at: now,
+        })
     }
 
     async fn get_groups_for_user(&self, user_id: Uuid) -> Result<Vec<(SyncGroup, Vec<Device>)>> {
-        let groups: Vec<(String, String, String)> = sqlx::query_as(
-            "SELECT id, user_id, created_at FROM sync_groups WHERE user_id = ?",
-        )
-        .bind(uuid_str(&user_id))
-        .fetch_all(&self.pool)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        let groups: Vec<(String, String, String)> =
+            sqlx::query_as("SELECT id, user_id, created_at FROM sync_groups WHERE user_id = ?")
+                .bind(uuid_str(&user_id))
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut result = Vec::new();
         for (id_s, uid_s, created_s) in groups {
@@ -1060,7 +1089,12 @@ fn parse_scope(s: &str) -> SettingsScope {
 }
 
 impl repo::SettingsRepo for SqliteRepo {
-    async fn get(&self, user_id: Uuid, scope: SettingsScope, scope_id: Option<Uuid>) -> Result<Option<UserSettings>> {
+    async fn get(
+        &self,
+        user_id: Uuid,
+        scope: SettingsScope,
+        scope_id: Option<Uuid>,
+    ) -> Result<Option<UserSettings>> {
         let row: Option<(String, String, String, Option<String>, String, String)> = sqlx::query_as(
             "SELECT id, user_id, scope, scope_id, settings, updated_at
              FROM user_settings
@@ -1073,14 +1107,16 @@ impl repo::SettingsRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        Ok(row.map(|(id, uid, scope_s, sid, settings_s, updated)| UserSettings {
-            id: id.parse().unwrap_or_default(),
-            user_id: uid.parse().unwrap_or_default(),
-            scope: parse_scope(&scope_s),
-            scope_id: sid.and_then(|s| s.parse().ok()),
-            settings: serde_json::from_str(&settings_s).unwrap_or_default(),
-            updated_at: updated.parse().unwrap_or_default(),
-        }))
+        Ok(row.map(
+            |(id, uid, scope_s, sid, settings_s, updated)| UserSettings {
+                id: id.parse().unwrap_or_default(),
+                user_id: uid.parse().unwrap_or_default(),
+                scope: parse_scope(&scope_s),
+                scope_id: sid.and_then(|s| s.parse().ok()),
+                settings: serde_json::from_str(&settings_s).unwrap_or_default(),
+                updated_at: updated.parse().unwrap_or_default(),
+            },
+        ))
     }
 
     async fn save(&self, settings: &UserSettings) -> Result<()> {
@@ -1136,13 +1172,16 @@ impl repo::PodcastListRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        Ok(row.map(|(id, uid, title, slug, created, updated)| PodcastList {
-            id: id.parse().unwrap_or_default(),
-            user_id: uid.parse().unwrap_or_default(),
-            title, slug,
-            created_at: created.parse().unwrap_or_default(),
-            updated_at: updated.parse().unwrap_or_default(),
-        }))
+        Ok(
+            row.map(|(id, uid, title, slug, created, updated)| PodcastList {
+                id: id.parse().unwrap_or_default(),
+                user_id: uid.parse().unwrap_or_default(),
+                title,
+                slug,
+                created_at: created.parse().unwrap_or_default(),
+                updated_at: updated.parse().unwrap_or_default(),
+            }),
+        )
     }
 
     async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<PodcastList>> {
@@ -1155,13 +1194,17 @@ impl repo::PodcastListRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        Ok(rows.into_iter().map(|(id, uid, title, slug, created, updated)| PodcastList {
-            id: id.parse().unwrap_or_default(),
-            user_id: uid.parse().unwrap_or_default(),
-            title, slug,
-            created_at: created.parse().unwrap_or_default(),
-            updated_at: updated.parse().unwrap_or_default(),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|(id, uid, title, slug, created, updated)| PodcastList {
+                id: id.parse().unwrap_or_default(),
+                user_id: uid.parse().unwrap_or_default(),
+                title,
+                slug,
+                created_at: created.parse().unwrap_or_default(),
+                updated_at: updated.parse().unwrap_or_default(),
+            })
+            .collect())
     }
 
     async fn set_entries(&self, list_id: Uuid, podcast_ids: &[Uuid]) -> Result<()> {
@@ -1238,8 +1281,16 @@ impl repo::ChapterRepo for SqliteRepo {
         Ok(())
     }
 
-    async fn list_for_episode(&self, user_id: Uuid, episode_id: Uuid, since: Option<DateTime<Utc>>) -> Result<Vec<Chapter>> {
-        let rows: Vec<(String, String, String, i32, i32, String, bool, String)> = if let Some(since) = since {
+    async fn list_for_episode(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Chapter>> {
+        let rows: Vec<(String, String, String, i32, i32, String, bool, String)> = if let Some(
+            since,
+        ) = since
+        {
             sqlx::query_as(
                 "SELECT id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at
                  FROM chapters WHERE user_id = ? AND episode_id = ? AND created_at > ?
@@ -1264,16 +1315,28 @@ impl repo::ChapterRepo for SqliteRepo {
             .map_err(|e| AppError::Internal(e.to_string()))?
         };
 
-        Ok(rows.into_iter().map(|(id, uid, eid, ss, es, label, adv, created)| Chapter {
-            id: id.parse().unwrap_or_default(),
-            user_id: uid.parse().unwrap_or_default(),
-            episode_id: eid.parse().unwrap_or_default(),
-            start_sec: ss, end_sec: es, label, advertisement: adv,
-            created_at: created.parse().unwrap_or_default(),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|(id, uid, eid, ss, es, label, adv, created)| Chapter {
+                id: id.parse().unwrap_or_default(),
+                user_id: uid.parse().unwrap_or_default(),
+                episode_id: eid.parse().unwrap_or_default(),
+                start_sec: ss,
+                end_sec: es,
+                label,
+                advertisement: adv,
+                created_at: created.parse().unwrap_or_default(),
+            })
+            .collect())
     }
 
-    async fn delete(&self, user_id: Uuid, episode_id: Uuid, start_sec: i32, end_sec: i32) -> Result<()> {
+    async fn delete(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        start_sec: i32,
+        end_sec: i32,
+    ) -> Result<()> {
         sqlx::query(
             "DELETE FROM chapters WHERE user_id = ? AND episode_id = ? AND start_sec = ? AND end_sec = ?",
         )
@@ -1419,7 +1482,10 @@ impl From<SqliteSessionRow> for Session {
 mod tests {
     use super::*;
     use chrono::Duration;
-    use rpodder_core::repo::{DeviceRepo, EpisodeActionRepo, EpisodeRepo, PodcastRepo, SessionRepo, SubscriptionRepo, UserRepo};
+    use rpodder_core::repo::{
+        DeviceRepo, EpisodeActionRepo, EpisodeRepo, PodcastRepo, SessionRepo, SubscriptionRepo,
+        UserRepo,
+    };
 
     async fn setup() -> SqliteRepo {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -1433,7 +1499,9 @@ mod tests {
     #[tokio::test]
     async fn create_user_and_find_by_username() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "Alice", "hash123", Some("alice@example.com")).await.unwrap();
+        let user = UserRepo::create(&repo, "Alice", "hash123", Some("alice@example.com"))
+            .await
+            .unwrap();
 
         assert_eq!(user.username, "Alice");
         assert_eq!(user.email.as_deref(), Some("alice@example.com"));
@@ -1467,7 +1535,9 @@ mod tests {
     #[tokio::test]
     async fn find_by_id() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "Charlie", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "Charlie", "hash", None)
+            .await
+            .unwrap();
 
         let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
         assert_eq!(found.username, "Charlie");
@@ -1483,7 +1553,9 @@ mod tests {
     #[tokio::test]
     async fn create_duplicate_username_fails() {
         let repo = setup().await;
-        UserRepo::create(&repo, "Dave", "hash1", None).await.unwrap();
+        UserRepo::create(&repo, "Dave", "hash1", None)
+            .await
+            .unwrap();
 
         let result = UserRepo::create(&repo, "Dave", "hash2", None).await;
         assert!(result.is_err());
@@ -1496,7 +1568,9 @@ mod tests {
     #[tokio::test]
     async fn create_user_without_email() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "NoEmail", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "NoEmail", "hash", None)
+            .await
+            .unwrap();
         assert!(user.email.is_none());
 
         let found = repo.find_by_username("NoEmail").await.unwrap().unwrap();
@@ -1508,7 +1582,9 @@ mod tests {
     #[tokio::test]
     async fn create_session_and_find_by_token() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "SessionUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "SessionUser", "hash", None)
+            .await
+            .unwrap();
 
         let session = Session {
             id: Uuid::now_v7(),
@@ -1519,7 +1595,11 @@ mod tests {
         };
         SessionRepo::create(&repo, &session).await.unwrap();
 
-        let found = repo.find_by_token("test-token-abc123").await.unwrap().unwrap();
+        let found = repo
+            .find_by_token("test-token-abc123")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.user_id, user.id);
         assert_eq!(found.token, "test-token-abc123");
     }
@@ -1534,7 +1614,9 @@ mod tests {
     #[tokio::test]
     async fn find_by_token_expired_returns_none() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "ExpiredUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "ExpiredUser", "hash", None)
+            .await
+            .unwrap();
 
         let session = Session {
             id: Uuid::now_v7(),
@@ -1552,7 +1634,9 @@ mod tests {
     #[tokio::test]
     async fn delete_session() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "DeleteUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "DeleteUser", "hash", None)
+            .await
+            .unwrap();
 
         let session = Session {
             id: Uuid::now_v7(),
@@ -1576,7 +1660,9 @@ mod tests {
     #[tokio::test]
     async fn delete_expired_sessions() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "CleanupUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "CleanupUser", "hash", None)
+            .await
+            .unwrap();
 
         // Create 2 expired sessions and 1 valid
         for (i, hours_offset) in [(-2i64), (-1), 1].iter().enumerate() {
@@ -1610,7 +1696,9 @@ mod tests {
     #[tokio::test]
     async fn multiple_sessions_per_user() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "MultiSession", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "MultiSession", "hash", None)
+            .await
+            .unwrap();
 
         for i in 0..3 {
             let session = Session {
@@ -1625,7 +1713,10 @@ mod tests {
 
         // All three should be findable
         for i in 0..3 {
-            let found = repo.find_by_token(&format!("multi-token-{i}")).await.unwrap();
+            let found = repo
+                .find_by_token(&format!("multi-token-{i}"))
+                .await
+                .unwrap();
             assert!(found.is_some());
             assert_eq!(found.unwrap().user_id, user.id);
         }
@@ -1636,7 +1727,9 @@ mod tests {
     #[tokio::test]
     async fn create_device_and_find_by_uid() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "DevUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "DevUser", "hash", None)
+            .await
+            .unwrap();
 
         let now = Utc::now();
         let device = Device {
@@ -1654,7 +1747,10 @@ mod tests {
         assert_eq!(created.caption, "My Phone");
         assert_eq!(created.device_type, DeviceType::Mobile);
 
-        let found = DeviceRepo::find_by_uid(&repo, user.id, "my-phone").await.unwrap().unwrap();
+        let found = DeviceRepo::find_by_uid(&repo, user.id, "my-phone")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.device_id, "my-phone");
         assert_eq!(found.caption, "My Phone");
         assert_eq!(found.device_type, DeviceType::Mobile);
@@ -1663,7 +1759,9 @@ mod tests {
     #[tokio::test]
     async fn upsert_device_updates_existing() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "UpsertUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "UpsertUser", "hash", None)
+            .await
+            .unwrap();
 
         let now = Utc::now();
         let device = Device {
@@ -1700,8 +1798,12 @@ mod tests {
     #[tokio::test]
     async fn list_devices_for_user() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "ListUser", "hash", None).await.unwrap();
-        let other = UserRepo::create(&repo, "OtherUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "ListUser", "hash", None)
+            .await
+            .unwrap();
+        let other = UserRepo::create(&repo, "OtherUser", "hash", None)
+            .await
+            .unwrap();
 
         let now = Utc::now();
         for (uid, did, user_id) in [
@@ -1732,15 +1834,21 @@ mod tests {
     #[tokio::test]
     async fn find_device_not_found() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "NoDevUser", "hash", None).await.unwrap();
-        let found = DeviceRepo::find_by_uid(&repo, user.id, "nonexistent").await.unwrap();
+        let user = UserRepo::create(&repo, "NoDevUser", "hash", None)
+            .await
+            .unwrap();
+        let found = DeviceRepo::find_by_uid(&repo, user.id, "nonexistent")
+            .await
+            .unwrap();
         assert!(found.is_none());
     }
 
     #[tokio::test]
     async fn list_devices_empty() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "EmptyUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "EmptyUser", "hash", None)
+            .await
+            .unwrap();
         let devices = DeviceRepo::list_for_user(&repo, user.id).await.unwrap();
         assert!(devices.is_empty());
     }
@@ -1748,7 +1856,9 @@ mod tests {
     #[tokio::test]
     async fn device_type_roundtrip() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "TypeUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "TypeUser", "hash", None)
+            .await
+            .unwrap();
 
         let now = Utc::now();
         for dt in [
@@ -1772,7 +1882,10 @@ mod tests {
             };
             DeviceRepo::upsert(&repo, &device).await.unwrap();
 
-            let found = DeviceRepo::find_by_uid(&repo, user.id, &did).await.unwrap().unwrap();
+            let found = DeviceRepo::find_by_uid(&repo, user.id, &did)
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(found.device_type, dt, "roundtrip failed for {:?}", dt);
         }
     }
@@ -1782,12 +1895,18 @@ mod tests {
     #[tokio::test]
     async fn get_or_create_podcast_for_url() {
         let repo = setup().await;
-        let (podcast, created) = PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml").await.unwrap();
+        let (podcast, created) =
+            PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml")
+                .await
+                .unwrap();
         assert!(created);
         assert_eq!(podcast.title, "http://example.com/feed.xml");
 
         // Second call should return existing
-        let (podcast2, created2) = PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml").await.unwrap();
+        let (podcast2, created2) =
+            PodcastRepo::get_or_create_for_url(&repo, "http://example.com/feed.xml")
+                .await
+                .unwrap();
         assert!(!created2);
         assert_eq!(podcast2.id, podcast.id);
     }
@@ -1795,24 +1914,38 @@ mod tests {
     #[tokio::test]
     async fn find_podcast_by_url() {
         let repo = setup().await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/rss").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/rss")
+            .await
+            .unwrap();
 
-        let found = PodcastRepo::find_by_url(&repo, "http://test.com/rss").await.unwrap().unwrap();
+        let found = PodcastRepo::find_by_url(&repo, "http://test.com/rss")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.id, podcast.id);
 
-        let not_found = PodcastRepo::find_by_url(&repo, "http://other.com/rss").await.unwrap();
+        let not_found = PodcastRepo::find_by_url(&repo, "http://other.com/rss")
+            .await
+            .unwrap();
         assert!(not_found.is_none());
     }
 
     #[tokio::test]
     async fn find_podcast_by_id() {
         let repo = setup().await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
 
-        let found = PodcastRepo::find_by_id(&repo, podcast.id).await.unwrap().unwrap();
+        let found = PodcastRepo::find_by_id(&repo, podcast.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.title, "http://test.com/feed");
 
-        let not_found = PodcastRepo::find_by_id(&repo, Uuid::now_v7()).await.unwrap();
+        let not_found = PodcastRepo::find_by_id(&repo, Uuid::now_v7())
+            .await
+            .unwrap();
         assert!(not_found.is_none());
     }
 
@@ -1820,7 +1953,9 @@ mod tests {
 
     /// Helper: create user + device + podcast for subscription tests
     async fn setup_subscription_fixtures(repo: &SqliteRepo) -> (User, Device, Podcast) {
-        let user = UserRepo::create(repo, "SubUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(repo, "SubUser", "hash", None)
+            .await
+            .unwrap();
         let now = Utc::now();
         let device = Device {
             id: Uuid::now_v7(),
@@ -1833,7 +1968,9 @@ mod tests {
             updated_at: now,
         };
         let device = DeviceRepo::upsert(repo, &device).await.unwrap();
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(repo, "http://example.com/feed.xml").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(repo, "http://example.com/feed.xml")
+            .await
+            .unwrap();
         (user, device, podcast)
     }
 
@@ -1842,9 +1979,19 @@ mod tests {
         let repo = setup().await;
         let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
 
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
 
-        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id)
+            .await
+            .unwrap();
         assert_eq!(subs.len(), 1);
         assert_eq!(subs[0].ref_url, "http://example.com/feed.xml");
     }
@@ -1854,10 +2001,28 @@ mod tests {
         let repo = setup().await;
         let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
 
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
 
-        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id)
+            .await
+            .unwrap();
         assert_eq!(subs.len(), 1);
     }
 
@@ -1866,41 +2031,87 @@ mod tests {
         let repo = setup().await;
         let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
 
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
-        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id).await.unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
+        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id)
+            .await
+            .unwrap();
 
-        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id).await.unwrap();
+        let subs = SubscriptionRepo::list_for_device(&repo, user.id, device.id)
+            .await
+            .unwrap();
         assert!(subs.is_empty());
     }
 
     #[tokio::test]
     async fn list_subscriptions_for_user() {
         let repo = setup().await;
-        let user = UserRepo::create(&repo, "MultiSubUser", "hash", None).await.unwrap();
+        let user = UserRepo::create(&repo, "MultiSubUser", "hash", None)
+            .await
+            .unwrap();
         let now = Utc::now();
 
         // Two devices
-        let dev1 = DeviceRepo::upsert(&repo, &Device {
-            id: Uuid::now_v7(), user_id: user.id, device_id: "dev1".into(),
-            caption: "".into(), device_type: DeviceType::Other,
-            sync_group_id: None, created_at: now, updated_at: now,
-        }).await.unwrap();
-        let dev2 = DeviceRepo::upsert(&repo, &Device {
-            id: Uuid::now_v7(), user_id: user.id, device_id: "dev2".into(),
-            caption: "".into(), device_type: DeviceType::Other,
-            sync_group_id: None, created_at: now, updated_at: now,
-        }).await.unwrap();
+        let dev1 = DeviceRepo::upsert(
+            &repo,
+            &Device {
+                id: Uuid::now_v7(),
+                user_id: user.id,
+                device_id: "dev1".into(),
+                caption: "".into(),
+                device_type: DeviceType::Other,
+                sync_group_id: None,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .await
+        .unwrap();
+        let dev2 = DeviceRepo::upsert(
+            &repo,
+            &Device {
+                id: Uuid::now_v7(),
+                user_id: user.id,
+                device_id: "dev2".into(),
+                caption: "".into(),
+                device_type: DeviceType::Other,
+                sync_group_id: None,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .await
+        .unwrap();
 
         // Same podcast on both devices
-        let (p1, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed1.com").await.unwrap();
-        let (p2, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed2.com").await.unwrap();
+        let (p1, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed1.com")
+            .await
+            .unwrap();
+        let (p2, _) = PodcastRepo::get_or_create_for_url(&repo, "http://feed2.com")
+            .await
+            .unwrap();
 
-        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p1.id, "http://feed1.com").await.unwrap();
-        SubscriptionRepo::subscribe(&repo, user.id, dev2.id, p1.id, "http://feed1.com").await.unwrap();
-        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p2.id, "http://feed2.com").await.unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p1.id, "http://feed1.com")
+            .await
+            .unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, dev2.id, p1.id, "http://feed1.com")
+            .await
+            .unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, dev1.id, p2.id, "http://feed2.com")
+            .await
+            .unwrap();
 
         // list_for_user should deduplicate by podcast
-        let subs = SubscriptionRepo::list_for_user(&repo, user.id).await.unwrap();
+        let subs = SubscriptionRepo::list_for_user(&repo, user.id)
+            .await
+            .unwrap();
         assert_eq!(subs.len(), 2);
     }
 
@@ -1911,10 +2122,22 @@ mod tests {
 
         let before = Utc::now() - Duration::seconds(1);
 
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
-        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id).await.unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
+        SubscriptionRepo::unsubscribe(&repo, user.id, device.id, podcast.id)
+            .await
+            .unwrap();
 
-        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, before).await.unwrap();
+        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, before)
+            .await
+            .unwrap();
         assert_eq!(changes.len(), 2);
         assert_eq!(changes[0].action, SubscriptionAction::Subscribe);
         assert_eq!(changes[1].action, SubscriptionAction::Unsubscribe);
@@ -1925,11 +2148,21 @@ mod tests {
         let repo = setup().await;
         let (user, device, podcast) = setup_subscription_fixtures(&repo).await;
 
-        SubscriptionRepo::subscribe(&repo, user.id, device.id, podcast.id, "http://example.com/feed.xml").await.unwrap();
+        SubscriptionRepo::subscribe(
+            &repo,
+            user.id,
+            device.id,
+            podcast.id,
+            "http://example.com/feed.xml",
+        )
+        .await
+        .unwrap();
 
         let after = Utc::now() + Duration::seconds(1);
 
-        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, after).await.unwrap();
+        let changes = SubscriptionRepo::changes_since(&repo, user.id, device.id, after)
+            .await
+            .unwrap();
         assert!(changes.is_empty());
     }
 
@@ -1938,13 +2171,21 @@ mod tests {
     #[tokio::test]
     async fn get_or_create_episode_for_url() {
         let repo = setup().await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
 
-        let (episode, created) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        let (episode, created) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3")
+                .await
+                .unwrap();
         assert!(created);
         assert_eq!(episode.title, "http://test.com/ep1.mp3");
 
-        let (episode2, created2) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        let (episode2, created2) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3")
+                .await
+                .unwrap();
         assert!(!created2);
         assert_eq!(episode2.id, episode.id);
     }
@@ -1952,26 +2193,46 @@ mod tests {
     #[tokio::test]
     async fn find_episode_by_id() {
         let repo = setup().await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
-        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3")
+                .await
+                .unwrap();
 
-        let found = EpisodeRepo::find_by_id(&repo, episode.id).await.unwrap().unwrap();
+        let found = EpisodeRepo::find_by_id(&repo, episode.id)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.id, episode.id);
 
-        let not_found = EpisodeRepo::find_by_id(&repo, Uuid::now_v7()).await.unwrap();
+        let not_found = EpisodeRepo::find_by_id(&repo, Uuid::now_v7())
+            .await
+            .unwrap();
         assert!(not_found.is_none());
     }
 
     #[tokio::test]
     async fn list_episodes_for_podcast() {
         let repo = setup().await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
 
         for i in 0..3 {
-            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &format!("http://test.com/ep{i}.mp3")).await.unwrap();
+            EpisodeRepo::get_or_create_for_url(
+                &repo,
+                podcast.id,
+                &format!("http://test.com/ep{i}.mp3"),
+            )
+            .await
+            .unwrap();
         }
 
-        let eps = EpisodeRepo::list_for_podcast(&repo, podcast.id, 10, 0).await.unwrap();
+        let eps = EpisodeRepo::list_for_podcast(&repo, podcast.id, 10, 0)
+            .await
+            .unwrap();
         assert_eq!(eps.len(), 3);
     }
 
@@ -1981,8 +2242,13 @@ mod tests {
     async fn create_and_list_episode_actions() {
         let repo = setup().await;
         let (user, device, _) = setup_subscription_fixtures(&repo).await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
-        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3")
+                .await
+                .unwrap();
 
         let action = EpisodeAction {
             id: Uuid::now_v7(),
@@ -2000,7 +2266,9 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &action).await.unwrap();
 
-        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+            .await
+            .unwrap();
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].action, EpisodeActionType::Play);
         assert_eq!(actions[0].position, Some(120));
@@ -2010,8 +2278,13 @@ mod tests {
     async fn episode_action_deduplication() {
         let repo = setup().await;
         let (user, device, _) = setup_subscription_fixtures(&repo).await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
-        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep1.mp3")
+                .await
+                .unwrap();
 
         let ts = Utc::now();
         let action = EpisodeAction {
@@ -2038,7 +2311,9 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &action2).await.unwrap();
 
-        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+            .await
+            .unwrap();
         assert_eq!(actions.len(), 1);
         assert_eq!(actions[0].position, Some(200));
     }
@@ -2047,8 +2322,13 @@ mod tests {
     async fn episode_action_filter_by_device() {
         let repo = setup().await;
         let (user, device, _) = setup_subscription_fixtures(&repo).await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
-        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3")
+                .await
+                .unwrap();
 
         // Action with device
         let a1 = EpisodeAction {
@@ -2057,8 +2337,11 @@ mod tests {
             device_id: Some(device.id),
             episode_id: episode.id,
             action: EpisodeActionType::Download,
-            podcast_ref_url: None, episode_ref_url: None,
-            started: None, position: None, total: None,
+            podcast_ref_url: None,
+            episode_ref_url: None,
+            started: None,
+            position: None,
+            total: None,
             timestamp: Utc::now(),
             created_at: Utc::now(),
         };
@@ -2074,10 +2357,14 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &a2).await.unwrap();
 
-        let all = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100).await.unwrap();
+        let all = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+            .await
+            .unwrap();
         assert_eq!(all.len(), 2);
 
-        let filtered = EpisodeActionRepo::list(&repo, user.id, Some(device.id), None, None, 100).await.unwrap();
+        let filtered = EpisodeActionRepo::list(&repo, user.id, Some(device.id), None, None, 100)
+            .await
+            .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].action, EpisodeActionType::Download);
     }
@@ -2086,8 +2373,13 @@ mod tests {
     async fn episode_action_filter_by_since() {
         let repo = setup().await;
         let (user, device, _) = setup_subscription_fixtures(&repo).await;
-        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed").await.unwrap();
-        let (episode, _) = EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3").await.unwrap();
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3")
+                .await
+                .unwrap();
 
         let before = Utc::now();
 
@@ -2097,17 +2389,31 @@ mod tests {
             device_id: Some(device.id),
             episode_id: episode.id,
             action: EpisodeActionType::Play,
-            podcast_ref_url: None, episode_ref_url: None,
-            started: Some(0), position: Some(60), total: Some(300),
+            podcast_ref_url: None,
+            episode_ref_url: None,
+            started: Some(0),
+            position: Some(60),
+            total: Some(300),
             timestamp: Utc::now(),
             created_at: Utc::now(),
         };
         EpisodeActionRepo::create(&repo, &action).await.unwrap();
 
-        let since_before = EpisodeActionRepo::list(&repo, user.id, None, None, Some(before), 100).await.unwrap();
+        let since_before = EpisodeActionRepo::list(&repo, user.id, None, None, Some(before), 100)
+            .await
+            .unwrap();
         assert_eq!(since_before.len(), 1);
 
-        let since_after = EpisodeActionRepo::list(&repo, user.id, None, None, Some(Utc::now() + Duration::seconds(1)), 100).await.unwrap();
+        let since_after = EpisodeActionRepo::list(
+            &repo,
+            user.id,
+            None,
+            None,
+            Some(Utc::now() + Duration::seconds(1)),
+            100,
+        )
+        .await
+        .unwrap();
         assert!(since_after.is_empty());
     }
 }

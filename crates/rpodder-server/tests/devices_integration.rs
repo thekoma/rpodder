@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
+    Router,
     body::Body,
-    http::{header, Request, StatusCode},
+    http::{Request, StatusCode, header},
     middleware as axum_mw,
     routing::{get, post},
-    Router,
 };
 use chrono::{Duration, Utc};
 use serde_json::Value;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use rpodder_core::repo::{SessionRepo, UserRepo};
 use rpodder_core::types::Session;
-use rpodder_db::{sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, sqlite::SqliteRepo};
 
 async fn setup_db() -> Db {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -35,8 +35,8 @@ fn repo(db: &Db) -> SqliteRepo {
 }
 
 fn hash_password(password: &str) -> String {
-    use argon2::password_hash::rand_core::OsRng;
     use argon2::password_hash::SaltString;
+    use argon2::password_hash::rand_core::OsRng;
     use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -85,11 +85,11 @@ fn test_state(db: Db) -> TestAppState {
 mod test_handlers {
     use super::*;
     use axum::{
+        Extension,
         extract::{Json, Path, Request, State},
-        http::{header, StatusCode},
+        http::{StatusCode, header},
         middleware::Next,
         response::{IntoResponse, Response},
-        Extension,
     };
     use rpodder_core::repo::DeviceRepo;
     use rpodder_core::types::DeviceType;
@@ -100,9 +100,12 @@ mod test_handlers {
 
     pub fn require_auth_layer(
         state: TestAppState,
-    ) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
-           + Clone
-           + Send {
+    ) -> impl Fn(
+        Request,
+        Next,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+    + Clone
+    + Send {
         move |req, next| {
             let state = state.clone();
             Box::pin(require_auth_inner(state, req, next))
@@ -141,11 +144,7 @@ mod test_handlers {
 
     fn extract_basic_auth(req: &Request) -> Option<(String, String)> {
         use base64::Engine;
-        let auth_header = req
-            .headers()
-            .get(header::AUTHORIZATION)?
-            .to_str()
-            .ok()?;
+        let auth_header = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
         let encoded = auth_header.strip_prefix("Basic ")?;
         let decoded = String::from_utf8(
             base64::engine::general_purpose::STANDARD
@@ -299,9 +298,9 @@ fn test_router(state: TestAppState) -> Router {
             "/api/2/devices/{username_json}",
             get(test_handlers::list_devices),
         )
-        .route_layer(axum_mw::from_fn(
-            test_handlers::require_auth_layer(state.clone()),
-        ));
+        .route_layer(axum_mw::from_fn(test_handlers::require_auth_layer(
+            state.clone(),
+        )));
 
     authenticated.with_state(state)
 }
@@ -323,9 +322,7 @@ async fn create_device_returns_200() {
                 .uri("/api/2/devices/alice/my-phone.json")
                 .header(header::COOKIE, format!("sessionid={token}"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"caption": "My Phone", "type": "mobile"}"#,
-                ))
+                .body(Body::from(r#"{"caption": "My Phone", "type": "mobile"}"#))
                 .unwrap(),
         )
         .await
@@ -371,9 +368,7 @@ async fn list_devices_returns_created_devices() {
                 .uri("/api/2/devices/bob/phone.json")
                 .header(header::COOKIE, format!("sessionid={token}"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"caption": "My Phone", "type": "mobile"}"#,
-                ))
+                .body(Body::from(r#"{"caption": "My Phone", "type": "mobile"}"#))
                 .unwrap(),
         )
         .await
@@ -388,9 +383,7 @@ async fn list_devices_returns_created_devices() {
                 .uri("/api/2/devices/bob/laptop.json")
                 .header(header::COOKIE, format!("sessionid={token}"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"caption": "My Laptop", "type": "laptop"}"#,
-                ))
+                .body(Body::from(r#"{"caption": "My Laptop", "type": "laptop"}"#))
                 .unwrap(),
         )
         .await
@@ -442,9 +435,7 @@ async fn update_existing_device() {
             .uri("/api/2/devices/carol/dev1.json")
             .header(header::COOKIE, format!("sessionid={token}"))
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                r#"{"caption": "Old Name", "type": "mobile"}"#,
-            ))
+            .body(Body::from(r#"{"caption": "Old Name", "type": "mobile"}"#))
             .unwrap(),
     )
     .await
@@ -459,9 +450,7 @@ async fn update_existing_device() {
                 .uri("/api/2/devices/carol/dev1.json")
                 .header(header::COOKIE, format!("sessionid={token}"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"caption": "New Name", "type": "laptop"}"#,
-                ))
+                .body(Body::from(r#"{"caption": "New Name", "type": "laptop"}"#))
                 .unwrap(),
         )
         .await
@@ -566,14 +555,9 @@ async fn create_device_with_basic_auth() {
             Request::builder()
                 .method("POST")
                 .uri("/api/2/devices/grace/tablet1.json")
-                .header(
-                    header::AUTHORIZATION,
-                    basic_auth_header("grace", "mypass"),
-                )
+                .header(header::AUTHORIZATION, basic_auth_header("grace", "mypass"))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"caption": "My Tablet", "type": "tablet"}"#,
-                ))
+                .body(Body::from(r#"{"caption": "My Tablet", "type": "tablet"}"#))
                 .unwrap(),
         )
         .await

@@ -29,7 +29,8 @@ impl Db {
             Ok(Db::Postgres(pool))
         } else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
             // Ensure create_if_missing is set for file-based SQLite
-            let connect_opts = url.parse::<sqlx::sqlite::SqliteConnectOptions>()?
+            let connect_opts = url
+                .parse::<sqlx::sqlite::SqliteConnectOptions>()?
                 .create_if_missing(true);
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
                 .max_connections(5)
@@ -39,9 +40,7 @@ impl Db {
             sqlx::query("PRAGMA journal_mode=WAL")
                 .execute(&pool)
                 .await?;
-            sqlx::query("PRAGMA foreign_keys=ON")
-                .execute(&pool)
-                .await?;
+            sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
             info!("Connected to SQLite");
             Ok(Db::Sqlite(pool))
         } else {
@@ -53,12 +52,15 @@ impl Db {
     pub async fn migrate(&self, migrations_dir: &str) -> anyhow::Result<()> {
         match self {
             Db::Postgres(pool) => {
-                let sql = std::fs::read_to_string(format!("{migrations_dir}/postgresql/001_initial.up.sql"))?;
+                let sql = std::fs::read_to_string(format!(
+                    "{migrations_dir}/postgresql/001_initial.up.sql"
+                ))?;
                 sqlx::raw_sql(&sql).execute(pool).await?;
                 info!("PostgreSQL migrations applied");
             }
             Db::Sqlite(pool) => {
-                let sql = std::fs::read_to_string(format!("{migrations_dir}/sqlite/001_initial.up.sql"))?;
+                let sql =
+                    std::fs::read_to_string(format!("{migrations_dir}/sqlite/001_initial.up.sql"))?;
                 sqlx::raw_sql(&sql).execute(pool).await?;
                 info!("SQLite migrations applied");
             }

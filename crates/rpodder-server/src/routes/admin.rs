@@ -8,7 +8,7 @@ use serde::Serialize;
 use rpodder_core::repo::{DeviceRepo, SubscriptionRepo, UserRepo};
 
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
@@ -48,13 +48,14 @@ struct StatusData {
 }
 
 /// GET / — simple HTML dashboard showing DB contents
-pub async fn status_page(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
+pub async fn status_page(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     // Gather data
-    let data = gather_status(&state).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let data = gather_status(&state)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let mut html = String::from(r#"<!DOCTYPE html>
+    let mut html = String::from(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -85,7 +86,8 @@ pub async fn status_page(
 <p class="subtitle">gpodder-compatible podcast sync server</p>
 
 <div style="margin-bottom: 1.5rem;">
-"#);
+"#,
+    );
 
     // Stats summary
     let total_subs: usize = data.users.iter().map(|u| u.subscriptions.len()).sum();
@@ -113,7 +115,10 @@ pub async fn status_page(
         let email_display = if user.email.is_empty() {
             String::new()
         } else {
-            format!(r#" <span style="color:#888; font-size:.85rem;">({})</span>"#, user.email)
+            format!(
+                r#" <span style="color:#888; font-size:.85rem;">({})</span>"#,
+                user.email
+            )
         };
 
         html.push_str(&format!(
@@ -146,7 +151,10 @@ pub async fn status_page(
                 user.subscriptions.len()
             ));
             for url in &user.subscriptions {
-                html.push_str(&format!(r#"<li class="sub-url" style="padding: 2px 0;">• {}</li>"#, url));
+                html.push_str(&format!(
+                    r#"<li class="sub-url" style="padding: 2px 0;">• {}</li>"#,
+                    url
+                ));
             }
             html.push_str("</ul>");
         }
@@ -154,13 +162,17 @@ pub async fn status_page(
         html.push_str("</div>\n");
     }
 
-    html.push_str(r#"<p style="color:#555; font-size:.75rem; margin-top:2rem;">rpodder v0.1.0</p>
-</body></html>"#);
+    html.push_str(
+        r#"<p style="color:#555; font-size:.75rem; margin-top:2rem;">rpodder v0.1.0</p>
+</body></html>"#,
+    );
 
     Ok(Html(html))
 }
 
-async fn gather_status(state: &AppState) -> Result<StatusData, Box<dyn std::error::Error + Send + Sync>> {
+async fn gather_status(
+    state: &AppState,
+) -> Result<StatusData, Box<dyn std::error::Error + Send + Sync>> {
     // Get all users — we need a simple query since UserRepo doesn't have list_all
     let users_raw: Vec<(String, String, Option<String>, bool)> = match &*state.db {
         Db::Postgres(pool) => {

@@ -49,7 +49,12 @@ impl From<UserRow> for User {
 }
 
 impl repo::UserRepo for PgRepo {
-    async fn create(&self, username: &str, password_hash: &str, email: Option<&str>) -> Result<User> {
+    async fn create(
+        &self,
+        username: &str,
+        password_hash: &str,
+        email: Option<&str>,
+    ) -> Result<User> {
         let id = Uuid::now_v7();
         let row: UserRow = sqlx::query_as(
             "INSERT INTO users (id, username, password_hash, email)
@@ -466,7 +471,13 @@ impl From<SubChangeRow> for SubscriptionChange {
 }
 
 impl repo::SubscriptionRepo for PgRepo {
-    async fn subscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid, ref_url: &str) -> Result<()> {
+    async fn subscribe(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        podcast_id: Uuid,
+        ref_url: &str,
+    ) -> Result<()> {
         let sub_id = Uuid::now_v7();
         sqlx::query(
             "INSERT INTO subscriptions (id, user_id, device_id, podcast_id, ref_url)
@@ -569,7 +580,12 @@ impl repo::SubscriptionRepo for PgRepo {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn changes_since(&self, user_id: Uuid, device_id: Uuid, since: DateTime<Utc>) -> Result<Vec<SubscriptionChange>> {
+    async fn changes_since(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<SubscriptionChange>> {
         let rows: Vec<SubChangeRow> = sqlx::query_as(
             "SELECT id, user_id, device_id, podcast_id, action, ref_url, timestamp
              FROM subscription_changes
@@ -689,7 +705,12 @@ impl repo::EpisodeRepo for PgRepo {
         Ok(row.map(Into::into))
     }
 
-    async fn list_for_podcast(&self, podcast_id: Uuid, limit: i64, offset: i64) -> Result<Vec<Episode>> {
+    async fn list_for_podcast(
+        &self,
+        podcast_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Episode>> {
         let rows: Vec<EpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
                     released, duration, filesize, mimetype, created_at, updated_at
@@ -944,15 +965,13 @@ impl repo::SyncGroupRepo for PgRepo {
         let id = Uuid::now_v7();
         let now = Utc::now();
 
-        sqlx::query(
-            "INSERT INTO sync_groups (id, user_id, created_at) VALUES ($1, $2, $3)",
-        )
-        .bind(id)
-        .bind(user_id)
-        .bind(now)
-        .execute(&self.pool)
-        .await
-        .map_err(db_err)?;
+        sqlx::query("INSERT INTO sync_groups (id, user_id, created_at) VALUES ($1, $2, $3)")
+            .bind(id)
+            .bind(user_id)
+            .bind(now)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
 
         for did in device_ids {
             sqlx::query("UPDATE devices SET sync_group_id = $1 WHERE id = $2 AND user_id = $3")
@@ -964,17 +983,20 @@ impl repo::SyncGroupRepo for PgRepo {
                 .map_err(db_err)?;
         }
 
-        Ok(SyncGroup { id, user_id, created_at: now })
+        Ok(SyncGroup {
+            id,
+            user_id,
+            created_at: now,
+        })
     }
 
     async fn get_groups_for_user(&self, user_id: Uuid) -> Result<Vec<(SyncGroup, Vec<Device>)>> {
-        let groups: Vec<(Uuid, Uuid, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT id, user_id, created_at FROM sync_groups WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(db_err)?;
+        let groups: Vec<(Uuid, Uuid, DateTime<Utc>)> =
+            sqlx::query_as("SELECT id, user_id, created_at FROM sync_groups WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(db_err)?;
 
         let mut result = Vec::new();
         for (id, uid, created_at) in groups {
@@ -987,7 +1009,11 @@ impl repo::SyncGroupRepo for PgRepo {
             .await
             .map_err(db_err)?;
 
-            let group = SyncGroup { id, user_id: uid, created_at };
+            let group = SyncGroup {
+                id,
+                user_id: uid,
+                created_at,
+            };
             result.push((group, devices.into_iter().map(Into::into).collect()));
         }
         Ok(result)
@@ -1026,7 +1052,12 @@ fn parse_scope(s: &str) -> SettingsScope {
 }
 
 impl repo::SettingsRepo for PgRepo {
-    async fn get(&self, user_id: Uuid, scope: SettingsScope, scope_id: Option<Uuid>) -> Result<Option<UserSettings>> {
+    async fn get(
+        &self,
+        user_id: Uuid,
+        scope: SettingsScope,
+        scope_id: Option<Uuid>,
+    ) -> Result<Option<UserSettings>> {
         let row: Option<(Uuid, Uuid, String, Option<Uuid>, String, DateTime<Utc>)> = sqlx::query_as(
             "SELECT id, user_id, scope, scope_id, settings::text, updated_at
              FROM user_settings
@@ -1039,13 +1070,16 @@ impl repo::SettingsRepo for PgRepo {
         .await
         .map_err(db_err)?;
 
-        Ok(row.map(|(id, user_id, scope_s, scope_id, settings_s, updated_at)| UserSettings {
-            id, user_id,
-            scope: parse_scope(&scope_s),
-            scope_id,
-            settings: serde_json::from_str(&settings_s).unwrap_or_default(),
-            updated_at,
-        }))
+        Ok(row.map(
+            |(id, user_id, scope_s, scope_id, settings_s, updated_at)| UserSettings {
+                id,
+                user_id,
+                scope: parse_scope(&scope_s),
+                scope_id,
+                settings: serde_json::from_str(&settings_s).unwrap_or_default(),
+                updated_at,
+            },
+        ))
     }
 
     async fn save(&self, settings: &UserSettings) -> Result<()> {
@@ -1092,19 +1126,27 @@ impl repo::PodcastListRepo for PgRepo {
     }
 
     async fn find_by_slug(&self, user_id: Uuid, slug: &str) -> Result<Option<PodcastList>> {
-        let row: Option<(Uuid, Uuid, String, String, DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT id, user_id, title, slug, created_at, updated_at
+        let row: Option<(Uuid, Uuid, String, String, DateTime<Utc>, DateTime<Utc>)> =
+            sqlx::query_as(
+                "SELECT id, user_id, title, slug, created_at, updated_at
              FROM podcast_lists WHERE user_id = $1 AND slug = $2",
-        )
-        .bind(user_id)
-        .bind(slug)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(db_err)?;
+            )
+            .bind(user_id)
+            .bind(slug)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db_err)?;
 
-        Ok(row.map(|(id, user_id, title, slug, created_at, updated_at)| PodcastList {
-            id, user_id, title, slug, created_at, updated_at,
-        }))
+        Ok(row.map(
+            |(id, user_id, title, slug, created_at, updated_at)| PodcastList {
+                id,
+                user_id,
+                title,
+                slug,
+                created_at,
+                updated_at,
+            },
+        ))
     }
 
     async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<PodcastList>> {
@@ -1117,9 +1159,19 @@ impl repo::PodcastListRepo for PgRepo {
         .await
         .map_err(db_err)?;
 
-        Ok(rows.into_iter().map(|(id, user_id, title, slug, created_at, updated_at)| PodcastList {
-            id, user_id, title, slug, created_at, updated_at,
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, user_id, title, slug, created_at, updated_at)| PodcastList {
+                    id,
+                    user_id,
+                    title,
+                    slug,
+                    created_at,
+                    updated_at,
+                },
+            )
+            .collect())
     }
 
     async fn set_entries(&self, list_id: Uuid, podcast_ids: &[Uuid]) -> Result<()> {
@@ -1196,8 +1248,16 @@ impl repo::ChapterRepo for PgRepo {
         Ok(())
     }
 
-    async fn list_for_episode(&self, user_id: Uuid, episode_id: Uuid, since: Option<DateTime<Utc>>) -> Result<Vec<Chapter>> {
-        let rows: Vec<(Uuid, Uuid, Uuid, i32, i32, String, bool, DateTime<Utc>)> = if let Some(since) = since {
+    async fn list_for_episode(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Chapter>> {
+        let rows: Vec<(Uuid, Uuid, Uuid, i32, i32, String, bool, DateTime<Utc>)> = if let Some(
+            since,
+        ) = since
+        {
             sqlx::query_as(
                 "SELECT id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at
                  FROM chapters WHERE user_id = $1 AND episode_id = $2 AND created_at > $3
@@ -1222,12 +1282,39 @@ impl repo::ChapterRepo for PgRepo {
             .map_err(db_err)?
         };
 
-        Ok(rows.into_iter().map(|(id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at)| Chapter {
-            id, user_id, episode_id, start_sec, end_sec, label, advertisement, created_at,
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    user_id,
+                    episode_id,
+                    start_sec,
+                    end_sec,
+                    label,
+                    advertisement,
+                    created_at,
+                )| Chapter {
+                    id,
+                    user_id,
+                    episode_id,
+                    start_sec,
+                    end_sec,
+                    label,
+                    advertisement,
+                    created_at,
+                },
+            )
+            .collect())
     }
 
-    async fn delete(&self, user_id: Uuid, episode_id: Uuid, start_sec: i32, end_sec: i32) -> Result<()> {
+    async fn delete(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        start_sec: i32,
+        end_sec: i32,
+    ) -> Result<()> {
         sqlx::query(
             "DELETE FROM chapters WHERE user_id = $1 AND episode_id = $2 AND start_sec = $3 AND end_sec = $4",
         )

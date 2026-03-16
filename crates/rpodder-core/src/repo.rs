@@ -16,9 +16,20 @@ pub type Result<T> = std::result::Result<T, AppError>;
 // ---------------------------------------------------------------------------
 
 pub trait UserRepo: Send + Sync {
-    fn create(&self, username: &str, password_hash: &str, email: Option<&str>) -> impl std::future::Future<Output = Result<User>> + Send;
-    fn find_by_username(&self, username: &str) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
-    fn find_by_id(&self, id: Uuid) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
+    fn create(
+        &self,
+        username: &str,
+        password_hash: &str,
+        email: Option<&str>,
+    ) -> impl std::future::Future<Output = Result<User>> + Send;
+    fn find_by_username(
+        &self,
+        username: &str,
+    ) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
+    fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -27,8 +38,15 @@ pub trait UserRepo: Send + Sync {
 
 pub trait DeviceRepo: Send + Sync {
     fn upsert(&self, device: &Device) -> impl std::future::Future<Output = Result<Device>> + Send;
-    fn list_for_user(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<Vec<Device>>> + Send;
-    fn find_by_uid(&self, user_id: Uuid, device_id: &str) -> impl std::future::Future<Output = Result<Option<Device>>> + Send;
+    fn list_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<Device>>> + Send;
+    fn find_by_uid(
+        &self,
+        user_id: Uuid,
+        device_id: &str,
+    ) -> impl std::future::Future<Output = Result<Option<Device>>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,17 +54,40 @@ pub trait DeviceRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait SubscriptionRepo: Send + Sync {
-    fn subscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid, ref_url: &str) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn unsubscribe(&self, user_id: Uuid, device_id: Uuid, podcast_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn subscribe(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        podcast_id: Uuid,
+        ref_url: &str,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn unsubscribe(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        podcast_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     /// Get current subscriptions for a device.
-    fn list_for_device(&self, user_id: Uuid, device_id: Uuid) -> impl std::future::Future<Output = Result<Vec<Subscription>>> + Send;
+    fn list_for_device(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<Subscription>>> + Send;
 
     /// Get all subscriptions for a user (across all devices).
-    fn list_for_user(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<Vec<Subscription>>> + Send;
+    fn list_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<Subscription>>> + Send;
 
     /// Get subscription changes since a timestamp (for delta sync).
-    fn changes_since(&self, user_id: Uuid, device_id: Uuid, since: DateTime<Utc>) -> impl std::future::Future<Output = Result<Vec<SubscriptionChange>>> + Send;
+    fn changes_since(
+        &self,
+        user_id: Uuid,
+        device_id: Uuid,
+        since: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<Vec<SubscriptionChange>>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +95,10 @@ pub trait SubscriptionRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait EpisodeActionRepo: Send + Sync {
-    fn create(&self, action: &EpisodeAction) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn create(
+        &self,
+        action: &EpisodeAction,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 
     fn list(
         &self,
@@ -71,12 +115,29 @@ pub trait EpisodeActionRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait PodcastRepo: Send + Sync {
-    fn get_or_create_for_url(&self, url: &str) -> impl std::future::Future<Output = Result<(Podcast, bool)>> + Send;
-    fn find_by_url(&self, url: &str) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
-    fn find_by_id(&self, id: Uuid) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
+    fn get_or_create_for_url(
+        &self,
+        url: &str,
+    ) -> impl std::future::Future<Output = Result<(Podcast, bool)>> + Send;
+    fn find_by_url(
+        &self,
+        url: &str,
+    ) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
+    fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
     fn update(&self, podcast: &Podcast) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn toplist(&self, count: i64, language: Option<&str>) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
-    fn search(&self, query: &str, limit: i64) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
+    fn toplist(
+        &self,
+        count: i64,
+        language: Option<&str>,
+    ) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
+    fn search(
+        &self,
+        query: &str,
+        limit: i64,
+    ) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,9 +145,21 @@ pub trait PodcastRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait EpisodeRepo: Send + Sync {
-    fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> impl std::future::Future<Output = Result<(Episode, bool)>> + Send;
-    fn find_by_id(&self, id: Uuid) -> impl std::future::Future<Output = Result<Option<Episode>>> + Send;
-    fn list_for_podcast(&self, podcast_id: Uuid, limit: i64, offset: i64) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
+    fn get_or_create_for_url(
+        &self,
+        podcast_id: Uuid,
+        url: &str,
+    ) -> impl std::future::Future<Output = Result<(Episode, bool)>> + Send;
+    fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Option<Episode>>> + Send;
+    fn list_for_podcast(
+        &self,
+        podcast_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
     fn update(&self, episode: &Episode) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
@@ -96,7 +169,10 @@ pub trait EpisodeRepo: Send + Sync {
 
 pub trait SessionRepo: Send + Sync {
     fn create(&self, session: &Session) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn find_by_token(&self, token: &str) -> impl std::future::Future<Output = Result<Option<Session>>> + Send;
+    fn find_by_token(
+        &self,
+        token: &str,
+    ) -> impl std::future::Future<Output = Result<Option<Session>>> + Send;
     fn delete(&self, token: &str) -> impl std::future::Future<Output = Result<()>> + Send;
     fn delete_expired(&self) -> impl std::future::Future<Output = Result<u64>> + Send;
 }
@@ -106,8 +182,14 @@ pub trait SessionRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait SettingsRepo: Send + Sync {
-    fn get(&self, user_id: Uuid, scope: SettingsScope, scope_id: Option<Uuid>) -> impl std::future::Future<Output = Result<Option<UserSettings>>> + Send;
-    fn save(&self, settings: &UserSettings) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn get(
+        &self,
+        user_id: Uuid,
+        scope: SettingsScope,
+        scope_id: Option<Uuid>,
+    ) -> impl std::future::Future<Output = Result<Option<UserSettings>>> + Send;
+    fn save(&self, settings: &UserSettings)
+    -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,9 +197,19 @@ pub trait SettingsRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait SyncGroupRepo: Send + Sync {
-    fn create_group(&self, user_id: Uuid, device_ids: &[Uuid]) -> impl std::future::Future<Output = Result<SyncGroup>> + Send;
-    fn get_groups_for_user(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<Vec<(SyncGroup, Vec<Device>)>>> + Send;
-    fn remove_device_from_group(&self, device_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn create_group(
+        &self,
+        user_id: Uuid,
+        device_ids: &[Uuid],
+    ) -> impl std::future::Future<Output = Result<SyncGroup>> + Send;
+    fn get_groups_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<(SyncGroup, Vec<Device>)>>> + Send;
+    fn remove_device_from_group(
+        &self,
+        device_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,9 +217,20 @@ pub trait SyncGroupRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait TagRepo: Send + Sync {
-    fn top_tags(&self, count: i64) -> impl std::future::Future<Output = Result<Vec<(String, i64)>>> + Send;
-    fn podcasts_for_tag(&self, tag: &str, count: i64) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
-    fn set_tags_for_podcast(&self, podcast_id: Uuid, tags: &[Tag]) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn top_tags(
+        &self,
+        count: i64,
+    ) -> impl std::future::Future<Output = Result<Vec<(String, i64)>>> + Send;
+    fn podcasts_for_tag(
+        &self,
+        tag: &str,
+        count: i64,
+    ) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
+    fn set_tags_for_podcast(
+        &self,
+        podcast_id: Uuid,
+        tags: &[Tag],
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +239,24 @@ pub trait TagRepo: Send + Sync {
 
 pub trait PodcastListRepo: Send + Sync {
     fn create(&self, list: &PodcastList) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn find_by_slug(&self, user_id: Uuid, slug: &str) -> impl std::future::Future<Output = Result<Option<PodcastList>>> + Send;
-    fn list_for_user(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<Vec<PodcastList>>> + Send;
-    fn set_entries(&self, list_id: Uuid, podcast_ids: &[Uuid]) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn get_entries(&self, list_id: Uuid) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
+    fn find_by_slug(
+        &self,
+        user_id: Uuid,
+        slug: &str,
+    ) -> impl std::future::Future<Output = Result<Option<PodcastList>>> + Send;
+    fn list_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<PodcastList>>> + Send;
+    fn set_entries(
+        &self,
+        list_id: Uuid,
+        podcast_ids: &[Uuid],
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn get_entries(
+        &self,
+        list_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<Podcast>>> + Send;
     fn delete(&self, list_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
@@ -149,8 +266,19 @@ pub trait PodcastListRepo: Send + Sync {
 
 pub trait ChapterRepo: Send + Sync {
     fn upsert(&self, chapter: &Chapter) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn list_for_episode(&self, user_id: Uuid, episode_id: Uuid, since: Option<DateTime<Utc>>) -> impl std::future::Future<Output = Result<Vec<Chapter>>> + Send;
-    fn delete(&self, user_id: Uuid, episode_id: Uuid, start_sec: i32, end_sec: i32) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn list_for_episode(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        since: Option<DateTime<Utc>>,
+    ) -> impl std::future::Future<Output = Result<Vec<Chapter>>> + Send;
+    fn delete(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+        start_sec: i32,
+        end_sec: i32,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +286,18 @@ pub trait ChapterRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait FavoriteRepo: Send + Sync {
-    fn add(&self, user_id: Uuid, episode_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn remove(&self, user_id: Uuid, episode_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
-    fn list_for_user(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
+    fn add(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn remove(
+        &self,
+        user_id: Uuid,
+        episode_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn list_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
 }
