@@ -82,7 +82,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3007:3005"
+      - "3005:3005"
     volumes:
       - sqlite-data:/app/data
     environment:

@@ -6,6 +6,7 @@ pub mod directory;
 pub mod episodes;
 pub mod favorites;
 pub mod health;
+pub mod helpers;
 pub mod lists;
 pub mod settings;
 pub mod subscriptions;

@@ -73,6 +73,16 @@ export interface PodcastInfo {
   language?: string;
 }
 
+export async function getPodcastInfo(url: string): Promise<PodcastInfo | null> {
+  try {
+    const resp = await request(`/api/2/data/podcast.json?url=${encodeURIComponent(url)}`);
+    if (!resp.ok) return null;
+    return resp.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   const resp = await request(`/search.json?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return [];

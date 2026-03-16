@@ -9,8 +9,8 @@ use uuid::Uuid;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
 use rpodder_core::types::{Tag, TagSource};
 use rpodder_core::url::normalize_url;
-use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
-use rpodder_feed::{FeedFetcher, parse_feed};
+use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_feed::{parse_feed, FeedFetcher};
 
 macro_rules! with_repo {
     ($db:expr, |$repo:ident| $body:expr) => {
@@ -28,6 +28,7 @@ macro_rules! with_repo {
 }
 
 /// Update a single podcast feed: fetch, parse, update metadata and episodes.
+/// Errors are logged but do not stop processing — each step is best-effort.
 pub async fn update_podcast_feed(
     db: &Db,
     fetcher: &FeedFetcher,
@@ -56,7 +57,7 @@ pub async fn update_podcast_feed(
     // Parse the feed
     let parsed = parse_feed(&body)?;
 
-    // Update podcast metadata
+    // Update podcast metadata (best-effort)
     podcast.title = parsed.title;
     podcast.description = parsed.description;
     podcast.link = parsed.link;
@@ -66,9 +67,11 @@ pub async fn update_podcast_feed(
     podcast.last_update = Some(Utc::now());
     podcast.updated_at = Utc::now();
 
-    with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await)?;
+    if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
+        warn!(url = podcast_url, error = %e, "failed to update podcast metadata");
+    }
 
-    // Update tags from feed categories
+    // Update tags from feed categories (best-effort)
     if !parsed.categories.is_empty() {
         let tags: Vec<Tag> = parsed
             .categories
@@ -89,7 +92,7 @@ pub async fn update_podcast_feed(
         }
     }
 
-    // Update episodes
+    // Update episodes (best-effort per episode)
     let mut episode_count = 0i64;
     for parsed_ep in &parsed.episodes {
         let ep_url = parsed_ep.media_url.as_deref().or(parsed_ep.link.as_deref());
@@ -100,11 +103,18 @@ pub async fn update_podcast_feed(
 
         let normalized = normalize_url(ep_url);
 
-        let (mut episode, _created) = with_repo!(db, |repo| {
+        let episode_result = with_repo!(db, |repo| {
             EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &normalized).await
-        })?;
+        });
 
-        // Update episode metadata
+        let (mut episode, _created) = match episode_result {
+            Ok(ep) => ep,
+            Err(e) => {
+                warn!(url = ep_url, error = %e, "failed to create episode");
+                continue;
+            }
+        };
+
         episode.title = parsed_ep.title.clone();
         episode.description = parsed_ep.description.clone();
         episode.link = parsed_ep.link.clone();
@@ -115,15 +125,20 @@ pub async fn update_podcast_feed(
         episode.mimetype = parsed_ep.mimetype.clone();
         episode.updated_at = Utc::now();
 
-        with_repo!(db, |repo| EpisodeRepo::update(&repo, &episode).await)?;
+        if let Err(e) = with_repo!(db, |repo| EpisodeRepo::update(&repo, &episode).await) {
+            warn!(url = ep_url, error = %e, "failed to update episode");
+            continue;
+        }
 
         episode_count += 1;
     }
 
-    // Update episode count
+    // Update episode count (best-effort)
     podcast.episode_count = episode_count;
     podcast.updated_at = Utc::now();
-    with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await)?;
+    if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
+        warn!(url = podcast_url, error = %e, "failed to update episode count");
+    }
 
     info!(
         url = podcast_url,
@@ -142,14 +157,12 @@ pub async fn run_feed_update_loop(db: Arc<Db>, interval_secs: u64) {
     loop {
         info!("starting feed update cycle");
 
-        // Get all podcast URLs that need updating
         let urls = get_all_podcast_urls(&db).await;
 
         for url in &urls {
             if let Err(e) = update_podcast_feed(&db, &fetcher, url).await {
                 error!(url, error = %e, "failed to update feed");
             }
-            // Small delay between fetches to be polite
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
 
