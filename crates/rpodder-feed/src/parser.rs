@@ -1,8 +1,6 @@
 //! Parse RSS/Atom feed XML into rpodder domain types.
 
 use chrono::{DateTime, Utc};
-use rpodder_core::types::{Episode, Podcast};
-use uuid::Uuid;
 
 /// Parsed feed data ready to be persisted.
 pub struct ParsedFeed {

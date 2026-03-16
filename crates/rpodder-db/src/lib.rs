@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 //! Database layer for rpodder.
 //!
 //! Provides implementations of the repository traits defined in rpodder-core

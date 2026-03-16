@@ -33,19 +33,19 @@ async fn require_auth(state: AppState, mut req: Request, next: Next) -> Response
     let basic_auth = extract_basic_auth(&req);
 
     // 1. Try session cookie first
-    if let Some(token) = &session_token {
-        if let Some(user) = resolve_session(&state, token).await {
-            req.extensions_mut().insert(AuthUser(user));
-            return next.run(req).await;
-        }
+    if let Some(token) = &session_token
+        && let Some(user) = resolve_session(&state, token).await
+    {
+        req.extensions_mut().insert(AuthUser(user));
+        return next.run(req).await;
     }
 
     // 2. Try HTTP Basic Auth
-    if let Some((username, password)) = &basic_auth {
-        if let Some(user) = resolve_basic_auth(&state, username, password).await {
-            req.extensions_mut().insert(AuthUser(user));
-            return next.run(req).await;
-        }
+    if let Some((username, password)) = &basic_auth
+        && let Some(user) = resolve_basic_auth(&state, username, password).await
+    {
+        req.extensions_mut().insert(AuthUser(user));
+        return next.run(req).await;
     }
 
     StatusCode::UNAUTHORIZED.into_response()

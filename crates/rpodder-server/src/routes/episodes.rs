@@ -71,7 +71,8 @@ pub struct EpisodeQuery {
     pub since: Option<i64>,
     pub podcast: Option<String>,
     pub device: Option<String>,
-    pub aggregated: Option<bool>,
+    #[serde(alias = "aggregated")]
+    pub _aggregated: Option<bool>,
 }
 
 macro_rules! with_repo {
@@ -133,10 +134,8 @@ pub async fn upload_episode_actions(
         let action_type = parse_action_type(&action_input.action).ok_or(StatusCode::BAD_REQUEST)?;
 
         // Validate play action fields
-        if action_type == EpisodeActionType::Play {
-            if action_input.position.is_none() {
-                return Err(StatusCode::BAD_REQUEST);
-            }
+        if action_type == EpisodeActionType::Play && action_input.position.is_none() {
+            return Err(StatusCode::BAD_REQUEST);
         }
 
         // Normalize URLs

@@ -1,6 +1,6 @@
 use axum::{
     Extension,
-    extract::{Json, Path, Query, State},
+    extract::{Json, Path, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -42,13 +42,6 @@ fn parse_scope(s: &str) -> Option<SettingsScope> {
         "episode" => Some(SettingsScope::Episode),
         _ => None,
     }
-}
-
-#[derive(Deserialize)]
-pub struct SettingsQuery {
-    pub device: Option<String>,
-    pub podcast: Option<String>,
-    pub episode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -129,7 +122,7 @@ pub async fn update_settings(
         updated_at: Utc::now(),
     };
 
-    with_repo!(state, |repo| { SettingsRepo::save(&repo, &settings).await })
+    with_repo!(state, |repo| SettingsRepo::save(&repo, &settings).await)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(serde_json::Value::Object(current)))

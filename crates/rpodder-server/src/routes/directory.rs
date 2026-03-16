@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
+use rpodder_core::repo::{PodcastRepo, SubscriptionRepo, TagRepo};
 
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
@@ -120,7 +120,7 @@ pub async fn toplist(
 ) -> Result<impl IntoResponse, StatusCode> {
     let count_str = strip_format_suffix(&count_raw);
     let count: i64 = count_str.parse().unwrap_or(50);
-    let count = count.min(100).max(1);
+    let count = count.clamp(1, 100);
 
     let podcasts = with_repo!(state, |repo| {
         PodcastRepo::toplist(&repo, count, None).await
@@ -167,9 +167,19 @@ pub async fn episode_data(
     .ok_or(StatusCode::NOT_FOUND)?;
 
     // Find episode by URL in episode_urls table
-    let episode = match &*state.db {
+    type EpRow = (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<String>,
+    );
+    let episode: Option<EpRow> = match &*state.db {
         Db::Postgres(pool) => {
-            let row: Option<(String, String, String, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(
+            sqlx::query_as(
                 "SELECT e.title, eu.url, e.description, e.link, e.released::text, e.duration, e.filesize, e.mimetype
                  FROM episodes e
                  JOIN episode_urls eu ON eu.episode_id = e.id
@@ -179,11 +189,10 @@ pub async fn episode_data(
             .bind(podcast.id)
             .fetch_optional(pool)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            row
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         }
         Db::Sqlite(pool) => {
-            let row: Option<(String, String, String, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<String>)> = sqlx::query_as(
+            sqlx::query_as(
                 "SELECT e.title, eu.url, e.description, e.link, e.released, e.duration, e.filesize, e.mimetype
                  FROM episodes e
                  JOIN episode_urls eu ON eu.episode_id = e.id
@@ -193,8 +202,7 @@ pub async fn episode_data(
             .bind(podcast.id.to_string())
             .fetch_optional(pool)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            row
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         }
     };
 
@@ -234,9 +242,9 @@ pub async fn top_tags(
 ) -> Result<impl IntoResponse, StatusCode> {
     let count_str = strip_format_suffix(&count_raw);
     let count: i64 = count_str.parse().unwrap_or(50);
-    let count = count.min(200).max(1);
+    let count = count.clamp(1, 200);
 
-    let tags = with_repo!(state, |repo| { TagRepo::top_tags(&repo, count).await })
+    let tags = with_repo!(state, |repo| TagRepo::top_tags(&repo, count).await)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let results: Vec<TagResponse> = tags
@@ -257,7 +265,7 @@ pub async fn podcasts_for_tag(
 ) -> Result<impl IntoResponse, StatusCode> {
     let count_str = strip_format_suffix(&count_raw);
     let count: i64 = count_str.parse().unwrap_or(50);
-    let count = count.min(100).max(1);
+    let count = count.clamp(1, 100);
 
     let podcasts = with_repo!(state, |repo| {
         TagRepo::podcasts_for_tag(&repo, &tag, count).await
@@ -283,7 +291,7 @@ pub async fn suggestions(
 ) -> Result<impl IntoResponse, StatusCode> {
     let count_str = strip_format_suffix(&count_raw);
     let count: i64 = count_str.parse().unwrap_or(10);
-    let count = count.min(100).max(1);
+    let count = count.clamp(1, 100);
 
     // Get user's subscribed podcast IDs
     let user_subs = with_repo!(state, |repo| {

@@ -166,7 +166,7 @@ pub async fn update_chapters(
                 created_at: Utc::now(),
             };
 
-            with_repo!(state, |repo| { ChapterRepo::upsert(&repo, &chapter).await })
+            with_repo!(state, |repo| ChapterRepo::upsert(&repo, &chapter).await)
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         }
     }

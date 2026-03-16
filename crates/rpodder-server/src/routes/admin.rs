@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Serialize;
 
-use rpodder_core::repo::{DeviceRepo, SubscriptionRepo, UserRepo};
+use rpodder_core::repo::{DeviceRepo, SubscriptionRepo};
 
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};

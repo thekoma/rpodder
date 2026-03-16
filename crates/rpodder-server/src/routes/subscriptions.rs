@@ -89,15 +89,13 @@ fn opml_to_urls(opml_str: &str) -> Vec<String> {
     let mut urls = Vec::new();
     for line in opml_str.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("<outline") || trimmed.starts_with("<Outline") {
-            if let Some(url) = extract_xml_attr(trimmed, "xmlUrl")
+        if (trimmed.starts_with("<outline") || trimmed.starts_with("<Outline"))
+            && let Some(url) = extract_xml_attr(trimmed, "xmlUrl")
                 .or_else(|| extract_xml_attr(trimmed, "xmlurl"))
                 .or_else(|| extract_xml_attr(trimmed, "XMLURL"))
-            {
-                if !url.is_empty() {
-                    urls.push(xml_unescape(&url));
-                }
-            }
+            && !url.is_empty()
+        {
+            urls.push(xml_unescape(&url));
         }
     }
     urls
@@ -339,7 +337,7 @@ pub async fn upload_subscription_changes(
     let remove_urls: Vec<String> = body.remove.iter().map(|u| normalize_url(u)).collect();
 
     for url in &remove_urls {
-        let podcast = with_repo!(state, |repo| { PodcastRepo::find_by_url(&repo, url).await })
+        let podcast = with_repo!(state, |repo| PodcastRepo::find_by_url(&repo, url).await)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         if let Some(podcast) = podcast {

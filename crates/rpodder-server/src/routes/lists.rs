@@ -183,6 +183,7 @@ pub async fn get_list(
 /// PUT /api/2/lists/{username}/list/{slug}.json
 #[derive(Deserialize)]
 pub struct UpdateListRequest {
+    #[allow(dead_code)]
     pub title: Option<String>,
     pub podcasts: Option<Vec<String>>,
 }
