@@ -1,0 +1,31 @@
+[Unit]
+Description=rpodder — gpodder-compatible podcast sync server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rpodder
+Group=rpodder
+ExecStart=/usr/local/bin/rpodder serve
+WorkingDirectory=/var/lib/rpodder
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=RPODDER_DATABASE_URL=sqlite:///var/lib/rpodder/rpodder.db
+Environment=RPODDER_HOST=0.0.0.0
+Environment=RPODDER_PORT=3005
+Environment=RPODDER_RUN_MIGRATIONS=true
+Environment=RPODDER_MIGRATIONS_DIR=/usr/share/rpodder/migrations
+Environment=RUST_LOG=rpodder=info
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rpodder
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

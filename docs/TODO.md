@@ -19,7 +19,7 @@
 - [x] Skaffold config (continuous build with docker-compose deployer)
 - [x] Initialize git repository
 - [x] Verify `cargo build` and `cargo test` pass
-- [ ] Add CI (GitHub Actions: build, test, clippy, fmt)
+- [x] Add CI (GitHub Actions: build, test, clippy, fmt)
 
 ## Phase 1 — Core Sync (MVP)
 
@@ -153,12 +153,13 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 
 - [ ] Rate limiting per user/IP
 - [ ] Prometheus metrics endpoint
-- [ ] Health check endpoint
+- [x] Health check endpoint
 - [ ] Admin API (user management, feed forcing, stats)
 - [ ] TLS termination docs (or built-in via rustls)
-- [ ] Systemd service file
-- [ ] Helm chart / docker-compose.yml
-- [ ] README with quickstart
+- [x] Systemd service file
+- [x] Helm chart / docker-compose.yml
+- [x] README with quickstart
+- [x] Add CI (GitHub Actions: build, test, clippy, fmt)
 - [ ] Automated release builds (cross-compile for linux/amd64, arm64, armv7)
 - [ ] Performance benchmarks
 
