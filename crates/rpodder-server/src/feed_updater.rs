@@ -9,8 +9,8 @@ use uuid::Uuid;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
 use rpodder_core::types::{Tag, TagSource};
 use rpodder_core::url::normalize_url;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
-use rpodder_feed::{parse_feed, FeedFetcher};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
+use rpodder_feed::{FeedFetcher, parse_feed};
 
 macro_rules! with_repo {
     ($db:expr, |$repo:ident| $body:expr) => {

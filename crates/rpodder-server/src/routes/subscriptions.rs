@@ -198,8 +198,7 @@ pub async fn get_device_subscriptions(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let device =
-        super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
+    let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
     let subs = with_repo!(state, |repo| {
         SubscriptionRepo::list_for_device(&repo, auth_user.0.id, device.id).await
@@ -240,8 +239,7 @@ pub async fn put_device_subscriptions(
     // Normalize URLs
     let urls: Vec<String> = urls.into_iter().map(|u| normalize_url(&u)).collect();
 
-    let device =
-        super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
+    let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
     let current_subs = with_repo!(state, |repo| {
         SubscriptionRepo::list_for_device(&repo, auth_user.0.id, device.id).await
@@ -320,8 +318,7 @@ pub async fn upload_subscription_changes(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let device =
-        super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
+    let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
     // Normalize URLs
     let add_urls: Vec<String> = body.add.iter().map(|u| normalize_url(u)).collect();
@@ -376,8 +373,7 @@ pub async fn download_subscription_changes(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let device =
-        super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
+    let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
     let since = params
         .since

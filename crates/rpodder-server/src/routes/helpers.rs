@@ -6,7 +6,7 @@ use rpodder_core::repo::DeviceRepo;
 use rpodder_core::types::{Device, DeviceType};
 
 use crate::state::AppState;
-use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
+use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
@@ -52,10 +52,8 @@ pub async fn find_or_create_device(
         updated_at: now,
     };
 
-    let created = with_repo!(state, |repo| {
-        DeviceRepo::upsert(&repo, &device).await
-    })
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let created = with_repo!(state, |repo| { DeviceRepo::upsert(&repo, &device).await })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(created)
 }
