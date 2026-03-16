@@ -1,7 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Json, Path, Query, State},
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header, StatusCode},
+    response::{IntoResponse, Response},
     Extension,
 };
 use chrono::{TimeZone, Utc};
@@ -9,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use rpodder_core::repo::{DeviceRepo, PodcastRepo, SubscriptionRepo};
 use rpodder_core::types::SubscriptionAction;
+use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
@@ -37,11 +39,136 @@ pub struct SinceQuery {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: resolve device_id string → Device UUID
+// Format detection
 // ---------------------------------------------------------------------------
 
-/// Macro to avoid repeating the Db::Postgres/Sqlite match for every repo call.
-/// Returns the result of the expression for the appropriate backend.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Format {
+    Json,
+    Opml,
+    Txt,
+}
+
+/// Parse the format suffix from a path segment like "device.opml" → ("device", Opml)
+fn parse_format_suffix(s: &str) -> (&str, Format) {
+    if let Some(name) = s.strip_suffix(".opml") {
+        (name, Format::Opml)
+    } else if let Some(name) = s.strip_suffix(".txt") {
+        (name, Format::Txt)
+    } else if let Some(name) = s.strip_suffix(".json") {
+        (name, Format::Json)
+    } else {
+        (s, Format::Json)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// OPML generation / parsing
+// ---------------------------------------------------------------------------
+
+fn urls_to_opml(urls: &[String], title: &str) -> String {
+    let mut opml = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>"#,
+    );
+    opml.push_str(&xml_escape(title));
+    opml.push_str("</title></head>\n  <body>\n");
+    for url in urls {
+        opml.push_str(&format!(
+            "    <outline type=\"rss\" xmlUrl=\"{}\" />\n",
+            xml_escape(url)
+        ));
+    }
+    opml.push_str("  </body>\n</opml>\n");
+    opml
+}
+
+fn opml_to_urls(opml_str: &str) -> Vec<String> {
+    // Simple parser: extract xmlUrl="..." from <outline> elements
+    let mut urls = Vec::new();
+    for line in opml_str.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("<outline") || trimmed.starts_with("<Outline") {
+            if let Some(url) = extract_xml_attr(trimmed, "xmlUrl")
+                .or_else(|| extract_xml_attr(trimmed, "xmlurl"))
+                .or_else(|| extract_xml_attr(trimmed, "XMLURL"))
+            {
+                if !url.is_empty() {
+                    urls.push(xml_unescape(&url));
+                }
+            }
+        }
+    }
+    urls
+}
+
+fn extract_xml_attr(element: &str, attr_name: &str) -> Option<String> {
+    let needle = format!("{attr_name}=\"");
+    let start = element.find(&needle)? + needle.len();
+    let rest = &element[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn xml_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+// ---------------------------------------------------------------------------
+// TXT generation / parsing
+// ---------------------------------------------------------------------------
+
+fn urls_to_txt(urls: &[String]) -> String {
+    let mut txt = String::new();
+    for url in urls {
+        txt.push_str(url);
+        txt.push('\n');
+    }
+    txt
+}
+
+fn txt_to_urls(txt: &str) -> Vec<String> {
+    txt.lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.to_string())
+        .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Response helpers
+// ---------------------------------------------------------------------------
+
+fn respond_urls(urls: &[String], format: Format, title: &str) -> Response {
+    match format {
+        Format::Json => Json(urls.to_vec()).into_response(),
+        Format::Opml => Response::builder()
+            .header(header::CONTENT_TYPE, "text/x-opml+xml; charset=utf-8")
+            .body(Body::from(urls_to_opml(urls, title)))
+            .unwrap(),
+        Format::Txt => Response::builder()
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Body::from(urls_to_txt(urls)))
+            .unwrap(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Macro
+// ---------------------------------------------------------------------------
+
 macro_rules! with_repo {
     ($state:expr, |$repo:ident| $body:expr) => {
         match &*$state.db {
@@ -57,22 +184,17 @@ macro_rules! with_repo {
     };
 }
 
-fn strip_json_suffix(s: &str) -> &str {
-    s.strip_suffix(".json").unwrap_or(s)
-}
-
 // ---------------------------------------------------------------------------
-// Simple API: GET /subscriptions/{username}/{deviceid}.json
+// Simple API: GET /subscriptions/{username}/{deviceid}.{format}
 // ---------------------------------------------------------------------------
 
-/// Returns the list of subscription URLs for a device.
 pub async fn get_device_subscriptions(
     State(state): State<AppState>,
-    Path((username_json, deviceid_json)): Path<(String, String)>,
+    Path((username_raw, deviceid_raw)): Path<(String, String)>,
     Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let username = strip_json_suffix(&username_json);
-    let deviceid = strip_json_suffix(&deviceid_json);
+) -> Result<Response, StatusCode> {
+    let (username, _) = parse_format_suffix(&username_raw);
+    let (deviceid, format) = parse_format_suffix(&deviceid_raw);
 
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
@@ -90,25 +212,38 @@ pub async fn get_device_subscriptions(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let urls: Vec<String> = subs.into_iter().map(|s| s.ref_url).collect();
-    Ok(Json(urls))
+    let title = format!("{username} — {deviceid} subscriptions");
+    Ok(respond_urls(&urls, format, &title))
 }
 
 // ---------------------------------------------------------------------------
-// Simple API: PUT /subscriptions/{username}/{deviceid}.json
+// Simple API: PUT /subscriptions/{username}/{deviceid}.{format}
 // ---------------------------------------------------------------------------
 
-/// Replace the full subscription list for a device.
 pub async fn put_device_subscriptions(
     State(state): State<AppState>,
-    Path((username, deviceid_json)): Path<(String, String)>,
+    Path((username_raw, deviceid_raw)): Path<(String, String)>,
     Extension(auth_user): Extension<AuthUser>,
-    Json(urls): Json<Vec<String>>,
+    body: String,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let deviceid = strip_json_suffix(&deviceid_json);
+    let (username, _) = parse_format_suffix(&username_raw);
+    let (deviceid, format) = parse_format_suffix(&deviceid_raw);
 
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
     }
+
+    // Parse URLs from body based on format
+    let urls = match format {
+        Format::Json => {
+            serde_json::from_str::<Vec<String>>(&body).map_err(|_| StatusCode::BAD_REQUEST)?
+        }
+        Format::Opml => opml_to_urls(&body),
+        Format::Txt => txt_to_urls(&body),
+    };
+
+    // Normalize URLs
+    let urls: Vec<String> = urls.into_iter().map(|u| normalize_url(&u)).collect();
 
     let device = with_repo!(state, |repo| {
         DeviceRepo::find_by_uid(&repo, auth_user.0.id, deviceid).await
@@ -116,7 +251,6 @@ pub async fn put_device_subscriptions(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Get current subscriptions
     let current_subs = with_repo!(state, |repo| {
         SubscriptionRepo::list_for_device(&repo, auth_user.0.id, device.id).await
     })
@@ -126,7 +260,6 @@ pub async fn put_device_subscriptions(
         current_subs.iter().map(|s| s.ref_url.clone()).collect();
     let new_urls: std::collections::HashSet<String> = urls.into_iter().collect();
 
-    // Unsubscribe from URLs no longer in the list
     for sub in &current_subs {
         if !new_urls.contains(&sub.ref_url) {
             with_repo!(state, |repo| {
@@ -137,7 +270,6 @@ pub async fn put_device_subscriptions(
         }
     }
 
-    // Subscribe to new URLs
     for url in &new_urls {
         if !current_urls.contains(url) {
             let (podcast, _) = with_repo!(state, |repo| {
@@ -157,16 +289,15 @@ pub async fn put_device_subscriptions(
 }
 
 // ---------------------------------------------------------------------------
-// Simple API: GET /subscriptions/{username}.json
+// Simple API: GET /subscriptions/{username}.{format}
 // ---------------------------------------------------------------------------
 
-/// Returns all subscription URLs for a user (across all devices, deduplicated).
 pub async fn get_user_subscriptions(
     State(state): State<AppState>,
-    Path(username_json): Path<String>,
+    Path(username_raw): Path<String>,
     Extension(auth_user): Extension<AuthUser>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let username = strip_json_suffix(&username_json);
+) -> Result<Response, StatusCode> {
+    let (username, format) = parse_format_suffix(&username_raw);
 
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
@@ -178,21 +309,21 @@ pub async fn get_user_subscriptions(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let urls: Vec<String> = subs.into_iter().map(|s| s.ref_url).collect();
-    Ok(Json(urls))
+    let title = format!("{username} subscriptions");
+    Ok(respond_urls(&urls, format, &title))
 }
 
 // ---------------------------------------------------------------------------
 // Advanced API: POST /api/2/subscriptions/{username}/{deviceid}.json
 // ---------------------------------------------------------------------------
 
-/// Upload subscription changes (add/remove URLs).
 pub async fn upload_subscription_changes(
     State(state): State<AppState>,
-    Path((username, deviceid_json)): Path<(String, String)>,
+    Path((username, deviceid_raw)): Path<(String, String)>,
     Extension(auth_user): Extension<AuthUser>,
     Json(body): Json<DeltaUploadRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let deviceid = strip_json_suffix(&deviceid_json);
+    let (deviceid, _) = parse_format_suffix(&deviceid_raw);
 
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
@@ -204,9 +335,11 @@ pub async fn upload_subscription_changes(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Process removals first (a URL in both add and remove should end as subscribed)
-    for url in &body.remove {
-        // Find the podcast for this URL
+    // Normalize URLs
+    let add_urls: Vec<String> = body.add.iter().map(|u| normalize_url(u)).collect();
+    let remove_urls: Vec<String> = body.remove.iter().map(|u| normalize_url(u)).collect();
+
+    for url in &remove_urls {
         let podcast = with_repo!(state, |repo| {
             PodcastRepo::find_by_url(&repo, url).await
         })
@@ -220,8 +353,7 @@ pub async fn upload_subscription_changes(
         }
     }
 
-    // Process additions
-    for url in &body.add {
+    for url in &add_urls {
         let (podcast, _) = with_repo!(state, |repo| {
             PodcastRepo::get_or_create_for_url(&repo, url).await
         })
@@ -236,8 +368,8 @@ pub async fn upload_subscription_changes(
     let timestamp = Utc::now().timestamp();
 
     Ok(Json(DeltaResponse {
-        add: body.add,
-        remove: body.remove,
+        add: add_urls,
+        remove: remove_urls,
         timestamp,
     }))
 }
@@ -246,14 +378,13 @@ pub async fn upload_subscription_changes(
 // Advanced API: GET /api/2/subscriptions/{username}/{deviceid}.json?since=T
 // ---------------------------------------------------------------------------
 
-/// Download subscription changes since a timestamp.
 pub async fn download_subscription_changes(
     State(state): State<AppState>,
-    Path((username, deviceid_json)): Path<(String, String)>,
+    Path((username, deviceid_raw)): Path<(String, String)>,
     Extension(auth_user): Extension<AuthUser>,
     Query(params): Query<SinceQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let deviceid = strip_json_suffix(&deviceid_json);
+    let (deviceid, _) = parse_format_suffix(&deviceid_raw);
 
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);

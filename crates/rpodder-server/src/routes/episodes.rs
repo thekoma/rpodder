@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use rpodder_core::repo::{DeviceRepo, EpisodeActionRepo, EpisodeRepo, PodcastRepo};
 use rpodder_core::types::{EpisodeAction, EpisodeActionType};
+use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
@@ -139,15 +140,19 @@ pub async fn upload_episode_actions(
             }
         }
 
+        // Normalize URLs
+        let podcast_url = normalize_url(&action_input.podcast);
+        let episode_url = normalize_url(&action_input.episode);
+
         // Resolve podcast
         let (podcast, _) = with_repo!(state, |repo| {
-            PodcastRepo::get_or_create_for_url(&repo, &action_input.podcast).await
+            PodcastRepo::get_or_create_for_url(&repo, &podcast_url).await
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
         // Resolve episode
         let (episode, _) = with_repo!(state, |repo| {
-            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &action_input.episode).await
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &episode_url).await
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -180,8 +185,8 @@ pub async fn upload_episode_actions(
             device_id: device_uuid,
             episode_id: episode.id,
             action: action_type,
-            podcast_ref_url: Some(action_input.podcast.clone()),
-            episode_ref_url: Some(action_input.episode.clone()),
+            podcast_ref_url: Some(podcast_url.clone()),
+            episode_ref_url: Some(episode_url.clone()),
             started: action_input.started,
             position: action_input.position,
             total: action_input.total,

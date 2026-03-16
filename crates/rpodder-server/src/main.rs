@@ -211,10 +211,12 @@ fn api_router(state: AppState) -> Router {
         ));
 
     // Public routes (no auth required)
-    let public = Router::new().route(
-        "/api/2/auth/{username}/logout.json",
-        post(routes::auth::logout),
-    );
+    let public = Router::new()
+        .route("/", get(routes::admin::status_page))
+        .route(
+            "/api/2/auth/{username}/logout.json",
+            post(routes::auth::logout),
+        );
 
     authenticated
         .merge(public)

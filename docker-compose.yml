@@ -45,7 +45,9 @@ services:
       RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
       RPODDER_HOST: 0.0.0.0
       RPODDER_PORT: "3005"
-      RPODDER_LOG_LEVEL: debug
+      RPODDER_RUN_MIGRATIONS: "true"
+      RPODDER_MIGRATIONS_DIR: migrations
+      RUST_LOG: rpodder=debug,tower_http=debug
       RUST_BACKTRACE: "1"
     depends_on:
       postgres:
@@ -64,6 +66,8 @@ services:
       RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
       RPODDER_HOST: 0.0.0.0
       RPODDER_PORT: "3005"
+      RPODDER_RUN_MIGRATIONS: "true"
+      RPODDER_MIGRATIONS_DIR: /app/migrations
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,6 +89,8 @@ services:
       RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
       RPODDER_HOST: 0.0.0.0
       RPODDER_PORT: "3005"
+      RPODDER_RUN_MIGRATIONS: "true"
+      RPODDER_MIGRATIONS_DIR: /app/migrations
     profiles:
       - sqlite
 

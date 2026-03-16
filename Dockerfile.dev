@@ -12,4 +12,4 @@ WORKDIR /app
 
 EXPOSE 3005
 
-CMD ["cargo", "watch", "-x", "run -p rpodder-server"]
+CMD ["cargo", "watch", "-x", "run -p rpodder-server -- serve"]
