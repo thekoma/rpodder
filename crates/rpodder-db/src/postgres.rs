@@ -398,15 +398,42 @@ impl repo::PodcastRepo for PgRepo {
     }
 
     async fn search(&self, query: &str, limit: i64) -> Result<Vec<Podcast>> {
+        // Try prefix matching with to_tsquery first, fallback to ILIKE
+        let prefix_query = query
+            .split_whitespace()
+            .map(|w| format!("{w}:*"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+
         let rows: Vec<PodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
                     created_at, updated_at
              FROM podcasts
-             WHERE search_vector @@ plainto_tsquery('english', $1)
+             WHERE search_vector @@ to_tsquery('english', $1)
              ORDER BY subscribers DESC LIMIT $2",
         )
-        .bind(query)
+        .bind(&prefix_query)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        if !rows.is_empty() {
+            return Ok(rows.into_iter().map(Into::into).collect());
+        }
+
+        // Fallback: ILIKE
+        let like_pattern = format!("%{query}%");
+        let rows: Vec<PodcastRow> = sqlx::query_as(
+            "SELECT id, title, description, link, language, logo_url, author,
+                    subscribers, episode_count, last_update, update_interval_hours,
+                    created_at, updated_at
+             FROM podcasts
+             WHERE title ILIKE $1 OR author ILIKE $1 OR description ILIKE $1
+             ORDER BY subscribers DESC LIMIT $2",
+        )
+        .bind(&like_pattern)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
@@ -908,7 +935,7 @@ impl repo::TagRepo for PgRepo {
 
     async fn podcasts_for_tag(&self, tag: &str, count: i64) -> Result<Vec<Podcast>> {
         let rows: Vec<PodcastRow> = sqlx::query_as(
-            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+            "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
                     p.created_at, p.updated_at
              FROM podcasts p

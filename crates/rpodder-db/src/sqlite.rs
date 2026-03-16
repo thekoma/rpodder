@@ -415,6 +415,20 @@ impl repo::PodcastRepo for SqliteRepo {
     }
 
     async fn search(&self, query: &str, limit: i64) -> Result<Vec<Podcast>> {
+        // Add prefix matching: "wil" -> "wil*" so partial words match
+        let fts_query: String = query
+            .split_whitespace()
+            .map(|word| {
+                if word.ends_with('*') {
+                    word.to_string()
+                } else {
+                    format!("{word}*")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        // Try FTS5 first
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
@@ -424,11 +438,36 @@ impl repo::PodcastRepo for SqliteRepo {
              WHERE podcasts_fts MATCH ?
              ORDER BY p.subscribers DESC LIMIT ?",
         )
-        .bind(query)
+        .bind(&fts_query)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .unwrap_or_default();
+
+        if !rows.is_empty() {
+            return Ok(rows.into_iter().map(Into::into).collect());
+        }
+
+        // Fallback: LIKE search for when FTS5 doesn't match
+        let like_pattern = format!("%{query}%");
+        let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
+            "SELECT id, title, description, link, language, logo_url, author,
+                    subscribers, episode_count, last_update, update_interval_hours,
+                    created_at, updated_at
+             FROM podcasts
+             WHERE title LIKE ? COLLATE NOCASE
+                OR author LIKE ? COLLATE NOCASE
+                OR description LIKE ? COLLATE NOCASE
+             ORDER BY subscribers DESC LIMIT ?",
+        )
+        .bind(&like_pattern)
+        .bind(&like_pattern)
+        .bind(&like_pattern)
         .bind(limit)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+
         Ok(rows.into_iter().map(Into::into).collect())
     }
 }
@@ -946,7 +985,7 @@ impl repo::TagRepo for SqliteRepo {
 
     async fn podcasts_for_tag(&self, tag: &str, count: i64) -> Result<Vec<Podcast>> {
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
-            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+            "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
                     p.created_at, p.updated_at
              FROM podcasts p
