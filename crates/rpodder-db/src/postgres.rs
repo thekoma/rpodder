@@ -121,6 +121,107 @@ impl From<SessionRow> for Session {
     }
 }
 
+// ---------------------------------------------------------------------------
+// DeviceRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct DeviceRow {
+    id: Uuid,
+    user_id: Uuid,
+    device_id: String,
+    caption: String,
+    device_type: String,
+    sync_group_id: Option<Uuid>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl From<DeviceRow> for Device {
+    fn from(r: DeviceRow) -> Self {
+        Device {
+            id: r.id,
+            user_id: r.user_id,
+            device_id: r.device_id,
+            caption: r.caption,
+            device_type: parse_device_type(&r.device_type),
+            sync_group_id: r.sync_group_id,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        }
+    }
+}
+
+fn parse_device_type(s: &str) -> DeviceType {
+    match s {
+        "desktop" => DeviceType::Desktop,
+        "laptop" => DeviceType::Laptop,
+        "mobile" => DeviceType::Mobile,
+        "server" => DeviceType::Server,
+        "tablet" => DeviceType::Tablet,
+        _ => DeviceType::Other,
+    }
+}
+
+fn device_type_str(dt: DeviceType) -> &'static str {
+    match dt {
+        DeviceType::Desktop => "desktop",
+        DeviceType::Laptop => "laptop",
+        DeviceType::Mobile => "mobile",
+        DeviceType::Server => "server",
+        DeviceType::Tablet => "tablet",
+        DeviceType::Other => "other",
+    }
+}
+
+impl repo::DeviceRepo for PgRepo {
+    async fn upsert(&self, device: &Device) -> Result<Device> {
+        let row: DeviceRow = sqlx::query_as(
+            "INSERT INTO devices (id, user_id, device_id, caption, device_type, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (user_id, device_id)
+             DO UPDATE SET caption = EXCLUDED.caption, device_type = EXCLUDED.device_type, updated_at = EXCLUDED.updated_at
+             RETURNING id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at",
+        )
+        .bind(device.id)
+        .bind(device.user_id)
+        .bind(&device.device_id)
+        .bind(&device.caption)
+        .bind(device_type_str(device.device_type))
+        .bind(device.created_at)
+        .bind(device.updated_at)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.into())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Device>> {
+        let rows: Vec<DeviceRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+             FROM devices WHERE user_id = $1 ORDER BY created_at",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn find_by_uid(&self, user_id: Uuid, device_id: &str) -> Result<Option<Device>> {
+        let row: Option<DeviceRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+             FROM devices WHERE user_id = $1 AND device_id = $2",
+        )
+        .bind(user_id)
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+}
+
 impl repo::SessionRepo for PgRepo {
     async fn create(&self, session: &Session) -> Result<()> {
         sqlx::query(

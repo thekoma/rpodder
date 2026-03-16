@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use axum::{
     middleware as axum_mw,
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use tower_http::cors::CorsLayer;
@@ -54,6 +54,8 @@ fn api_router(state: AppState) -> Router {
     // Routes that require authentication
     let authenticated = Router::new()
         .route("/api/2/auth/{username}/login.json", post(routes::auth::login))
+        .route("/api/2/devices/{username}/{deviceid_json}", post(routes::devices::update_device))
+        .route("/api/2/devices/{username_json}", get(routes::devices::list_devices))
         .route_layer(axum_mw::from_fn(
             middleware::auth::require_auth_layer(state.clone()),
         ));

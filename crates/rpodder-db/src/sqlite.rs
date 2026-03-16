@@ -111,6 +111,128 @@ impl From<SqliteUserRow> for User {
 }
 
 // ---------------------------------------------------------------------------
+// DeviceRepo
+// ---------------------------------------------------------------------------
+
+fn parse_device_type(s: &str) -> DeviceType {
+    match s {
+        "desktop" => DeviceType::Desktop,
+        "laptop" => DeviceType::Laptop,
+        "mobile" => DeviceType::Mobile,
+        "server" => DeviceType::Server,
+        "tablet" => DeviceType::Tablet,
+        _ => DeviceType::Other,
+    }
+}
+
+fn device_type_str(dt: DeviceType) -> &'static str {
+    match dt {
+        DeviceType::Desktop => "desktop",
+        DeviceType::Laptop => "laptop",
+        DeviceType::Mobile => "mobile",
+        DeviceType::Server => "server",
+        DeviceType::Tablet => "tablet",
+        DeviceType::Other => "other",
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteDeviceRow {
+    id: String,
+    user_id: String,
+    device_id: String,
+    caption: String,
+    device_type: String,
+    sync_group_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+impl From<SqliteDeviceRow> for Device {
+    fn from(r: SqliteDeviceRow) -> Self {
+        Device {
+            id: r.id.parse().unwrap_or_default(),
+            user_id: r.user_id.parse().unwrap_or_default(),
+            device_id: r.device_id,
+            caption: r.caption,
+            device_type: parse_device_type(&r.device_type),
+            sync_group_id: r.sync_group_id.and_then(|s| s.parse().ok()),
+            created_at: r.created_at.parse().unwrap_or_default(),
+            updated_at: r.updated_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+impl repo::DeviceRepo for SqliteRepo {
+    async fn upsert(&self, device: &Device) -> Result<Device> {
+        let id_s = uuid_str(&device.id);
+        let user_id_s = uuid_str(&device.user_id);
+        let dt_s = device_type_str(device.device_type);
+        let now_s = device.updated_at.to_rfc3339();
+        let created_s = device.created_at.to_rfc3339();
+
+        // SQLite doesn't support RETURNING with ON CONFLICT in older versions,
+        // so we do an upsert and then fetch.
+        sqlx::query(
+            "INSERT INTO devices (id, user_id, device_id, caption, device_type, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, device_id)
+             DO UPDATE SET caption = excluded.caption, device_type = excluded.device_type, updated_at = excluded.updated_at",
+        )
+        .bind(&id_s)
+        .bind(&user_id_s)
+        .bind(&device.device_id)
+        .bind(&device.caption)
+        .bind(dt_s)
+        .bind(&created_s)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // Fetch the row back (may have existing id if it was an update)
+        let row: SqliteDeviceRow = sqlx::query_as(
+            "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+             FROM devices WHERE user_id = ? AND device_id = ?",
+        )
+        .bind(&user_id_s)
+        .bind(&device.device_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(row.into())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<Device>> {
+        let rows: Vec<SqliteDeviceRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+             FROM devices WHERE user_id = ? ORDER BY created_at",
+        )
+        .bind(uuid_str(&user_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn find_by_uid(&self, user_id: Uuid, device_id: &str) -> Result<Option<Device>> {
+        let row: Option<SqliteDeviceRow> = sqlx::query_as(
+            "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
+             FROM devices WHERE user_id = ? AND device_id = ?",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(device_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(row.map(Into::into))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SessionRepo
 // ---------------------------------------------------------------------------
 
@@ -195,7 +317,7 @@ impl From<SqliteSessionRow> for Session {
 mod tests {
     use super::*;
     use chrono::Duration;
-    use rpodder_core::repo::{SessionRepo, UserRepo};
+    use rpodder_core::repo::{DeviceRepo, SessionRepo, UserRepo};
 
     async fn setup() -> SqliteRepo {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -404,6 +526,152 @@ mod tests {
             let found = repo.find_by_token(&format!("multi-token-{i}")).await.unwrap();
             assert!(found.is_some());
             assert_eq!(found.unwrap().user_id, user.id);
+        }
+    }
+
+    // === DeviceRepo tests ===
+
+    #[tokio::test]
+    async fn create_device_and_find_by_uid() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "DevUser", "hash", None).await.unwrap();
+
+        let now = Utc::now();
+        let device = Device {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: "my-phone".to_string(),
+            caption: "My Phone".to_string(),
+            device_type: DeviceType::Mobile,
+            sync_group_id: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let created = DeviceRepo::upsert(&repo, &device).await.unwrap();
+        assert_eq!(created.device_id, "my-phone");
+        assert_eq!(created.caption, "My Phone");
+        assert_eq!(created.device_type, DeviceType::Mobile);
+
+        let found = DeviceRepo::find_by_uid(&repo, user.id, "my-phone").await.unwrap().unwrap();
+        assert_eq!(found.device_id, "my-phone");
+        assert_eq!(found.caption, "My Phone");
+        assert_eq!(found.device_type, DeviceType::Mobile);
+    }
+
+    #[tokio::test]
+    async fn upsert_device_updates_existing() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "UpsertUser", "hash", None).await.unwrap();
+
+        let now = Utc::now();
+        let device = Device {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: "laptop1".to_string(),
+            caption: "Old Caption".to_string(),
+            device_type: DeviceType::Laptop,
+            sync_group_id: None,
+            created_at: now,
+            updated_at: now,
+        };
+        DeviceRepo::upsert(&repo, &device).await.unwrap();
+
+        // Upsert with new caption and type
+        let updated_device = Device {
+            id: Uuid::now_v7(), // different id, but same user_id + device_id
+            user_id: user.id,
+            device_id: "laptop1".to_string(),
+            caption: "New Caption".to_string(),
+            device_type: DeviceType::Desktop,
+            sync_group_id: None,
+            created_at: now,
+            updated_at: Utc::now(),
+        };
+        let result = DeviceRepo::upsert(&repo, &updated_device).await.unwrap();
+
+        assert_eq!(result.caption, "New Caption");
+        assert_eq!(result.device_type, DeviceType::Desktop);
+        // The original id should be preserved (not the new one)
+        assert_eq!(result.device_id, "laptop1");
+    }
+
+    #[tokio::test]
+    async fn list_devices_for_user() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "ListUser", "hash", None).await.unwrap();
+        let other = UserRepo::create(&repo, "OtherUser", "hash", None).await.unwrap();
+
+        let now = Utc::now();
+        for (uid, did, user_id) in [
+            ("phone", "Phone", user.id),
+            ("laptop", "Laptop", user.id),
+            ("other-dev", "Other Device", other.id),
+        ] {
+            let device = Device {
+                id: Uuid::now_v7(),
+                user_id,
+                device_id: uid.to_string(),
+                caption: did.to_string(),
+                device_type: DeviceType::Other,
+                sync_group_id: None,
+                created_at: now,
+                updated_at: now,
+            };
+            DeviceRepo::upsert(&repo, &device).await.unwrap();
+        }
+
+        let devices = DeviceRepo::list_for_user(&repo, user.id).await.unwrap();
+        assert_eq!(devices.len(), 2);
+
+        let other_devices = DeviceRepo::list_for_user(&repo, other.id).await.unwrap();
+        assert_eq!(other_devices.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn find_device_not_found() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "NoDevUser", "hash", None).await.unwrap();
+        let found = DeviceRepo::find_by_uid(&repo, user.id, "nonexistent").await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn list_devices_empty() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "EmptyUser", "hash", None).await.unwrap();
+        let devices = DeviceRepo::list_for_user(&repo, user.id).await.unwrap();
+        assert!(devices.is_empty());
+    }
+
+    #[tokio::test]
+    async fn device_type_roundtrip() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "TypeUser", "hash", None).await.unwrap();
+
+        let now = Utc::now();
+        for dt in [
+            DeviceType::Desktop,
+            DeviceType::Laptop,
+            DeviceType::Mobile,
+            DeviceType::Server,
+            DeviceType::Tablet,
+            DeviceType::Other,
+        ] {
+            let did = format!("dev-{:?}", dt).to_lowercase();
+            let device = Device {
+                id: Uuid::now_v7(),
+                user_id: user.id,
+                device_id: did.clone(),
+                caption: format!("{:?} device", dt),
+                device_type: dt,
+                sync_group_id: None,
+                created_at: now,
+                updated_at: now,
+            };
+            DeviceRepo::upsert(&repo, &device).await.unwrap();
+
+            let found = DeviceRepo::find_by_uid(&repo, user.id, &did).await.unwrap().unwrap();
+            assert_eq!(found.device_type, dt, "roundtrip failed for {:?}", dt);
         }
     }
 }

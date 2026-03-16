@@ -42,9 +42,9 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] `POST /api/2/auth/{username}/logout.json` handler
 
 ### 1.3 Devices
-- [ ] Implement `DeviceRepo` for both backends
-- [ ] `POST /api/2/devices/{username}/{deviceid}.json` handler (create/update)
-- [ ] `GET /api/2/devices/{username}.json` handler (list)
+- [x] Implement `DeviceRepo` for both backends
+- [x] `POST /api/2/devices/{username}/{deviceid}.json` handler (create/update)
+- [x] `GET /api/2/devices/{username}.json` handler (list)
 
 ### 1.4 Subscriptions
 - [ ] Implement `PodcastRepo.get_or_create_for_url` for both backends
