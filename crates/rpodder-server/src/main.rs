@@ -218,6 +218,12 @@ fn api_router(state: AppState) -> Router {
         .route("/api/2/settings/{username}/{scope_json}", get(routes::settings::get_settings).post(routes::settings::update_settings))
         // Favorites
         .route("/api/2/favorites/{username_json}", get(routes::favorites::get_favorites))
+        // Chapters
+        .route("/api/2/chapters/{username_json}", get(routes::chapters::get_chapters).post(routes::chapters::update_chapters))
+        // Podcast lists
+        .route("/api/2/lists/{username}/create.json", post(routes::lists::create_list))
+        .route("/api/2/lists/{username_json}", get(routes::lists::get_lists))
+        .route("/api/2/lists/{username}/list/{slug_json}", get(routes::lists::get_list).put(routes::lists::update_list).delete(routes::lists::delete_list))
         // Episode actions API
         .route(
             "/api/2/episodes/{username_json}",

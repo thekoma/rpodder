@@ -138,12 +138,12 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 
 ### 3.3 Podcast Lists
 - [x] Implement `PodcastListRepo` for both backends
-- [ ] CRUD handlers for `/api/2/lists/...`
+- [x] CRUD handlers for `/api/2/lists/...`
 
 ### 3.4 Chapters
 - [x] Implement `ChapterRepo` for both backends
-- [ ] `GET /api/2/chapters/{username}.json` handler
-- [ ] `POST /api/2/chapters/{username}.json` handler
+- [x] `GET /api/2/chapters/{username}.json` handler
+- [x] `POST /api/2/chapters/{username}.json` handler
 
 ### 3.5 Favorites
 - [x] Implement `FavoriteRepo` for both backends
