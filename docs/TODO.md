@@ -17,7 +17,7 @@
 - [x] Docker setup (Dockerfile multi-stage, Dockerfile.dev with cargo-watch)
 - [x] docker-compose.yml (PostgreSQL + dev server + release/sqlite profiles)
 - [x] Skaffold config (continuous build with docker-compose deployer)
-- [ ] Initialize git repository
+- [x] Initialize git repository
 - [x] Verify `cargo build` and `cargo test` pass
 - [ ] Add CI (GitHub Actions: build, test, clippy, fmt)
 
@@ -26,8 +26,8 @@
 Goal: a working server that AntennaPod or gPodder can connect to and sync subscriptions + episode actions.
 
 ### 1.1 Database Setup
-- [ ] Write PostgreSQL migrations (users, devices, podcasts, podcast_urls, episodes, episode_urls, subscriptions, subscription_changes, episode_actions, sessions)
-- [ ] Write SQLite migrations (same schema, SQLite-compatible types)
+- [x] Write PostgreSQL migrations (users, devices, podcasts, podcast_urls, episodes, episode_urls, subscriptions, subscription_changes, episode_actions, sessions)
+- [x] Write SQLite migrations (same schema, SQLite-compatible types)
 - [ ] Implement DB pool initialization in `rpodder-db` (detect PG vs SQLite from config)
 - [ ] Implement `UserRepo` for PostgreSQL
 - [ ] Implement `UserRepo` for SQLite

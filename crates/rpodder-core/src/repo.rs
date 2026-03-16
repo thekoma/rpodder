@@ -150,7 +150,7 @@ pub trait PodcastListRepo: Send + Sync {
 pub trait ChapterRepo: Send + Sync {
     fn upsert(&self, chapter: &Chapter) -> impl std::future::Future<Output = Result<()>> + Send;
     fn list_for_episode(&self, user_id: Uuid, episode_id: Uuid, since: Option<DateTime<Utc>>) -> impl std::future::Future<Output = Result<Vec<Chapter>>> + Send;
-    fn delete(&self, user_id: Uuid, episode_id: Uuid, start: i32, end: i32) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn delete(&self, user_id: Uuid, episode_id: Uuid, start_sec: i32, end_sec: i32) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
