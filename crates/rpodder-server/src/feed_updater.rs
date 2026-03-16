@@ -6,8 +6,8 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use rpodder_core::repo::{EpisodeRepo, PodcastRepo};
-use rpodder_core::types::Episode;
+use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
+use rpodder_core::types::{Episode, Tag, TagSource};
 use rpodder_core::url::normalize_url;
 use rpodder_db::{postgres::PgRepo, sqlite::SqliteRepo, Db};
 use rpodder_feed::{FeedFetcher, parse_feed};
@@ -69,6 +69,27 @@ pub async fn update_podcast_feed(
     with_repo!(db, |repo| {
         PodcastRepo::update(&repo, &podcast).await
     })?;
+
+    // Update tags from feed categories
+    if !parsed.categories.is_empty() {
+        let tags: Vec<Tag> = parsed
+            .categories
+            .iter()
+            .map(|cat| Tag {
+                id: Uuid::now_v7(),
+                tag: cat.clone(),
+                source: TagSource::Feed,
+                user_id: None,
+                podcast_id: podcast.id,
+            })
+            .collect();
+
+        if let Err(e) = with_repo!(db, |repo| {
+            TagRepo::set_tags_for_podcast(&repo, podcast.id, &tags).await
+        }) {
+            warn!(url = podcast_url, error = %e, "failed to update tags");
+        }
+    }
 
     // Update episodes
     let mut episode_count = 0i64;

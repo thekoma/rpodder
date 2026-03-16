@@ -210,6 +210,11 @@ fn api_router(state: AppState) -> Router {
             get(routes::subscriptions::download_subscription_changes)
                 .post(routes::subscriptions::upload_subscription_changes),
         )
+        // Suggestions (needs auth for per-user recommendations)
+        .route(
+            "/suggestions/{count_json}",
+            get(routes::directory::suggestions),
+        )
         // Episode actions API
         .route(
             "/api/2/episodes/{username_json}",
@@ -231,7 +236,9 @@ fn api_router(state: AppState) -> Router {
         .route("/search.json", get(routes::directory::search))
         .route("/toplist/{count_json}", get(routes::directory::toplist))
         .route("/api/2/data/podcast.json", get(routes::directory::podcast_data))
-        .route("/api/2/data/episode.json", get(routes::directory::episode_data));
+        .route("/api/2/data/episode.json", get(routes::directory::episode_data))
+        .route("/api/2/tags/{count_json}", get(routes::directory::top_tags))
+        .route("/api/2/tag/{tag}/{count_json}", get(routes::directory::podcasts_for_tag));
 
     authenticated
         .merge(public)

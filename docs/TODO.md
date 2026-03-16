@@ -112,14 +112,14 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] `GET /api/2/data/episode.json?podcast=X&url=Y` handler (episode info)
 
 ### 2.4 Tags
-- [ ] Implement `TagRepo` for both backends
-- [ ] Extract tags from feed categories during parsing
-- [ ] `GET /api/2/tags/{count}.json` handler
-- [ ] `GET /api/2/tag/{tag}/{count}.json` handler
+- [x] Implement `TagRepo` for both backends
+- [x] Extract tags from feed categories during parsing
+- [x] `GET /api/2/tags/{count}.json` handler
+- [x] `GET /api/2/tag/{tag}/{count}.json` handler
 
 ### 2.5 Suggestions
-- [ ] Basic suggestion algorithm (popular podcasts in same categories as user's subscriptions)
-- [ ] `GET /suggestions/{count}.json` handler
+- [x] Basic suggestion algorithm (popular podcasts in same categories as user's subscriptions)
+- [x] `GET /suggestions/{count}.json` handler
 
 ## Phase 3 — Advanced Features
 

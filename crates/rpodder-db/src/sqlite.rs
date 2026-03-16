@@ -899,6 +899,75 @@ impl repo::EpisodeActionRepo for SqliteRepo {
 }
 
 // ---------------------------------------------------------------------------
+// TagRepo
+// ---------------------------------------------------------------------------
+
+impl repo::TagRepo for SqliteRepo {
+    async fn top_tags(&self, count: i64) -> Result<Vec<(String, i64)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT tag, COUNT(DISTINCT podcast_id) as cnt
+             FROM tags
+             GROUP BY tag
+             ORDER BY cnt DESC
+             LIMIT ?",
+        )
+        .bind(count)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows)
+    }
+
+    async fn podcasts_for_tag(&self, tag: &str, count: i64) -> Result<Vec<Podcast>> {
+        let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
+            "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
+                    p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
+                    p.created_at, p.updated_at
+             FROM podcasts p
+             JOIN tags t ON t.podcast_id = p.id
+             WHERE t.tag = ? COLLATE NOCASE
+             ORDER BY p.subscribers DESC
+             LIMIT ?",
+        )
+        .bind(tag)
+        .bind(count)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn set_tags_for_podcast(&self, podcast_id: Uuid, tags: &[Tag]) -> Result<()> {
+        sqlx::query("DELETE FROM tags WHERE podcast_id = ? AND source = 'feed'")
+            .bind(uuid_str(&podcast_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        for tag in tags {
+            sqlx::query(
+                "INSERT INTO tags (id, tag, source, user_id, podcast_id)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT (tag, source, user_id, podcast_id) DO NOTHING",
+            )
+            .bind(uuid_str(&tag.id))
+            .bind(&tag.tag)
+            .bind(match tag.source {
+                TagSource::Feed => "feed",
+                TagSource::User => "user",
+            })
+            .bind(tag.user_id.map(|u| uuid_str(&u)))
+            .bind(uuid_str(&tag.podcast_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SessionRepo
 // ---------------------------------------------------------------------------
 
