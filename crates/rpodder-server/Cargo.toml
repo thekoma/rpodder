@@ -30,7 +30,13 @@ argon2 = { workspace = true }
 rand = { workspace = true }
 clap = { workspace = true }
 sqlx = { workspace = true }
+rust-embed = { workspace = true, optional = true }
+mime_guess = { version = "2", optional = true }
 base64 = "0.22"
+
+[features]
+default = ["web-ui"]
+web-ui = ["dep:rust-embed", "dep:mime_guess"]
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }

@@ -46,6 +46,9 @@ rand = "0.8"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Embed static files
+rust-embed = { version = "8", features = ["mime-guess"] }
+
 # config & logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

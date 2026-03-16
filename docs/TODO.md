@@ -163,12 +163,41 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [ ] Automated release builds (cross-compile for linux/amd64, arm64, armv7)
 - [ ] Performance benchmarks
 
+## Phase 5 — Web UI (Svelte + Tailwind)
+
+Goal: browser-based UI for managing subscriptions, discovering podcasts, and admin.
+
+### 5.1 Core UI
+- [x] Svelte 5 + Tailwind v4 project scaffold (`web/`)
+- [x] SPA with adapter-static, builds to `web/dist/`
+- [x] Embed in Rust binary via `rust-embed` (feature flag `web-ui`)
+- [x] Fallback handler for SPA client-side routing
+- [x] API client (`web/src/lib/api.ts`)
+- [x] Auth state management with Svelte 5 runes
+- [x] Login page
+- [x] Home page with server status + top podcasts
+- [x] Discover page with search + tags + top podcasts
+- [x] Subscriptions page
+- [x] Devices page
+- [ ] Podcast detail page (episodes, subscribe/unsubscribe)
+- [ ] Episode actions history page
+
+### 5.2 Admin Panel
+- [ ] User management (list, create, deactivate)
+- [ ] Feed management (force update, view status)
+- [ ] Server stats dashboard
+
+### 5.3 SSO / Auth
+- [ ] OAuth / OIDC authentication
+- [ ] User registration endpoint (web form)
+
+### 5.4 Standalone Mode
+- [ ] Dockerfile for standalone Svelte container (nginx)
+- [ ] docker-compose profile for separate frontend
+
 ## Deferred / Maybe
 
 - [ ] WebSub (PubSubHubbub) for real-time feed updates
-- [ ] Web UI (settings, subscription management)
 - [ ] ActivityPub / fediverse integration (gpodder2go stretch goal)
 - [ ] Podcast grouping (multiple feeds for same show, e.g. audio vs video)
-- [ ] User registration endpoint (currently CLI-only)
-- [ ] OAuth / OIDC authentication
 - [ ] Import/export from mygpo database

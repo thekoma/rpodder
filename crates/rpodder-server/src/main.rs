@@ -3,6 +3,8 @@ mod feed_updater;
 mod middleware;
 mod routes;
 mod state;
+#[cfg(feature = "web-ui")]
+mod web_ui;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -286,11 +288,19 @@ fn api_router(state: AppState) -> Router {
             get(routes::directory::podcasts_for_tag),
         );
 
-    authenticated
+    let mut app = authenticated
         .merge(public)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .with_state(state);
+
+    // Embed web UI if feature is enabled
+    #[cfg(feature = "web-ui")]
+    {
+        app = app.fallback(web_ui::serve_ui);
+    }
+
+    app
 }
 
 async fn shutdown_signal() {
