@@ -1,6 +1,6 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte';
-  import { getDevices, updateDevice, type Device } from '$lib/api';
+  import { getDevices, updateDevice, deleteDevice, type Device } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
 
@@ -9,6 +9,7 @@
   let loaded = $state(false);
   let editing = $state<string | null>(null);
   let editCaption = $state('');
+  let deleting = $state<string | null>(null);
 
   $effect(() => {
     if (!browser || loaded) return;
@@ -30,11 +31,21 @@
     editing = null;
   }
 
+  async function confirmDelete(device: Device) {
+    if (!auth.username) return;
+    if (!confirm(`Delete device "${device.caption || device.id}"? This will also remove its subscriptions.`)) return;
+    deleting = device.id;
+    const ok = await deleteDevice(auth.username, device.id);
+    if (ok) {
+      devices = devices.filter(d => d.id !== device.id);
+    }
+    deleting = null;
+  }
+
   const typeIcons: Record<string, string> = {
     mobile: '📱', tablet: '📱', laptop: '💻',
     desktop: '🖥️', server: '🖧', other: '📻',
   };
-  const typeOptions = ['mobile', 'tablet', 'laptop', 'desktop', 'server', 'other'];
 </script>
 
 <div class="space-y-6">
@@ -51,9 +62,8 @@
   {:else}
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {#each devices as device}
-        <div class="bg-surface border border-border rounded-xl p-5 hover:bg-surface-hover transition-colors">
+        <div class="bg-surface border border-border rounded-xl p-5 hover:bg-surface-hover transition-colors group">
           {#if editing === device.id}
-            <!-- Edit mode -->
             <div class="space-y-3">
               <input
                 bind:value={editCaption}
@@ -66,7 +76,6 @@
               </div>
             </div>
           {:else}
-            <!-- View mode -->
             <div class="flex items-start gap-3">
               <span class="text-3xl">{typeIcons[device.type] || '📻'}</span>
               <div class="min-w-0 flex-1">
@@ -76,12 +85,21 @@
                   <span class="text-xs px-2 py-0.5 bg-brand-dim text-brand rounded-full capitalize">{device.type}</span>
                   <span class="text-xs text-text-dim">{device.subscriptions} sub{device.subscriptions !== 1 ? 's' : ''}</span>
                 </div>
-                <button
-                  onclick={() => startEdit(device)}
-                  class="mt-2 text-xs text-text-dim hover:text-brand transition-colors cursor-pointer"
-                >
-                  Rename
-                </button>
+                <div class="flex gap-3 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onclick={() => startEdit(device)}
+                    class="text-xs text-text-dim hover:text-brand transition-colors cursor-pointer"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onclick={() => confirmDelete(device)}
+                    disabled={deleting === device.id}
+                    class="text-xs text-danger hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {deleting === device.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
               </div>
             </div>
           {/if}

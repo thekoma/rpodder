@@ -8,12 +8,27 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use rpodder_core::repo::DeviceRepo;
+use rpodder_core::repo::{DeviceRepo, SubscriptionRepo};
 use rpodder_core::types::{Device, DeviceType};
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
+
+macro_rules! with_repo {
+    ($state:expr, |$repo:ident| $body:expr) => {
+        match &*$state.db {
+            Db::Postgres(pool) => {
+                let $repo = PgRepo::new(pool.clone());
+                $body
+            }
+            Db::Sqlite(pool) => {
+                let $repo = SqliteRepo::new(pool.clone());
+                $body
+            }
+        }
+    };
+}
 
 #[derive(Debug, Deserialize)]
 pub struct DeviceUpdateRequest {
@@ -54,8 +69,6 @@ fn device_type_str(dt: DeviceType) -> &'static str {
 }
 
 /// POST /api/2/devices/{username}/{deviceid}.json
-///
-/// Create or update a device. The gpodder API sends caption and type in the body.
 pub async fn update_device(
     State(state): State<AppState>,
     Path((username, deviceid_json)): Path<(String, String)>,
@@ -90,25 +103,13 @@ pub async fn update_device(
         updated_at: now,
     };
 
-    let result = match &*state.db {
-        Db::Postgres(pool) => {
-            let repo = PgRepo::new(pool.clone());
-            DeviceRepo::upsert(&repo, &device).await
-        }
-        Db::Sqlite(pool) => {
-            let repo = SqliteRepo::new(pool.clone());
-            DeviceRepo::upsert(&repo, &device).await
-        }
-    };
-
-    result.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    with_repo!(state, |repo| DeviceRepo::upsert(&repo, &device).await)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(StatusCode::OK)
 }
 
 /// GET /api/2/devices/{username}.json
-///
-/// List all devices for a user.
 pub async fn list_devices(
     State(state): State<AppState>,
     Path(username_json): Path<String>,
@@ -121,28 +122,68 @@ pub async fn list_devices(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let devices = match &*state.db {
-        Db::Postgres(pool) => {
-            let repo = PgRepo::new(pool.clone());
-            DeviceRepo::list_for_user(&repo, auth_user.0.id).await
-        }
-        Db::Sqlite(pool) => {
-            let repo = SqliteRepo::new(pool.clone());
-            DeviceRepo::list_for_user(&repo, auth_user.0.id).await
-        }
-    };
+    let devices = with_repo!(state, |repo| {
+        DeviceRepo::list_for_user(&repo, auth_user.0.id).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let devices = devices.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut response: Vec<DeviceResponse> = Vec::new();
+    for d in devices {
+        let sub_count = with_repo!(state, |repo| {
+            SubscriptionRepo::list_for_device(&repo, auth_user.0.id, d.id).await
+        })
+        .map(|subs| subs.len() as i64)
+        .unwrap_or(0);
 
-    let response: Vec<DeviceResponse> = devices
-        .into_iter()
-        .map(|d| DeviceResponse {
+        response.push(DeviceResponse {
             id: d.device_id,
             caption: d.caption,
             device_type: device_type_str(d.device_type).to_string(),
-            subscriptions: 0, // TODO: count actual subscriptions in Phase 1.4
-        })
-        .collect();
+            subscriptions: sub_count,
+        });
+    }
 
     Ok(Json(response))
+}
+
+/// DELETE /api/2/devices/{username}/{deviceid}.json
+pub async fn delete_device(
+    State(state): State<AppState>,
+    Path((username, deviceid_json)): Path<(String, String)>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> Result<impl IntoResponse, StatusCode> {
+    if auth_user.0.username.to_lowercase() != username.to_lowercase() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let deviceid = deviceid_json
+        .strip_suffix(".json")
+        .unwrap_or(&deviceid_json);
+
+    // Find the device
+    let device = with_repo!(state, |repo| {
+        DeviceRepo::find_by_uid(&repo, auth_user.0.id, deviceid).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Delete device (cascades to subscriptions via FK)
+    match &*state.db {
+        Db::Postgres(pool) => {
+            sqlx::query("DELETE FROM devices WHERE id = $1")
+                .bind(device.id)
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+        Db::Sqlite(pool) => {
+            sqlx::query("DELETE FROM devices WHERE id = ?")
+                .bind(device.id.to_string())
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+
+    Ok(StatusCode::OK)
 }

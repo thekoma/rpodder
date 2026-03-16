@@ -58,6 +58,13 @@ export async function updateDevice(username: string, deviceId: string, caption: 
   return resp.ok;
 }
 
+export async function deleteDevice(username: string, deviceId: string): Promise<boolean> {
+  const resp = await request(`/api/2/devices/${username}/${deviceId}.json`, {
+    method: 'DELETE',
+  });
+  return resp.ok;
+}
+
 export async function getSubscriptions(username: string, device: string): Promise<string[]> {
   const resp = await request(`/subscriptions/${username}/${device}.json`);
   if (!resp.ok) return [];
