@@ -48,7 +48,7 @@ impl AppConfig {
         // Environment variables override file settings: RPODDER_DATABASE_URL, RPODDER_HOST, etc.
         builder = builder.add_source(
             config::Environment::with_prefix("RPODDER")
-                .separator("_")
+                .prefix_separator("_")
                 .try_parsing(true),
         );
 
