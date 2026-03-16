@@ -1,0 +1,16 @@
+[package]
+name = "rpodder-db"
+description = "Database implementations (PostgreSQL, SQLite) for rpodder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rpodder-core = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }

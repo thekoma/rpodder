@@ -1,0 +1,15 @@
+# --------------------------------------------------------------------------
+# Development Dockerfile: uses cargo-watch for live reload
+# --------------------------------------------------------------------------
+FROM rust:1.86-bookworm
+
+RUN cargo install cargo-watch
+
+WORKDIR /app
+
+# The source is bind-mounted via docker-compose, not COPYed
+# This container just provides the Rust toolchain + cargo-watch
+
+EXPOSE 3005
+
+CMD ["cargo", "watch", "-x", "run -p rpodder-server"]

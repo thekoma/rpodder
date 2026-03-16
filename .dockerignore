@@ -1,0 +1,12 @@
+target/
+.git/
+mygpo/
+gpodder2go/
+nextcloud-gpodder/
+*.swp
+*.swo
+.env
+*.db
+*.sqlite
+*.sqlite3
+docs/

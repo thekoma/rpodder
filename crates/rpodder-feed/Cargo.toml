@@ -1,0 +1,16 @@
+[package]
+name = "rpodder-feed"
+description = "Feed fetching and parsing for rpodder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+rpodder-core = { workspace = true }
+feed-rs = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

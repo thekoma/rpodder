@@ -1,0 +1,52 @@
+# skaffold.yaml — continuous build & deploy for rpodder
+#
+# Skaffold watches for source changes, rebuilds the Docker image, and
+# redeploys via docker-compose.
+#
+# Usage:
+#   skaffold dev                    # continuous build+deploy (dev loop)
+#   skaffold dev -p release         # test the production image
+#   skaffold build                  # one-shot build
+#   skaffold run                    # build + deploy once
+#   skaffold delete                 # tear down
+#
+# No Kubernetes cluster required — uses docker deployer.
+
+apiVersion: skaffold/v4beta13
+kind: Config
+metadata:
+  name: rpodder
+
+build:
+  artifacts:
+    - image: rpodder
+      docker:
+        dockerfile: Dockerfile.dev
+      sync:
+        manual:
+          - src: "crates/**/*.rs"
+            dest: /app
+          - src: "Cargo.toml"
+            dest: /app
+          - src: "Cargo.lock"
+            dest: /app
+          - src: "migrations/**"
+            dest: /app
+
+deploy:
+  docker:
+    useCompose: true
+
+profiles:
+  # -------------------------------------------------------------------------
+  # release: builds production image
+  # -------------------------------------------------------------------------
+  - name: release
+    build:
+      artifacts:
+        - image: rpodder-release
+          docker:
+            dockerfile: Dockerfile
+    deploy:
+      docker:
+        useCompose: true

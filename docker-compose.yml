@@ -1,0 +1,95 @@
+# docker-compose.yml — development environment
+#
+# Usage:
+#   docker compose up -d postgres   # just the database
+#   docker compose up               # database + rpodder with live reload
+#   docker compose --profile test up # run integration tests
+#
+# The rpodder service uses Dockerfile.dev with cargo-watch for live reload.
+# Source code is bind-mounted so changes are picked up automatically.
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: rpodder
+      POSTGRES_PASSWORD: rpodder
+      POSTGRES_DB: rpodder
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpodder"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # rpodder — development mode with live reload
+  # ---------------------------------------------------------------------------
+  rpodder:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3005:3005"
+    volumes:
+      - .:/app
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/app/target
+    environment:
+      RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
+      RPODDER_HOST: 0.0.0.0
+      RPODDER_PORT: "3005"
+      RPODDER_LOG_LEVEL: debug
+      RUST_BACKTRACE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # rpodder — production-like build (for testing the release image)
+  # ---------------------------------------------------------------------------
+  rpodder-release:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3006:3005"
+    environment:
+      RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
+      RPODDER_HOST: 0.0.0.0
+      RPODDER_PORT: "3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - release
+
+  # ---------------------------------------------------------------------------
+  # SQLite variant — self-hosted mode (no external DB needed)
+  # ---------------------------------------------------------------------------
+  rpodder-sqlite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3007:3005"
+    volumes:
+      - sqlite-data:/app/data
+    environment:
+      RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
+      RPODDER_HOST: 0.0.0.0
+      RPODDER_PORT: "3005"
+    profiles:
+      - sqlite
+
+volumes:
+  pgdata:
+  cargo-cache:
+  target-cache:
+  sqlite-data:

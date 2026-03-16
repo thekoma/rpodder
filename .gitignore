@@ -1,0 +1,12 @@
+/target/
+*.swp
+*.swo
+.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Reference projects (separate git repos, not part of rpodder)
+/mygpo/
+/gpodder2go/
+/nextcloud-gpodder/
