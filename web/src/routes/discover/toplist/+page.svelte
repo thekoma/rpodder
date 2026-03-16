@@ -32,10 +32,10 @@
         </thead>
         <tbody>
           {#each podcasts as podcast, i}
-            <tr class="border-b border-border last:border-0 hover:bg-surface-hover transition-colors">
+            <tr class="border-b border-border last:border-0 hover:bg-surface-hover transition-colors cursor-pointer">
               <td class="px-4 py-3 text-text-dim text-sm">{i + 1}</td>
               <td class="px-4 py-3">
-                <div class="flex items-center gap-3">
+                <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex items-center gap-3 no-underline text-text">
                   {#if podcast.logo_url}
                     <img src={podcast.logo_url} alt="" class="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
                   {:else}
@@ -45,7 +45,7 @@
                     <p class="font-medium text-sm text-brand truncate">{podcast.title}</p>
                     {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
                   </div>
-                </div>
+                </a>
               </td>
               <td class="px-4 py-3 text-right">
                 <div class="flex items-center justify-end gap-2">

@@ -53,26 +53,30 @@
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       {#each podcasts as podcast}
-        <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3">
-          {#if podcast.logo_url}
-            <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-          {:else}
-            <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙️</div>
-          {/if}
-          <div class="flex-1 min-w-0">
-            <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
-            {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
+        <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors">
+          <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex gap-3 no-underline text-text">
+            {#if podcast.logo_url}
+              <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
+            {:else}
+              <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙️</div>
+            {/if}
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
+              {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
             {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
-            {#if auth.loggedIn}
+            </div>
+          </a>
+          {#if auth.loggedIn}
+            <div class="mt-2 ml-17">
               <button
                 onclick={() => subscribe(podcast)}
                 disabled={subscribing === podcast.title}
-                class="mt-2 px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+                class="px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
               >
                 {subscribing === podcast.title ? 'Subscribing...' : '+ Subscribe'}
               </button>
-            {/if}
-          </div>
+            </div>
+          {/if}
         </div>
       {/each}
     </div>

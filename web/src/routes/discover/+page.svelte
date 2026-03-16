@@ -145,7 +145,7 @@
         </div>
         <div class="space-y-1">
           {#each podcasts as podcast}
-            <div class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer">
+            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-surface-hover transition-colors no-underline text-text">
               {#if podcast.logo_url}
                 <img src={podcast.logo_url} alt="" class="w-8 h-8 rounded object-cover shrink-0" loading="lazy" />
               {:else}
@@ -153,7 +153,7 @@
               {/if}
               <span class="text-sm truncate flex-1">{podcast.title}</span>
               {#if podcast.author}<span class="text-xs text-text-dim hidden md:inline truncate max-w-48">{podcast.author}</span>{/if}
-            </div>
+            </a>
           {/each}
         </div>
       </div>
