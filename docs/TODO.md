@@ -28,18 +28,18 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 ### 1.1 Database Setup
 - [x] Write PostgreSQL migrations (users, devices, podcasts, podcast_urls, episodes, episode_urls, subscriptions, subscription_changes, episode_actions, sessions)
 - [x] Write SQLite migrations (same schema, SQLite-compatible types)
-- [ ] Implement DB pool initialization in `rpodder-db` (detect PG vs SQLite from config)
-- [ ] Implement `UserRepo` for PostgreSQL
-- [ ] Implement `UserRepo` for SQLite
+- [x] Implement DB pool initialization in `rpodder-db` (detect PG vs SQLite from config)
+- [x] Implement `UserRepo` for PostgreSQL
+- [x] Implement `UserRepo` for SQLite
 
 ### 1.2 Authentication
-- [ ] Implement `SessionRepo` for both backends
-- [ ] axum middleware: extract HTTP Basic Auth header
-- [ ] axum middleware: extract session cookie
-- [ ] axum middleware: verify username in URL matches authenticated user
-- [ ] Password hashing with argon2 (registration / CLI user creation)
-- [ ] `POST /api/2/auth/{username}/login.json` handler
-- [ ] `POST /api/2/auth/{username}/logout.json` handler
+- [x] Implement `SessionRepo` for both backends
+- [x] axum middleware: extract HTTP Basic Auth header
+- [x] axum middleware: extract session cookie
+- [x] axum middleware: verify username in URL matches authenticated user
+- [x] Password hashing with argon2 (registration / CLI user creation)
+- [x] `POST /api/2/auth/{username}/login.json` handler
+- [x] `POST /api/2/auth/{username}/logout.json` handler
 
 ### 1.3 Devices
 - [ ] Implement `DeviceRepo` for both backends
