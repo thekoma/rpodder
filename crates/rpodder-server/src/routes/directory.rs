@@ -144,6 +144,19 @@ pub async fn podcast_data(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
+    // On-demand fetch if no metadata yet
+    let podcast = if podcast.title == params.url || podcast.description.is_empty() {
+        let fetcher = rpodder_feed::FeedFetcher::new();
+        let _ = crate::feed_updater::update_podcast_feed(&state.db, &fetcher, &params.url).await;
+        with_repo!(state, |repo| {
+            PodcastRepo::find_by_url(&repo, &params.url).await
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .unwrap_or(podcast)
+    } else {
+        podcast
+    };
+
     Ok(Json(podcast_to_response(podcast, &params.url)))
 }
 
@@ -189,6 +202,20 @@ pub async fn podcast_episodes(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
+
+    // On-demand fetch: if podcast has no metadata yet (title == url), fetch it now
+    let podcast = if podcast.title == params.url || podcast.description.is_empty() {
+        let fetcher = rpodder_feed::FeedFetcher::new();
+        let _ = crate::feed_updater::update_podcast_feed(&state.db, &fetcher, &params.url).await;
+        // Re-read with updated metadata
+        with_repo!(state, |repo| {
+            PodcastRepo::find_by_url(&repo, &params.url).await
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .unwrap_or(podcast)
+    } else {
+        podcast
+    };
 
     let page = params.page.unwrap_or(0);
     let per_page = params.per_page.unwrap_or(50).clamp(1, 100);

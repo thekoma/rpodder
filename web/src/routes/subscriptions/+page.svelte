@@ -63,7 +63,7 @@
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {#each subs as sub}
         <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors group relative">
-          <div class="flex gap-3">
+          <a href="/discover/podcast?url={encodeURIComponent(sub.url)}" class="flex gap-3 no-underline text-text">
             {#if sub.info?.logo_url}
               <img src={sub.info.logo_url} alt="" class="w-16 h-16 rounded-lg object-cover shrink-0" loading="lazy" />
             {:else}
@@ -75,9 +75,9 @@
                 <p class="text-xs text-text-dim mt-1 truncate">{sub.info.author}</p>
               {/if}
             </div>
-          </div>
+          </a>
           <button
-            onclick={() => unsubscribe(sub.url)}
+            onclick={(e) => { e.preventDefault(); e.stopPropagation(); unsubscribe(sub.url); }}
             class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-danger hover:text-red-400 bg-bg/80 px-2 py-1 rounded cursor-pointer"
           >
             Unsubscribe
