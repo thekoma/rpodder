@@ -46,6 +46,9 @@ enum Commands {
         #[command(subcommand)]
         action: UserAction,
     },
+
+    /// Repair database (rebuild FTS5 index)
+    Repair,
 }
 
 #[derive(Subcommand)]
@@ -85,6 +88,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve => cmd_serve(cfg).await,
         Commands::Migrate => cmd_migrate(cfg).await,
         Commands::User { action } => cmd_user(cfg, action).await,
+        Commands::Repair => {
+            let db = Db::connect(&cfg.database_url).await?;
+            db.repair().await
+        }
     }
 }
 

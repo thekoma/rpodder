@@ -68,4 +68,37 @@ impl Db {
         }
         Ok(())
     }
+
+    /// Repair SQLite FTS5 index if corrupted.
+    pub async fn repair(&self) -> anyhow::Result<()> {
+        match self {
+            Db::Sqlite(pool) => {
+                info!("Rebuilding FTS5 index...");
+                let repair_sql = r#"
+                    DROP TRIGGER IF EXISTS trg_podcasts_fts_insert;
+                    DROP TRIGGER IF EXISTS trg_podcasts_fts_update;
+                    DROP TRIGGER IF EXISTS trg_podcasts_fts_delete;
+                    DROP TABLE IF EXISTS podcasts_fts;
+                    CREATE VIRTUAL TABLE IF NOT EXISTS podcasts_fts USING fts5(title, description, author, content=podcasts, content_rowid=rowid);
+                    CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_insert AFTER INSERT ON podcasts BEGIN
+                        INSERT INTO podcasts_fts(rowid, title, description, author) VALUES (NEW.rowid, NEW.title, NEW.description, NEW.author);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_update AFTER UPDATE ON podcasts BEGIN
+                        INSERT INTO podcasts_fts(podcasts_fts, rowid, title, description, author) VALUES('delete', OLD.rowid, OLD.title, OLD.description, OLD.author);
+                        INSERT INTO podcasts_fts(rowid, title, description, author) VALUES (NEW.rowid, NEW.title, NEW.description, NEW.author);
+                    END;
+                    CREATE TRIGGER IF NOT EXISTS trg_podcasts_fts_delete AFTER DELETE ON podcasts BEGIN
+                        INSERT INTO podcasts_fts(podcasts_fts, rowid, title, description, author) VALUES('delete', OLD.rowid, OLD.title, OLD.description, OLD.author);
+                    END;
+                    INSERT INTO podcasts_fts(podcasts_fts) VALUES('rebuild');
+                "#;
+                sqlx::raw_sql(repair_sql).execute(pool).await?;
+                info!("FTS5 index rebuilt successfully");
+            }
+            Db::Postgres(_) => {
+                info!("No repair needed for PostgreSQL");
+            }
+        }
+        Ok(())
+    }
 }
