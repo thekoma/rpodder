@@ -7,10 +7,12 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 ## Features
 
 - **Full gpodder API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists
+- **Web UI** — built-in Svelte 5 + Tailwind interface for browsing, searching, and managing podcasts
 - **Multi-format** — JSON, OPML, and TXT for subscription import/export
 - **Dual database** — PostgreSQL for scale, SQLite for self-hosting
-- **Feed indexing** — automatic feed fetching, parsing, and search
-- **Lightweight** — single binary, ~15MB, low memory footprint
+- **Feed indexing** — automatic feed fetching, parsing, fuzzy search, podcast directory
+- **Privacy** — private/paid feeds (with tokens in URL) hidden from public directory
+- **Lightweight** — single binary with embedded UI, low memory footprint
 
 ## Quickstart
 

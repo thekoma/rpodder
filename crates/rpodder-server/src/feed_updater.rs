@@ -46,7 +46,10 @@ pub async fn update_podcast_feed(
 
     // Skip private/paid feeds — don't fetch them to avoid leaking tokens
     if is_likely_private_url(podcast_url) {
-        info!(url = podcast_url, "skipping private feed (token detected in URL)");
+        info!(
+            url = podcast_url,
+            "skipping private feed (token detected in URL)"
+        );
         return Ok(());
     }
 

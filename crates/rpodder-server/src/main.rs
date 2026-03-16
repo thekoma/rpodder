@@ -198,8 +198,7 @@ fn api_router(state: AppState) -> Router {
         )
         .route(
             "/api/2/devices/{username}/{deviceid_json}",
-            post(routes::devices::update_device)
-                .delete(routes::devices::delete_device),
+            post(routes::devices::update_device).delete(routes::devices::delete_device),
         )
         .route(
             "/api/2/devices/{username_json}",

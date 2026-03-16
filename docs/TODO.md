@@ -45,6 +45,9 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] Implement `DeviceRepo` for both backends
 - [x] `POST /api/2/devices/{username}/{deviceid}.json` handler (create/update)
 - [x] `GET /api/2/devices/{username}.json` handler (list)
+- [x] `DELETE /api/2/devices/{username}/{deviceid}.json` handler (delete)
+- [x] Auto-create devices on first subscription sync (gpodder.net compat)
+- [x] Real subscriber count per device
 
 ### 1.4 Subscriptions
 - [x] Implement `PodcastRepo.get_or_create_for_url` for both backends
@@ -56,7 +59,7 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] TXT format support for subscriptions
 - [x] Advanced API: `POST /api/2/subscriptions/{user}/{device}.json` (delta upload)
 - [x] Advanced API: `GET /api/2/subscriptions/{user}/{device}.json?since=T` (delta download)
-- [x] URL normalization (strip trailing slashes, force https, etc.)
+- [x] URL normalization (strip trailing slashes, lowercase host, strip fragments)
 
 ### 1.5 Episode Actions
 - [x] Implement `EpisodeRepo.get_or_create_for_url` for both backends
@@ -67,19 +70,22 @@ Goal: a working server that AntennaPod or gPodder can connect to and sync subscr
 - [x] Validate play action fields (started, position, total)
 
 ### 1.6 Server Bootstrap
-- [x] Configuration loading (env vars + config file)
-- [x] CLI with clap (serve, user create, user delete, migrate)
+- [x] Configuration loading (env vars + TOML config file)
+- [x] CLI with clap (serve, user create, user delete, migrate, repair)
 - [x] axum router with all Phase 1 routes
 - [x] CORS middleware
 - [x] Request/response logging (tower-http tracing)
-- [x] Graceful shutdown
-- [x] Docker build (multi-stage, static musl binary)
+- [x] Graceful shutdown (SIGTERM + Ctrl+C)
+- [x] Docker build (multi-stage with bun frontend + Rust backend)
+- [x] Idempotent migrations (IF NOT EXISTS)
+- [x] SQLite FTS5 repair command
 
 ### 1.7 Testing
 - [x] Integration tests: auth flow (login, use session, logout)
 - [x] Integration tests: subscription CRUD + delta sync
 - [x] Integration tests: episode action upload + download
 - [x] Integration tests: device CRUD
+- [x] Test with Kasts (KDE) against running instance
 - [ ] Test with AntennaPod against running instance
 - [ ] Test with gPodder desktop against running instance
 
@@ -93,12 +99,15 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] Update podcast metadata from feed (title, description, logo, language, author)
 - [x] Create/update episodes from feed entries
 - [x] Handle feed URL redirects (update canonical URL)
+- [x] Resilient feed updater (best-effort per operation, no crash on FTS5 errors)
+- [x] On-demand feed fetch when opening podcast detail page
+- [x] Privacy: skip private feeds with access tokens in URL
 - [ ] Rate limiting per host
 - [ ] Retry with exponential backoff
 - [ ] Adaptive update interval (faster for active feeds, slower for stale)
 
 ### 2.2 Background Scheduler
-- [x] Periodic feed update task (tokio spawn, configurable interval)
+- [x] Periodic feed update task (tokio spawn, 30min interval)
 - [x] Priority queue: podcasts with more subscribers update first
 - [x] Track last update time and next scheduled update
 - [ ] Manual trigger endpoint (admin only)
@@ -106,16 +115,20 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 ### 2.3 Search & Directory API
 - [x] PostgreSQL full-text search index on podcasts (title, description, author)
 - [x] SQLite FTS5 index on podcasts
+- [x] Fuzzy prefix search ("pil" finds "Pillole di Bit")
+- [x] LIKE fallback when FTS5 returns no results
 - [x] `GET /search.json?q=query` handler
 - [x] `GET /toplist/{count}.json` handler (sorted by subscriber count)
 - [x] `GET /api/2/data/podcast.json?url=X` handler (podcast info)
+- [x] `GET /api/2/data/podcast/episodes.json?url=X` handler (podcast episodes, paginated)
 - [x] `GET /api/2/data/episode.json?podcast=X&url=Y` handler (episode info)
+- [x] Real subscriber counts (updated on subscribe/unsubscribe)
 
 ### 2.4 Tags
 - [x] Implement `TagRepo` for both backends
 - [x] Extract tags from feed categories during parsing
 - [x] `GET /api/2/tags/{count}.json` handler
-- [x] `GET /api/2/tag/{tag}/{count}.json` handler
+- [x] `GET /api/2/tag/{tag}/{count}.json` handler (DISTINCT, no duplicates)
 
 ### 2.5 Suggestions
 - [x] Basic suggestion algorithm (popular podcasts in same categories as user's subscriptions)
@@ -153,11 +166,11 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 
 - [ ] Rate limiting per user/IP
 - [ ] Prometheus metrics endpoint
-- [x] Health check endpoint
+- [x] Health check endpoint (`GET /health`)
 - [ ] Admin API (user management, feed forcing, stats)
 - [ ] TLS termination docs (or built-in via rustls)
 - [x] Systemd service file
-- [x] Helm chart / docker-compose.yml
+- [x] docker-compose.yml with profiles (dev/release/sqlite)
 - [x] README with quickstart
 - [x] Add CI (GitHub Actions: build, test, clippy, fmt)
 - [ ] Automated release builds (cross-compile for linux/amd64, arm64, armv7)
@@ -173,25 +186,43 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Embed in Rust binary via `rust-embed` (feature flag `web-ui`)
 - [x] Fallback handler for SPA client-side routing
 - [x] API client (`web/src/lib/api.ts`)
-- [x] Auth state management with Svelte 5 runes
+- [x] Auth state management with Svelte 5 runes (`$effect` pattern)
 - [x] Login page
-- [x] Home page with server status + top podcasts
-- [x] Discover page with search + tags + top podcasts
-- [x] Subscriptions page
-- [x] Devices page
-- [ ] Podcast detail page (episodes, subscribe/unsubscribe)
+- [x] Home page with server status + popular podcasts (clickable)
+
+### 5.2 Discover Section (gpodder.net-style)
+- [x] Sidebar navigation (Directory / Toplist / Search)
+- [x] Directory page: categories with podcast lists, tag cloud
+- [x] Toplist page: ranked table with logo, subscriber bar
+- [x] Tag pages: `/discover/tag/{tag}` with subscribe button
+- [x] Search: fuzzy prefix, debounce, results with logo/description
+- [x] Podcast detail page: logo, title, author, description, subscribe/unsubscribe toggle
+- [x] Episode list: paginated with title, description, date, duration
+- [x] On-demand feed fetch for unindexed podcasts
+- [x] All podcasts clickable everywhere (directory, toplist, tags, search, home)
+
+### 5.3 Subscriptions & Devices
+- [x] Subscriptions page: grid with logo/title/author from feed metadata
+- [x] Clickable subscriptions → podcast detail with episodes
+- [x] Unsubscribe button (appears on hover)
+- [x] Devices page: real subscription count per device
+- [x] Device rename (inline editing)
+- [x] Device delete with confirmation
+
+### 5.4 Privacy & Security
+- [x] Private feed detection (token URLs hidden from public directory)
+- [x] Private feeds still visible in user's own subscriptions
+- [x] Feed updater skips private feeds (no token leaks via HTTP/logs)
+
+### 5.5 Admin
+- [x] Server status page (`/admin`) with user/device/subscription stats
+
+### 5.6 Not Yet Implemented
 - [ ] Episode actions history page
-
-### 5.2 Admin Panel
-- [ ] User management (list, create, deactivate)
-- [ ] Feed management (force update, view status)
-- [ ] Server stats dashboard
-
-### 5.3 SSO / Auth
-- [ ] OAuth / OIDC authentication
+- [ ] Admin panel: user management (list, create, deactivate)
+- [ ] Admin panel: feed management (force update, view status)
+- [ ] OAuth / OIDC authentication (SSO)
 - [ ] User registration endpoint (web form)
-
-### 5.4 Standalone Mode
 - [ ] Dockerfile for standalone Svelte container (nginx)
 - [ ] docker-compose profile for separate frontend
 
@@ -201,3 +232,5 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [ ] ActivityPub / fediverse integration (gpodder2go stretch goal)
 - [ ] Podcast grouping (multiple feeds for same show, e.g. audio vs video)
 - [ ] Import/export from mygpo database
+- [ ] Rate limiting per host in feed fetcher
+- [ ] Retry with exponential backoff in feed fetcher

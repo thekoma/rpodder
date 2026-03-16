@@ -14,9 +14,19 @@ pub fn is_likely_private_url(url: &str) -> bool {
     if let Some(query_start) = url.find('?') {
         let query = &url[query_start + 1..];
         let token_params = [
-            "token=", "key=", "auth=", "access=", "api_key=", "apikey=",
-            "secret=", "pass=", "password=", "credential=", "sid=",
-            "access_token=", "api-key=",
+            "token=",
+            "key=",
+            "auth=",
+            "access=",
+            "api_key=",
+            "apikey=",
+            "secret=",
+            "pass=",
+            "password=",
+            "credential=",
+            "sid=",
+            "access_token=",
+            "api-key=",
         ];
         let query_lower = query.to_lowercase();
         for param in &token_params {
@@ -146,9 +156,7 @@ mod tests {
         assert!(!is_likely_private_url(
             "https://anchor.fm/s/12345678/podcast/rss"
         ));
-        assert!(!is_likely_private_url(
-            "https://rss.art19.com/the-daily"
-        ));
+        assert!(!is_likely_private_url("https://rss.art19.com/the-daily"));
     }
 
     #[test]

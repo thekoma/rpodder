@@ -52,7 +52,7 @@ pub async fn find_or_create_device(
         updated_at: now,
     };
 
-    let created = with_repo!(state, |repo| { DeviceRepo::upsert(&repo, &device).await })
+    let created = with_repo!(state, |repo| DeviceRepo::upsert(&repo, &device).await)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(created)
