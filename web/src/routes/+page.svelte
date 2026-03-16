@@ -47,7 +47,7 @@
       <h2 class="text-xl font-semibold mb-4">Popular Podcasts</h2>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {#each topPodcasts as podcast}
-          <div class="bg-surface border border-border rounded-lg p-4 hover:bg-surface-hover transition-colors group">
+          <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-lg p-4 hover:bg-surface-hover transition-colors group no-underline text-text block">
             {#if podcast.logo_url}
               <img src={podcast.logo_url} alt={podcast.title} class="w-full aspect-square object-cover rounded-md mb-3" loading="lazy" />
             {:else}
@@ -55,7 +55,7 @@
             {/if}
             <h3 class="font-medium text-sm line-clamp-2">{podcast.title}</h3>
             {#if podcast.author}<p class="text-xs text-text-dim mt-1 truncate">{podcast.author}</p>{/if}
-          </div>
+          </a>
         {/each}
       </div>
     </div>
