@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use rpodder_core::privacy::is_likely_private_url;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
 
 use crate::state::AppState;
@@ -583,6 +584,7 @@ fn podcast_to_response(p: rpodder_core::types::Podcast, url_hint: &str) -> Podca
 }
 
 /// Convert podcasts to responses, looking up feed URLs from the DB.
+/// Filters out podcasts with private/token URLs.
 async fn podcasts_to_responses(
     state: &AppState,
     podcasts: Vec<rpodder_core::types::Podcast>,
@@ -590,6 +592,10 @@ async fn podcasts_to_responses(
     let mut results = Vec::with_capacity(podcasts.len());
     for p in podcasts {
         let url = lookup_podcast_url(state, p.id).await.unwrap_or_default();
+        // Skip private feeds from public directory
+        if !url.is_empty() && is_likely_private_url(&url) {
+            continue;
+        }
         results.push(podcast_to_response(p, &url));
     }
     results

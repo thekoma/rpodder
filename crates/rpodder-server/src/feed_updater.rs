@@ -6,6 +6,7 @@ use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use rpodder_core::privacy::is_likely_private_url;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
 use rpodder_core::types::{Tag, TagSource};
 use rpodder_core::url::normalize_url;
@@ -42,6 +43,12 @@ pub async fn update_podcast_feed(
         warn!(url = podcast_url, "podcast not found for URL");
         return Ok(());
     };
+
+    // Skip private/paid feeds — don't fetch them to avoid leaking tokens
+    if is_likely_private_url(podcast_url) {
+        info!(url = podcast_url, "skipping private feed (token detected in URL)");
+        return Ok(());
+    }
 
     // Fetch the feed
     let result = fetcher.fetch(podcast_url, None, None).await?;
@@ -196,7 +203,11 @@ async fn get_all_podcast_urls(db: &Db) -> Vec<String> {
     };
 
     match result {
-        Ok(rows) => rows.into_iter().map(|(url,)| url).collect(),
+        Ok(rows) => rows
+            .into_iter()
+            .map(|(url,)| url)
+            .filter(|url| !is_likely_private_url(url))
+            .collect(),
         Err(e) => {
             error!(error = %e, "failed to get podcast URLs");
             Vec::new()
