@@ -50,6 +50,14 @@ export async function getDevices(username: string): Promise<Device[]> {
   return resp.json();
 }
 
+export async function updateDevice(username: string, deviceId: string, caption: string, type: string): Promise<boolean> {
+  const resp = await request(`/api/2/devices/${username}/${deviceId}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ caption, type }),
+  });
+  return resp.ok;
+}
+
 export async function getSubscriptions(username: string, device: string): Promise<string[]> {
   const resp = await request(`/subscriptions/${username}/${device}.json`);
   if (!resp.ok) return [];
