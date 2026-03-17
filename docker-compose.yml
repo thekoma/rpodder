@@ -36,7 +36,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3005:3005"
+      - "3006:3005"
     volumes:
       - .:/app
       - cargo-cache:/usr/local/cargo/registry

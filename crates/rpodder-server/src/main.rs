@@ -14,6 +14,7 @@ use axum::{
     routing::{get, post},
 };
 use clap::{Parser, Subcommand};
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -220,6 +221,11 @@ fn api_router(state: AppState) -> Router {
             get(routes::subscriptions::download_subscription_changes)
                 .post(routes::subscriptions::upload_subscription_changes),
         )
+        // Combined updates (subscription + episode in one call)
+        .route(
+            "/api/2/updates/{username}/{deviceid_json}",
+            get(routes::subscriptions::combined_updates),
+        )
         // Suggestions
         .route(
             "/suggestions/{count_json}",
@@ -321,6 +327,7 @@ fn api_router(state: AppState) -> Router {
         .merge(public)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
+        .layer(ConcurrencyLimitLayer::new(200)) // Max 200 concurrent requests
         .with_state(state);
 
     // Embed web UI if feature is enabled

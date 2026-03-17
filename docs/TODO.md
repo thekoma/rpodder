@@ -110,7 +110,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] Periodic feed update task (tokio spawn, 30min interval)
 - [x] Priority queue: podcasts with more subscribers update first
 - [x] Track last update time and next scheduled update
-- [ ] Manual trigger endpoint (admin only)
+- [x] Manual trigger endpoint (admin only)
 
 ### 2.3 Search & Directory API
 - [x] PostgreSQL full-text search index on podcasts (title, description, author)
@@ -141,7 +141,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] `GET /api/2/sync-devices/{username}.json` handler
 - [x] `POST /api/2/sync-devices/{username}.json` handler
 - [x] Propagate subscriptions across synced devices
-- [ ] `GET /api/2/updates/{username}/{deviceid}.json` handler (combined updates)
+- [x] `GET /api/2/updates/{username}/{deviceid}.json` handler (combined updates)
 
 ### 3.2 Settings API
 - [x] Implement `SettingsRepo` for both backends
@@ -164,7 +164,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 
 ## Phase 4 — Production Readiness
 
-- [ ] Rate limiting per user/IP
+- [x] Rate limiting (concurrency limit, 200 max concurrent requests)
 - [ ] Prometheus metrics endpoint
 - [x] Health check endpoint (`GET /health`)
 - [x] Admin API (user management, feed forcing, stats)

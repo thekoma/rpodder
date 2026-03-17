@@ -8,8 +8,8 @@ use axum::{
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{PodcastRepo, SubscriptionRepo};
-use rpodder_core::types::SubscriptionAction;
+use rpodder_core::repo::{EpisodeActionRepo, PodcastRepo, SubscriptionRepo};
+use rpodder_core::types::{EpisodeActionType, SubscriptionAction};
 use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
@@ -422,6 +422,107 @@ pub async fn download_subscription_changes(
     Ok(Json(DeltaResponse {
         add,
         remove,
+        timestamp,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Combined updates: GET /api/2/updates/{username}/{deviceid}.json?since=T
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct CombinedUpdatesResponse {
+    pub add: Vec<String>,
+    pub remove: Vec<String>,
+    pub updates: Vec<EpisodeActionUpdate>,
+    pub timestamp: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EpisodeActionUpdate {
+    pub podcast: String,
+    pub episode: String,
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i32>,
+}
+
+pub async fn combined_updates(
+    State(state): State<AppState>,
+    Path((username, deviceid_raw)): Path<(String, String)>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<SinceQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let (deviceid, _) = parse_format_suffix(&deviceid_raw);
+
+    if auth_user.0.username.to_lowercase() != username.to_lowercase() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
+
+    let since = params
+        .since
+        .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
+        .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().unwrap());
+
+    // Subscription changes
+    let changes = with_repo!(state, |repo| {
+        SubscriptionRepo::changes_since(&repo, auth_user.0.id, device.id, since).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut add = Vec::new();
+    let mut remove = Vec::new();
+    for change in changes {
+        match change.action {
+            SubscriptionAction::Subscribe => add.push(change.ref_url),
+            SubscriptionAction::Unsubscribe => remove.push(change.ref_url),
+        }
+    }
+
+    // Episode actions
+    let actions = with_repo!(state, |repo| {
+        EpisodeActionRepo::list(
+            &repo,
+            auth_user.0.id,
+            Some(device.id),
+            None,
+            Some(since),
+            1000,
+        )
+        .await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let updates: Vec<EpisodeActionUpdate> = actions
+        .into_iter()
+        .map(|a| EpisodeActionUpdate {
+            podcast: a.podcast_ref_url.unwrap_or_default(),
+            episode: a.episode_ref_url.unwrap_or_default(),
+            action: match a.action {
+                EpisodeActionType::Download => "download",
+                EpisodeActionType::Play => "play",
+                EpisodeActionType::Delete => "delete",
+                EpisodeActionType::New => "new",
+            }
+            .to_string(),
+            timestamp: Some(a.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            position: a.position,
+            total: a.total,
+        })
+        .collect();
+
+    let timestamp = Utc::now().timestamp();
+
+    Ok(Json(CombinedUpdatesResponse {
+        add,
+        remove,
+        updates,
         timestamp,
     }))
 }
