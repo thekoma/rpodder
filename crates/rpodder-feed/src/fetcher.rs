@@ -33,9 +33,44 @@ impl FeedFetcher {
         Self { client }
     }
 
-    /// Fetch a feed URL. Optionally provide ETag/Last-Modified from a previous fetch
+    /// Fetch a feed URL with retry (up to 3 attempts with exponential backoff).
+    /// Optionally provide ETag/Last-Modified from a previous fetch
     /// to enable conditional GET (returns NotModified if the feed hasn't changed).
     pub async fn fetch(
+        &self,
+        url: &str,
+        etag: Option<&str>,
+        last_modified: Option<&str>,
+    ) -> Result<FetchResult, FetchError> {
+        let mut last_err = None;
+        for attempt in 0..3u32 {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                debug!(
+                    url,
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    "retrying feed fetch"
+                );
+                tokio::time::sleep(delay).await;
+            }
+            match self.fetch_once(url, etag, last_modified).await {
+                Ok(result) => return Ok(result),
+                Err(FetchError::Status(code)) if code >= 500 => {
+                    warn!(url, status = code, attempt, "server error, will retry");
+                    last_err = Some(FetchError::Status(code));
+                }
+                Err(FetchError::Http(e)) if e.is_timeout() || e.is_connect() => {
+                    warn!(url, attempt, error = %e, "connection error, will retry");
+                    last_err = Some(FetchError::Http(e));
+                }
+                Err(e) => return Err(e), // Non-retryable error
+            }
+        }
+        Err(last_err.unwrap())
+    }
+
+    async fn fetch_once(
         &self,
         url: &str,
         etag: Option<&str>,

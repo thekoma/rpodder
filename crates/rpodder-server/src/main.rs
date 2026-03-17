@@ -302,6 +302,8 @@ fn api_router(state: AppState) -> Router {
             "/api/2/auth/{username}/logout.json",
             post(routes::auth::logout),
         )
+        // User registration (public)
+        .route("/api/2/register", post(routes::admin::create_user))
         // Directory & search (public)
         .route("/search.json", get(routes::directory::search))
         .route("/toplist/{count_json}", get(routes::directory::toplist))

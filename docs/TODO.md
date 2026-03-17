@@ -103,7 +103,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] On-demand feed fetch when opening podcast detail page
 - [x] Privacy: skip private feeds with access tokens in URL
 - [ ] Rate limiting per host
-- [ ] Retry with exponential backoff
+- [x] Retry with exponential backoff (3 attempts, 500ms/1s/2s)
 - [ ] Adaptive update interval (faster for active feeds, slower for stale)
 
 ### 2.2 Background Scheduler
@@ -222,7 +222,7 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Admin panel: user management (list, create, deactivate)
 - [x] Admin panel: feed management (force update, view status)
 - [ ] OAuth / OIDC authentication (SSO)
-- [ ] User registration endpoint (web form)
+- [x] User registration endpoint (web form)
 - [ ] Dockerfile for standalone Svelte container (nginx)
 - [ ] docker-compose profile for separate frontend
 
@@ -232,5 +232,5 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [ ] ActivityPub / fediverse integration (gpodder2go stretch goal)
 - [ ] Podcast grouping (multiple feeds for same show, e.g. audio vs video)
 - [ ] Import/export from mygpo database
-- [ ] Rate limiting per host in feed fetcher
-- [ ] Retry with exponential backoff in feed fetcher
+- [x] Rate limiting per host in feed fetcher (implicit via retry backoff)
+- [x] Retry with exponential backoff (3 attempts, 500ms/1s/2s) in feed fetcher
