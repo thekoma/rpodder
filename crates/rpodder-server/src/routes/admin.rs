@@ -1,12 +1,14 @@
 use axum::{
-    extract::State,
+    Extension,
+    extract::{Json, Path, Query, State},
     http::StatusCode,
     response::{Html, IntoResponse},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use rpodder_core::repo::{DeviceRepo, SubscriptionRepo};
 
+use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
@@ -245,4 +247,231 @@ async fn gather_status(
         users,
         total_episode_actions,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Admin JSON API
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct AdminUserResponse {
+    pub username: String,
+    pub email: Option<String>,
+    pub active: bool,
+    pub devices: usize,
+    pub subscriptions: usize,
+}
+
+/// GET /api/admin/users — list all users (admin only, requires auth)
+pub async fn list_users(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let data = gather_status(&state)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let users: Vec<AdminUserResponse> = data
+        .users
+        .into_iter()
+        .map(|u| AdminUserResponse {
+            username: u.username,
+            email: if u.email.is_empty() {
+                None
+            } else {
+                Some(u.email)
+            },
+            active: u.active,
+            devices: u.devices.len(),
+            subscriptions: u.subscriptions.len(),
+        })
+        .collect();
+
+    Ok(Json(users))
+}
+
+#[derive(Deserialize)]
+pub struct CreateUserRequest {
+    pub username: String,
+    pub password: String,
+    pub email: Option<String>,
+}
+
+/// POST /api/admin/users — create a new user
+pub async fn create_user(
+    State(state): State<AppState>,
+    Json(body): Json<CreateUserRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    use rpodder_core::repo::UserRepo;
+
+    let hash = crate::middleware::auth::hash_password(&body.password)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    with_repo!(state, |repo| {
+        UserRepo::create(&repo, &body.username, &hash, body.email.as_deref()).await
+    })
+    .map_err(|e| match e {
+        rpodder_core::error::AppError::Conflict(_) => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    })?;
+
+    Ok(StatusCode::CREATED)
+}
+
+/// POST /api/admin/users/{username}/deactivate — deactivate a user
+pub async fn deactivate_user(
+    State(state): State<AppState>,
+    Path(username): Path<String>,
+) -> Result<impl IntoResponse, StatusCode> {
+    match &*state.db {
+        Db::Postgres(pool) => {
+            sqlx::query("UPDATE users SET is_active = false WHERE LOWER(username) = LOWER($1)")
+                .bind(&username)
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+        Db::Sqlite(pool) => {
+            sqlx::query("UPDATE users SET is_active = 0 WHERE username = ? COLLATE NOCASE")
+                .bind(&username)
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+    Ok(StatusCode::OK)
+}
+
+/// POST /api/admin/feeds/update — force update all feeds now
+pub async fn force_feed_update(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let db = state.db.clone();
+    tokio::spawn(async move {
+        let fetcher = rpodder_feed::FeedFetcher::new();
+        crate::feed_updater::run_one_cycle(&db, &fetcher).await;
+    });
+    Ok(Json(serde_json::json!({ "status": "feed update started" })))
+}
+
+// ---------------------------------------------------------------------------
+// Episode Actions History (user-facing, not admin)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct EpisodeHistoryItem {
+    pub podcast_title: String,
+    pub podcast_url: String,
+    pub episode_title: String,
+    pub action: String,
+    pub timestamp: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<i32>,
+}
+
+#[derive(Deserialize)]
+pub struct HistoryQuery {
+    pub page: Option<i64>,
+}
+
+/// GET /api/2/history/{username}.json — episode action history with enriched data
+pub async fn episode_history(
+    State(state): State<AppState>,
+    Path(username_json): Path<String>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<HistoryQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let username = username_json
+        .strip_suffix(".json")
+        .unwrap_or(&username_json);
+    if auth_user.0.username.to_lowercase() != username.to_lowercase() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let page = params.page.unwrap_or(0);
+    let per_page = 50i64;
+
+    // Get episode actions with enriched data
+    type HistRow = (
+        String,
+        String,
+        String,
+        String,
+        String,
+        Option<i32>,
+        Option<i32>,
+    );
+    let items: Vec<EpisodeHistoryItem> = match &*state.db {
+        Db::Postgres(pool) => {
+            let rows: Vec<HistRow> = sqlx::query_as(
+                "SELECT
+                        COALESCE(p.title, ea.podcast_ref_url, '') as podcast_title,
+                        COALESCE(ea.podcast_ref_url, '') as podcast_url,
+                        COALESCE(e.title, ea.episode_ref_url, '') as episode_title,
+                        ea.action,
+                        ea.timestamp::text,
+                        ea.position,
+                        ea.total
+                     FROM episode_actions ea
+                     LEFT JOIN episodes e ON e.id = ea.episode_id
+                     LEFT JOIN podcasts p ON p.id = e.podcast_id
+                     WHERE ea.user_id = $1
+                     ORDER BY ea.timestamp DESC
+                     LIMIT $2 OFFSET $3",
+            )
+            .bind(auth_user.0.id)
+            .bind(per_page)
+            .bind(page * per_page)
+            .fetch_all(pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            rows.into_iter()
+                .map(|(pt, pu, et, action, ts, pos, total)| EpisodeHistoryItem {
+                    podcast_title: pt,
+                    podcast_url: pu,
+                    episode_title: et,
+                    action,
+                    timestamp: ts,
+                    position: pos,
+                    total,
+                })
+                .collect()
+        }
+        Db::Sqlite(pool) => {
+            let rows: Vec<HistRow> = sqlx::query_as(
+                "SELECT
+                        COALESCE(p.title, ea.podcast_ref_url, '') as podcast_title,
+                        COALESCE(ea.podcast_ref_url, '') as podcast_url,
+                        COALESCE(e.title, ea.episode_ref_url, '') as episode_title,
+                        ea.action,
+                        ea.timestamp,
+                        ea.position,
+                        ea.total
+                     FROM episode_actions ea
+                     LEFT JOIN episodes e ON e.id = ea.episode_id
+                     LEFT JOIN podcasts p ON p.id = e.podcast_id
+                     WHERE ea.user_id = ?
+                     ORDER BY ea.timestamp DESC
+                     LIMIT ? OFFSET ?",
+            )
+            .bind(auth_user.0.id.to_string())
+            .bind(per_page)
+            .bind(page * per_page)
+            .fetch_all(pool)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            rows.into_iter()
+                .map(|(pt, pu, et, action, ts, pos, total)| EpisodeHistoryItem {
+                    podcast_title: pt,
+                    podcast_url: pu,
+                    episode_title: et,
+                    action,
+                    timestamp: ts,
+                    position: pos,
+                    total,
+                })
+                .collect()
+        }
+    };
+
+    Ok(Json(items))
 }

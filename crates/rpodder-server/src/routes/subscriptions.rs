@@ -333,6 +333,17 @@ pub async fn upload_subscription_changes(
                 SubscriptionRepo::unsubscribe(&repo, auth_user.0.id, device.id, podcast.id).await
             })
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Propagate to synced devices
+            super::helpers::propagate_to_sync_group(
+                &state,
+                auth_user.0.id,
+                &device,
+                podcast.id,
+                url,
+                false,
+            )
+            .await;
         }
     }
 
@@ -346,6 +357,17 @@ pub async fn upload_subscription_changes(
             SubscriptionRepo::subscribe(&repo, auth_user.0.id, device.id, podcast.id, url).await
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        // Propagate to synced devices
+        super::helpers::propagate_to_sync_group(
+            &state,
+            auth_user.0.id,
+            &device,
+            podcast.id,
+            url,
+            true,
+        )
+        .await;
     }
 
     let timestamp = Utc::now().timestamp();

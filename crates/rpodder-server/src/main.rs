@@ -266,6 +266,24 @@ fn api_router(state: AppState) -> Router {
             get(routes::episodes::download_episode_actions)
                 .post(routes::episodes::upload_episode_actions),
         )
+        // Episode history
+        .route(
+            "/api/2/history/{username_json}",
+            get(routes::admin::episode_history),
+        )
+        // Admin API (authenticated, any user for now — TODO: restrict to admin role)
+        .route(
+            "/api/admin/users",
+            get(routes::admin::list_users).post(routes::admin::create_user),
+        )
+        .route(
+            "/api/admin/users/{username}/deactivate",
+            post(routes::admin::deactivate_user),
+        )
+        .route(
+            "/api/admin/feeds/update",
+            post(routes::admin::force_feed_update),
+        )
         .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
             state.clone(),
         )));

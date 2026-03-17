@@ -28,7 +28,9 @@
         <div class="flex items-center gap-4">
           <a href="/discover" class="text-sm text-text-dim hover:text-text transition-colors">Discover</a>
           <a href="/subscriptions" class="text-sm text-text-dim hover:text-text transition-colors">Subscriptions</a>
+          <a href="/history" class="text-sm text-text-dim hover:text-text transition-colors">History</a>
           <a href="/devices" class="text-sm text-text-dim hover:text-text transition-colors">Devices</a>
+          <a href="/admin" class="text-sm text-text-dim hover:text-text transition-colors">Admin</a>
           <div class="flex items-center gap-2 ml-2 pl-4 border-l border-border">
             <span class="text-sm text-text-dim">{auth.username}</span>
             <button

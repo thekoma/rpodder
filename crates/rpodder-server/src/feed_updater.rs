@@ -160,23 +160,28 @@ pub async fn update_podcast_feed(
     Ok(())
 }
 
+/// Run a single feed update cycle.
+pub async fn run_one_cycle(db: &Db, fetcher: &FeedFetcher) {
+    info!("starting feed update cycle");
+
+    let urls = get_all_podcast_urls(db).await;
+
+    for url in &urls {
+        if let Err(e) = update_podcast_feed(db, fetcher, url).await {
+            error!(url, error = %e, "failed to update feed");
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    info!(count = urls.len(), "feed update cycle complete");
+}
+
 /// Background task: periodically update all podcast feeds.
 pub async fn run_feed_update_loop(db: Arc<Db>, interval_secs: u64) {
     let fetcher = FeedFetcher::new();
 
     loop {
-        info!("starting feed update cycle");
-
-        let urls = get_all_podcast_urls(&db).await;
-
-        for url in &urls {
-            if let Err(e) = update_podcast_feed(&db, &fetcher, url).await {
-                error!(url, error = %e, "failed to update feed");
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-
-        info!(count = urls.len(), "feed update cycle complete");
+        run_one_cycle(&db, &fetcher).await;
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
 }

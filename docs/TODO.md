@@ -140,7 +140,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] Implement `SyncGroupRepo` for both backends
 - [x] `GET /api/2/sync-devices/{username}.json` handler
 - [x] `POST /api/2/sync-devices/{username}.json` handler
-- [ ] Propagate subscriptions across synced devices
+- [x] Propagate subscriptions across synced devices
 - [ ] `GET /api/2/updates/{username}/{deviceid}.json` handler (combined updates)
 
 ### 3.2 Settings API
@@ -167,7 +167,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [ ] Rate limiting per user/IP
 - [ ] Prometheus metrics endpoint
 - [x] Health check endpoint (`GET /health`)
-- [ ] Admin API (user management, feed forcing, stats)
+- [x] Admin API (user management, feed forcing, stats)
 - [ ] TLS termination docs (or built-in via rustls)
 - [x] Systemd service file
 - [x] docker-compose.yml with profiles (dev/release/sqlite)
@@ -218,9 +218,9 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Server status page (`/admin`) with user/device/subscription stats
 
 ### 5.6 Not Yet Implemented
-- [ ] Episode actions history page
-- [ ] Admin panel: user management (list, create, deactivate)
-- [ ] Admin panel: feed management (force update, view status)
+- [x] Episode actions history page
+- [x] Admin panel: user management (list, create, deactivate)
+- [x] Admin panel: feed management (force update, view status)
 - [ ] OAuth / OIDC authentication (SSO)
 - [ ] User registration endpoint (web form)
 - [ ] Dockerfile for standalone Svelte container (nginx)

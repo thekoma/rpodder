@@ -124,6 +124,54 @@ export async function getPodcastEpisodes(url: string, page: number = 0): Promise
   }
 }
 
+export interface HistoryItem {
+  podcast_title: string;
+  podcast_url: string;
+  episode_title: string;
+  action: string;
+  timestamp: string;
+  position?: number;
+  total?: number;
+}
+
+export async function getHistory(username: string, page: number = 0): Promise<HistoryItem[]> {
+  const resp = await request(`/api/2/history/${username}.json?page=${page}`);
+  if (!resp.ok) return [];
+  return resp.json();
+}
+
+export interface AdminUser {
+  username: string;
+  email?: string;
+  active: boolean;
+  devices: number;
+  subscriptions: number;
+}
+
+export async function getAdminUsers(): Promise<AdminUser[]> {
+  const resp = await request('/api/admin/users');
+  if (!resp.ok) return [];
+  return resp.json();
+}
+
+export async function createAdminUser(username: string, password: string, email?: string): Promise<boolean> {
+  const resp = await request('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, email }),
+  });
+  return resp.ok;
+}
+
+export async function deactivateUser(username: string): Promise<boolean> {
+  const resp = await request(`/api/admin/users/${username}/deactivate`, { method: 'POST' });
+  return resp.ok;
+}
+
+export async function forceUpdateFeeds(): Promise<boolean> {
+  const resp = await request('/api/admin/feeds/update', { method: 'POST' });
+  return resp.ok;
+}
+
 export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   const resp = await request(`/search.json?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return [];
