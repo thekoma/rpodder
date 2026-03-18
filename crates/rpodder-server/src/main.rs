@@ -290,6 +290,10 @@ fn api_router(state: AppState) -> Router {
             "/api/admin/feeds/update",
             post(routes::admin::force_feed_update),
         )
+        .route(
+            "/api/admin/feeds/update/single",
+            post(routes::admin::force_single_feed_update),
+        )
         .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
             state.clone(),
         )));

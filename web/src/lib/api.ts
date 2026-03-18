@@ -174,6 +174,11 @@ export async function forceUpdateFeeds(): Promise<boolean> {
   return resp.ok;
 }
 
+export async function forceUpdateSingleFeed(url: string): Promise<boolean> {
+  const resp = await request(`/api/admin/feeds/update/single?url=${encodeURIComponent(url)}`, { method: 'POST' });
+  return resp.ok;
+}
+
 export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   const resp = await request(`/search.json?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return [];

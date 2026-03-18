@@ -351,6 +351,27 @@ pub async fn force_feed_update(
     Ok(Json(serde_json::json!({ "status": "feed update started" })))
 }
 
+#[derive(Deserialize)]
+pub struct FeedUpdateQuery {
+    pub url: String,
+}
+
+/// POST /api/admin/feeds/update/single?url=X — force update a single feed
+pub async fn force_single_feed_update(
+    State(state): State<AppState>,
+    Query(params): Query<FeedUpdateQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let db = state.db.clone();
+    let url = params.url.clone();
+    tokio::spawn(async move {
+        let fetcher = rpodder_feed::FeedFetcher::new();
+        let _ = crate::feed_updater::update_podcast_feed_forced(&db, &fetcher, &url).await;
+    });
+    Ok(Json(
+        serde_json::json!({ "status": "feed update started", "url": params.url }),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Episode Actions History (user-facing, not admin)
 // ---------------------------------------------------------------------------

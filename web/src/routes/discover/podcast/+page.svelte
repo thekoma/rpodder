@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getPodcastEpisodes, uploadSubscriptionChanges, getDevices, getAllSubscriptions, type PodcastEpisodesResponse } from '$lib/api';
+  import { getPodcastEpisodes, uploadSubscriptionChanges, getDevices, getAllSubscriptions, forceUpdateSingleFeed, type PodcastEpisodesResponse } from '$lib/api';
   import { auth } from '$lib/auth.svelte';
   import { browser } from '$app/environment';
 
@@ -8,6 +8,8 @@
   let loaded = $state(false);
   let isSubscribed = $state(false);
   let subscribing = $state(false);
+  let refreshing = $state(false);
+  let refreshMsg = $state('');
   let podcastUrl = $state('');
   let currentPage = $state(0);
 
@@ -51,6 +53,19 @@
       isSubscribed = true;
     }
     subscribing = false;
+  }
+
+  async function refreshFeed() {
+    refreshing = true;
+    await forceUpdateSingleFeed(podcastUrl);
+    // Wait a bit for the background task to complete, then reload
+    await new Promise(r => setTimeout(r, 3000));
+    loaded = false; // Reset to trigger reload
+    refreshing = false;
+    // Re-fetch data
+    getPodcastEpisodes(podcastUrl, currentPage).then(d => {
+      if (d) data = d;
+    });
   }
 
   function formatDuration(secs: number | undefined): string {
@@ -116,6 +131,16 @@
                 {:else}
                   + Subscribe
                 {/if}
+              </button>
+            {/if}
+
+            {#if auth.loggedIn}
+              <button
+                onclick={refreshFeed}
+                disabled={refreshing}
+                class="px-4 py-1.5 bg-surface border border-border text-text-dim text-xs rounded-lg hover:bg-surface-hover disabled:opacity-50 cursor-pointer"
+              >
+                {refreshing ? '↻ Refreshing...' : '↻ Refresh Feed'}
               </button>
             {/if}
 
