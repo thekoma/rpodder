@@ -100,7 +100,8 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER IF NOT EXISTS trg_podcasts_search
+DROP TRIGGER IF EXISTS trg_podcasts_search ON podcasts;
+CREATE TRIGGER trg_podcasts_search
     BEFORE INSERT OR UPDATE OF title, author, description ON podcasts
     FOR EACH ROW EXECUTE FUNCTION podcasts_search_trigger();
 
