@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn detects_token_in_path() {
         assert!(is_likely_private_url(
-            "https://ilpostapi.k8s.one/podcast/232180/rss/wVqzuEhJHWB_Z2VYXDjZ5wKlmj0xxHaacleRBrH1yH8"
+            "https://ilpostapi.k8s.one/podcast/232180/rss/xFakeTokenForTestingOnly_DoNotUseInProduction123"
         ));
     }
 
