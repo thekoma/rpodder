@@ -94,6 +94,42 @@ services:
     profiles:
       - sqlite
 
+  # ---------------------------------------------------------------------------
+  # Standalone frontend (Svelte SPA served by nginx)
+  # Use when running frontend separately from backend
+  # ---------------------------------------------------------------------------
+  rpodder-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      rpodder-sqlite:
+        condition: service_started
+    profiles:
+      - frontend
+
+  # API-only backend (no embedded UI) for separate frontend
+  rpodder-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CARGO_BUILD_FLAGS: "--no-default-features"
+    ports:
+      - "3005:3005"
+    volumes:
+      - sqlite-data:/app/data
+    environment:
+      RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
+      RPODDER_HOST: 0.0.0.0
+      RPODDER_PORT: "3005"
+      RPODDER_RUN_MIGRATIONS: "true"
+      RPODDER_MIGRATIONS_DIR: /app/migrations
+    profiles:
+      - frontend
+
 volumes:
   pgdata:
   cargo-cache:
