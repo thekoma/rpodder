@@ -125,8 +125,23 @@ pub async fn upload_episode_actions(
     State(state): State<AppState>,
     Path(username_json): Path<String>,
     Extension(auth_user): Extension<AuthUser>,
-    Json(body): Json<UploadBody>,
+    raw_body: String,
 ) -> Result<impl IntoResponse, StatusCode> {
+    // Accept both {"actions": [...]} and bare [...] array (Kasts sends the latter)
+    let body: UploadBody = match serde_json::from_str::<UploadBody>(&raw_body) {
+        Ok(b) => b,
+        Err(_) => match serde_json::from_str::<Vec<EpisodeActionUpload>>(&raw_body) {
+            Ok(actions) => UploadBody { actions },
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    body = &raw_body[..raw_body.len().min(500)],
+                    "failed to parse episode actions upload"
+                );
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        },
+    };
     let username = strip_json_suffix(&username_json);
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
