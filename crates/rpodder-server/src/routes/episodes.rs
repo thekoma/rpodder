@@ -23,13 +23,17 @@ use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 #[derive(Debug, Deserialize)]
 pub struct EpisodeActionUpload {
     pub podcast: String,
+    #[serde(default)]
     pub episode: String,
     pub device: Option<String>,
     pub action: String,
-    pub timestamp: Option<String>,
+    pub timestamp: Option<serde_json::Value>, // Accept both string and integer
     pub started: Option<i32>,
     pub position: Option<i32>,
     pub total: Option<i32>,
+    // Accept any extra fields Kasts may send (guid, etc.)
+    #[serde(flatten)]
+    pub _extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,7 +144,11 @@ pub async fn upload_episode_actions(
 
         // Normalize URLs
         let podcast_url = normalize_url(&action_input.podcast);
-        let episode_url = normalize_url(&action_input.episode);
+        let episode_url = if action_input.episode.is_empty() {
+            continue; // Skip actions without episode URL
+        } else {
+            normalize_url(&action_input.episode)
+        };
 
         // Resolve podcast
         let (podcast, _) = with_repo!(state, |repo| {
@@ -165,26 +173,28 @@ pub async fn upload_episode_actions(
             None
         };
 
-        // Parse timestamp
-        let timestamp = action_input
-            .timestamp
-            .as_deref()
-            .and_then(|ts| {
-                // Try ISO 8601 formats
-                ts.parse()
-                    .ok()
-                    .or_else(|| {
-                        chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
-                            .ok()
-                            .map(|ndt| ndt.and_utc())
-                    })
-                    .or_else(|| {
-                        chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S")
-                            .ok()
-                            .map(|ndt| ndt.and_utc())
-                    })
-            })
-            .unwrap_or_else(Utc::now);
+        // Parse timestamp — accept string (ISO 8601) or integer (unix epoch)
+        let timestamp = match &action_input.timestamp {
+            Some(serde_json::Value::String(ts)) => ts
+                .parse()
+                .ok()
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
+                        .ok()
+                        .map(|ndt| ndt.and_utc())
+                })
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S")
+                        .ok()
+                        .map(|ndt| ndt.and_utc())
+                })
+                .unwrap_or_else(Utc::now),
+            Some(serde_json::Value::Number(n)) => n
+                .as_i64()
+                .and_then(|ts| TimeZone::timestamp_opt(&Utc, ts, 0).single())
+                .unwrap_or_else(Utc::now),
+            _ => Utc::now(),
+        };
 
         let ep_action = EpisodeAction {
             id: Uuid::now_v7(),

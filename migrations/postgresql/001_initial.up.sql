@@ -86,7 +86,10 @@ CREATE INDEX IF NOT EXISTS idx_podcasts_last_update ON podcasts (last_update);
 CREATE INDEX IF NOT EXISTS idx_podcasts_language ON podcasts (language) WHERE language IS NOT NULL;
 
 -- Full-text search index (PostgreSQL-specific)
-ALTER TABLE podcasts ADD COLUMN search_vector TSVECTOR;
+DO $$ BEGIN
+    ALTER TABLE podcasts ADD COLUMN search_vector TSVECTOR;
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_podcasts_search ON podcasts USING GIN (search_vector);
 
