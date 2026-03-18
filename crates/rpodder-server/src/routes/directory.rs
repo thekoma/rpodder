@@ -150,7 +150,8 @@ pub async fn podcast_data(
     // On-demand fetch if no metadata yet
     let podcast = if podcast.title == params.url || podcast.description.is_empty() {
         let fetcher = rpodder_feed::FeedFetcher::new();
-        let _ = crate::feed_updater::update_podcast_feed(&state.db, &fetcher, &params.url).await;
+        let _ =
+            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url).await;
         with_repo!(state, |repo| {
             PodcastRepo::find_by_url(&repo, &params.url).await
         })
@@ -209,7 +210,8 @@ pub async fn podcast_episodes(
     // On-demand fetch: if podcast has no metadata yet (title == url), fetch it now
     let podcast = if podcast.title == params.url || podcast.description.is_empty() {
         let fetcher = rpodder_feed::FeedFetcher::new();
-        let _ = crate::feed_updater::update_podcast_feed(&state.db, &fetcher, &params.url).await;
+        let _ =
+            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url).await;
         // Re-read with updated metadata
         with_repo!(state, |repo| {
             PodcastRepo::find_by_url(&repo, &params.url).await

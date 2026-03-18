@@ -30,10 +30,29 @@ macro_rules! with_repo {
 
 /// Update a single podcast feed: fetch, parse, update metadata and episodes.
 /// Errors are logged but do not stop processing — each step is best-effort.
+/// If `force` is true, skips the private URL check (for authenticated user access).
 pub async fn update_podcast_feed(
     db: &Db,
     fetcher: &FeedFetcher,
     podcast_url: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    update_podcast_feed_inner(db, fetcher, podcast_url, false).await
+}
+
+/// Same as update_podcast_feed but allows forcing private feed fetch.
+pub async fn update_podcast_feed_forced(
+    db: &Db,
+    fetcher: &FeedFetcher,
+    podcast_url: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    update_podcast_feed_inner(db, fetcher, podcast_url, true).await
+}
+
+async fn update_podcast_feed_inner(
+    db: &Db,
+    fetcher: &FeedFetcher,
+    podcast_url: &str,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let podcast = with_repo!(db, |repo| {
         PodcastRepo::find_by_url(&repo, podcast_url).await
@@ -44,8 +63,8 @@ pub async fn update_podcast_feed(
         return Ok(());
     };
 
-    // Skip private/paid feeds — don't fetch them to avoid leaking tokens
-    if is_likely_private_url(podcast_url) {
+    // Skip private/paid feeds in background updates — but allow forced fetch for authenticated users
+    if !force && is_likely_private_url(podcast_url) {
         info!(
             url = podcast_url,
             "skipping private feed (token detected in URL)"
