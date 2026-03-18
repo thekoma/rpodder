@@ -62,7 +62,7 @@
   {:else}
     <div class="bg-surface border border-border rounded-xl divide-y divide-border">
       {#each items as item}
-        <div class="px-5 py-3 hover:bg-surface-hover transition-colors flex items-center gap-4">
+        <a href="/discover/podcast?url={encodeURIComponent(item.podcast_url)}" class="px-5 py-3 hover:bg-surface-hover transition-colors flex items-center gap-4 no-underline text-text">
           <span class="text-lg w-8 text-center shrink-0">{formatAction(item.action)}</span>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-medium truncate">{item.episode_title}</p>
@@ -74,7 +74,7 @@
             {/if}
             <p class="text-xs text-text-dim">{formatDate(item.timestamp)}</p>
           </div>
-        </div>
+        </a>
       {/each}
     </div>
 

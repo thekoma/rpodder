@@ -128,3 +128,41 @@ pub enum ParseError {
     #[error("feed parse error: {0}")]
     Parse(feed_rs::parser::ParseFeedError),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_rss_pubdate() {
+        let rss = r#"<?xml version="1.0"?>
+        <rss version="2.0">
+        <channel><title>Test Pod</title><description>A test</description>
+        <item>
+          <title>Episode 1</title>
+          <pubDate>Mon, 18 Mar 2026 10:00:00 +0000</pubDate>
+          <enclosure url="http://example.com/ep1.mp3" type="audio/mpeg" length="1234"/>
+        </item>
+        <item>
+          <title>Episode 2</title>
+          <pubDate>Sun, 17 Mar 2026 09:00:00 +0000</pubDate>
+          <enclosure url="http://example.com/ep2.mp3" type="audio/mpeg" length="5678"/>
+        </item>
+        </channel></rss>"#;
+
+        let feed = parse_feed(rss).unwrap();
+        assert_eq!(feed.title, "Test Pod");
+        assert_eq!(feed.episodes.len(), 2);
+        assert_eq!(feed.episodes[0].title, "Episode 1");
+        assert!(
+            feed.episodes[0].released.is_some(),
+            "Episode 1 should have released date"
+        );
+        assert!(
+            feed.episodes[1].released.is_some(),
+            "Episode 2 should have released date"
+        );
+        // Episode 1 should be newer
+        assert!(feed.episodes[0].released.unwrap() > feed.episodes[1].released.unwrap());
+    }
+}
