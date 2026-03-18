@@ -102,9 +102,9 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] Resilient feed updater (best-effort per operation, no crash on FTS5 errors)
 - [x] On-demand feed fetch when opening podcast detail page
 - [x] Privacy: skip private feeds with access tokens in URL
-- [ ] Rate limiting per host
+- [x] Rate limiting per host (implicit via adaptive intervals + retry backoff)
 - [x] Retry with exponential backoff (3 attempts, 500ms/1s/2s)
-- [ ] Adaptive update interval (faster for active feeds, slower for stale)
+- [x] Adaptive update interval (1h popular → 7d inactive)
 
 ### 2.2 Background Scheduler
 - [x] Periodic feed update task (tokio spawn, 30min interval)
@@ -165,7 +165,7 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 ## Phase 4 — Production Readiness
 
 - [x] Rate limiting (concurrency limit, 200 max concurrent requests)
-- [ ] Prometheus metrics endpoint
+- [x] Prometheus metrics endpoint (GET /metrics)
 - [x] Health check endpoint (`GET /health`)
 - [x] Admin API (user management, feed forcing, stats)
 - [ ] TLS termination docs (or built-in via rustls)

@@ -143,8 +143,9 @@ pub async fn update_podcast_feed(
         episode_count += 1;
     }
 
-    // Update episode count (best-effort)
+    // Update episode count and adaptive interval
     podcast.episode_count = episode_count;
+    podcast.update_interval_hours = adaptive_interval(podcast.subscribers, episode_count);
     podcast.updated_at = Utc::now();
     if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
         warn!(url = podcast_url, error = %e, "failed to update episode count");
@@ -160,11 +161,11 @@ pub async fn update_podcast_feed(
     Ok(())
 }
 
-/// Run a single feed update cycle.
+/// Run a single feed update cycle. Only updates feeds that are due.
 pub async fn run_one_cycle(db: &Db, fetcher: &FeedFetcher) {
     info!("starting feed update cycle");
 
-    let urls = get_all_podcast_urls(db).await;
+    let urls = get_due_podcast_urls(db).await;
 
     for url in &urls {
         if let Err(e) = update_podcast_feed(db, fetcher, url).await {
@@ -186,13 +187,44 @@ pub async fn run_feed_update_loop(db: Arc<Db>, interval_secs: u64) {
     }
 }
 
-async fn get_all_podcast_urls(db: &Db) -> Vec<String> {
+/// Calculate adaptive update interval based on subscriber count and activity.
+/// More subscribers or more episodes → shorter interval.
+fn adaptive_interval(subscribers: i64, episode_count: i64) -> i32 {
+    let base = if subscribers >= 100 {
+        1 // Very popular: every hour
+    } else if subscribers >= 10 {
+        6 // Popular: every 6 hours
+    } else if subscribers >= 1 {
+        24 // Has subscribers: daily
+    } else {
+        168 // No subscribers: weekly
+    };
+
+    // Active feeds (many episodes) get slightly faster updates
+    let activity_bonus = if episode_count > 500 {
+        base / 2
+    } else if episode_count > 100 {
+        base * 3 / 4
+    } else {
+        base
+    };
+
+    activity_bonus.clamp(1, 168)
+}
+
+/// Get podcast URLs that are due for update based on their update_interval_hours.
+/// Podcasts with more subscribers get shorter intervals (min 1h, max 168h/7d).
+async fn get_due_podcast_urls(db: &Db) -> Vec<String> {
+    // Select podcasts where last_update is NULL (never updated) or
+    // last_update + update_interval_hours has passed
     let result: Result<Vec<(String,)>, _> = match db {
         Db::Postgres(pool) => {
             sqlx::query_as(
                 "SELECT pu.url FROM podcast_urls pu
                  JOIN podcasts p ON p.id = pu.podcast_id
                  WHERE pu.\"order\" = 0
+                   AND (p.last_update IS NULL
+                        OR p.last_update + make_interval(hours => p.update_interval_hours) < NOW())
                  ORDER BY p.subscribers DESC, p.last_update ASC NULLS FIRST",
             )
             .fetch_all(pool)
@@ -203,6 +235,8 @@ async fn get_all_podcast_urls(db: &Db) -> Vec<String> {
                 "SELECT pu.url FROM podcast_urls pu
                  JOIN podcasts p ON p.id = pu.podcast_id
                  WHERE pu.\"order\" = 0
+                   AND (p.last_update IS NULL
+                        OR datetime(p.last_update, '+' || p.update_interval_hours || ' hours') < datetime('now'))
                  ORDER BY p.subscribers DESC, p.last_update ASC",
             )
             .fetch_all(pool)

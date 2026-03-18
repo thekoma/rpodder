@@ -298,6 +298,7 @@ fn api_router(state: AppState) -> Router {
     let public = Router::new()
         .route("/admin", get(routes::admin::status_page))
         .route("/health", get(routes::health::health))
+        .route("/metrics", get(routes::health::metrics))
         .route(
             "/api/2/auth/{username}/logout.json",
             post(routes::auth::logout),
