@@ -6,6 +6,7 @@
   const tabs = [
     { href: '/discover', label: 'Browse', match: (p: string) => p === '/discover' },
     { href: '/discover/toplist', label: 'Top Podcasts', match: (p: string) => p === '/discover/toplist' },
+    { href: '/discover/trending', label: 'Trending', match: (p: string) => p === '/discover/trending' },
   ];
 </script>
 

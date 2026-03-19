@@ -321,6 +321,14 @@ export interface CombinedSearchResult {
   external: ExternalPodcast[];
 }
 
+export async function getTrending(lang?: string, max: number = 20): Promise<ExternalPodcast[]> {
+  const params = new URLSearchParams({ max: String(max) });
+  if (lang) params.set('lang', lang);
+  const resp = await request(`/api/2/trending?${params}`);
+  if (!resp.ok) return [];
+  return resp.json();
+}
+
 export async function searchAll(query: string): Promise<CombinedSearchResult> {
   const resp = await request(`/api/2/search/all?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return { local: [], external: [] };

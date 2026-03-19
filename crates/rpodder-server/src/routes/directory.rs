@@ -113,6 +113,30 @@ pub async fn search(
 // GET /api/2/search/external?q=query — search external podcast databases
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// GET /api/2/trending?lang=it&max=20 — trending podcasts from Podcast Index
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct TrendingQuery {
+    pub lang: Option<String>,
+    pub max: Option<u32>,
+}
+
+pub async fn trending(
+    State(state): State<AppState>,
+    Query(params): Query<TrendingQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let max = params.max.unwrap_or(20).clamp(1, 50);
+    let results = crate::podcast_index::trending(
+        &state.config,
+        max,
+        params.lang.as_deref(),
+    )
+    .await;
+    Ok(Json(results))
+}
+
 pub async fn search_external(
     State(state): State<AppState>,
     Query(params): Query<SearchQuery>,

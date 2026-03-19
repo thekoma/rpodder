@@ -39,30 +39,34 @@ struct PodcastIndexFeed {
     language: Option<String>,
 }
 
-/// Search Podcast Index for podcasts matching the query.
-pub async fn search(config: &AppConfig, query: &str) -> Vec<ExternalPodcast> {
-    if !config.podcastindex_configured() {
-        return vec![];
-    }
-
+fn auth_headers(config: &AppConfig) -> (String, String, String) {
     let epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
         .to_string();
 
-    // Auth hash: sha1(key + secret + epoch)
     let mut hasher = Sha1::new();
     hasher.update(config.podcastindex_key.as_bytes());
     hasher.update(config.podcastindex_secret.as_bytes());
     hasher.update(epoch.as_bytes());
     let auth_hash = format!("{:x}", hasher.finalize());
 
+    (config.podcastindex_key.clone(), epoch, auth_hash)
+}
+
+/// Search Podcast Index for podcasts matching the query.
+pub async fn search(config: &AppConfig, query: &str) -> Vec<ExternalPodcast> {
+    if !config.podcastindex_configured() {
+        return vec![];
+    }
+
+    let (key, epoch, auth_hash) = auth_headers(config);
     let client = reqwest::Client::new();
     let resp = client
         .get("https://api.podcastindex.org/api/1.0/search/byterm")
         .query(&[("q", query), ("max", "20")])
-        .header("X-Auth-Key", &config.podcastindex_key)
+        .header("X-Auth-Key", &key)
         .header("X-Auth-Date", &epoch)
         .header("Authorization", &auth_hash)
         .header("User-Agent", "rpodder/0.1.0")
@@ -86,6 +90,55 @@ pub async fn search(config: &AppConfig, query: &str) -> Vec<ExternalPodcast> {
         }
     };
 
+    feeds_to_podcasts(body)
+}
+
+/// Get trending podcasts from Podcast Index.
+/// Optional language filter (e.g. "it", "en").
+pub async fn trending(config: &AppConfig, max: u32, lang: Option<&str>) -> Vec<ExternalPodcast> {
+    if !config.podcastindex_configured() {
+        return vec![];
+    }
+
+    let (key, epoch, auth_hash) = auth_headers(config);
+    let client = reqwest::Client::new();
+
+    let mut params = vec![("max", max.to_string())];
+    if let Some(l) = lang {
+        params.push(("lang", l.to_string()));
+    }
+
+    let resp = client
+        .get("https://api.podcastindex.org/api/1.0/podcasts/trending")
+        .query(&params)
+        .header("X-Auth-Key", &key)
+        .header("X-Auth-Date", &epoch)
+        .header("Authorization", &auth_hash)
+        .header("User-Agent", "rpodder/0.1.0")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    let resp = match resp {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "Podcast Index trending failed");
+            return vec![];
+        }
+    };
+
+    let body: PodcastIndexResponse = match resp.json().await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "Podcast Index trending parse failed");
+            return vec![];
+        }
+    };
+
+    feeds_to_podcasts(body)
+}
+
+fn feeds_to_podcasts(body: PodcastIndexResponse) -> Vec<ExternalPodcast> {
     body.feeds
         .unwrap_or_default()
         .into_iter()

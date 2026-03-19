@@ -402,6 +402,10 @@ fn api_router(state: AppState) -> Router {
             "/api/2/search/external",
             get(routes::directory::search_external),
         )
+        .route(
+            "/api/2/trending",
+            get(routes::directory::trending),
+        )
         .route("/toplist/{count_json}", get(routes::directory::toplist))
         .route(
             "/api/2/data/podcast.json",
