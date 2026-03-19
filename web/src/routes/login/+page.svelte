@@ -1,12 +1,19 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte';
-  import { login as apiLogin } from '$lib/api';
+  import { login as apiLogin, getSsoInfo, type SsoInfo } from '$lib/api';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
 
   let username = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
+  let ssoInfo = $state<SsoInfo | null>(null);
+
+  $effect(() => {
+    if (!browser) return;
+    getSsoInfo().then(info => { ssoInfo = info; });
+  });
 
   async function handleLogin(e: Event) {
     e.preventDefault();
@@ -32,6 +39,20 @@
       <h1 class="text-2xl font-bold mt-2 text-brand">rpodder</h1>
       <p class="text-text-dim text-sm mt-1">Sign in to sync your podcasts</p>
     </div>
+
+    {#if ssoInfo?.enabled}
+      <a
+        href="/auth/sso/login"
+        class="w-full flex items-center justify-center gap-2 py-2.5 bg-surface border border-border text-text font-medium rounded-lg hover:bg-surface-hover transition-colors no-underline mb-4"
+      >
+        🔐 Sign in with {ssoInfo.provider_name}
+      </a>
+      <div class="flex items-center gap-3 mb-4">
+        <div class="flex-1 border-t border-border"></div>
+        <span class="text-xs text-text-dim">or</span>
+        <div class="flex-1 border-t border-border"></div>
+      </div>
+    {/if}
 
     <form onsubmit={handleLogin} class="space-y-4">
       <div>
@@ -71,8 +92,10 @@
       </button>
     </form>
 
-    <p class="text-center text-text-dim text-sm mt-4">
-      Don't have an account? <a href="/register" class="text-brand hover:underline">Register</a>
-    </p>
+    {#if ssoInfo?.registration !== 'closed'}
+      <p class="text-center text-text-dim text-sm mt-4">
+        Don't have an account? <a href="/register" class="text-brand hover:underline">Register</a>
+      </p>
+    {/if}
   </div>
 </div>

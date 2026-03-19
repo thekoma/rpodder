@@ -30,6 +30,9 @@ argon2 = { workspace = true }
 rand = { workspace = true }
 clap = { workspace = true }
 sqlx = { workspace = true }
+lettre = { workspace = true }
+reqwest = { workspace = true }
+urlencoding = { workspace = true }
 rust-embed = { workspace = true, optional = true }
 mime_guess = { version = "2", optional = true }
 base64 = "0.22"

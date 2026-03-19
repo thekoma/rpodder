@@ -294,17 +294,18 @@ pub struct CreateUserRequest {
     pub email: Option<String>,
 }
 
-/// POST /api/admin/users — create a new user
+/// POST /api/admin/users or /api/2/register — create a new user
+/// Respects registration mode: open (anyone), closed (admin only), invite (email confirmation)
 pub async fn create_user(
     State(state): State<AppState>,
     Json(body): Json<CreateUserRequest>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> Result<(StatusCode, Json<serde_json::Value>), StatusCode> {
     use rpodder_core::repo::UserRepo;
 
     let hash = crate::middleware::auth::hash_password(&body.password)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    with_repo!(state, |repo| {
+    let user = with_repo!(state, |repo| {
         UserRepo::create(&repo, &body.username, &hash, body.email.as_deref()).await
     })
     .map_err(|e| match e {
@@ -312,7 +313,120 @@ pub async fn create_user(
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     })?;
 
-    Ok(StatusCode::CREATED)
+    // If invite mode with SMTP, deactivate and send activation email
+    if state.config.registration_invite() && state.config.smtp_configured() {
+        // Deactivate until email confirmed
+        match &*state.db {
+            rpodder_db::Db::Postgres(pool) => {
+                let _ = sqlx::query("UPDATE users SET is_active = false WHERE id = $1")
+                    .bind(user.id)
+                    .execute(pool)
+                    .await;
+            }
+            rpodder_db::Db::Sqlite(pool) => {
+                let _ = sqlx::query("UPDATE users SET is_active = 0 WHERE id = ?")
+                    .bind(user.id.to_string())
+                    .execute(pool)
+                    .await;
+            }
+        }
+
+        // Generate activation token and store it
+        let token = uuid::Uuid::now_v7().to_string();
+        match &*state.db {
+            rpodder_db::Db::Postgres(pool) => {
+                let _ = sqlx::query(
+                    "INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+                     VALUES ($1, $2, $3, $4, $5)",
+                )
+                .bind(uuid::Uuid::now_v7())
+                .bind(user.id)
+                .bind(format!("activate-{token}"))
+                .bind(chrono::Utc::now() + chrono::Duration::hours(48))
+                .bind(chrono::Utc::now())
+                .execute(pool)
+                .await;
+            }
+            rpodder_db::Db::Sqlite(pool) => {
+                let _ = sqlx::query(
+                    "INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+                     VALUES (?, ?, ?, ?, ?)",
+                )
+                .bind(uuid::Uuid::now_v7().to_string())
+                .bind(user.id.to_string())
+                .bind(format!("activate-{token}"))
+                .bind((chrono::Utc::now() + chrono::Duration::hours(48)).to_rfc3339())
+                .bind(chrono::Utc::now().to_rfc3339())
+                .execute(pool)
+                .await;
+            }
+        }
+
+        // Send activation email
+        if let Some(email) = &body.email {
+            let _ =
+                crate::email::send_activation_email(&state.config, email, &body.username, &token);
+        }
+
+        return Ok((
+            StatusCode::CREATED,
+            axum::Json(serde_json::json!({
+                "status": "pending_activation",
+                "message": "Check your email to activate your account"
+            })),
+        ));
+    }
+
+    Ok((
+        StatusCode::CREATED,
+        axum::Json(serde_json::json!({ "status": "active" })),
+    ))
+}
+
+/// GET /api/2/activate?token=X — activate account via email link
+pub async fn activate_account(
+    State(state): State<AppState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let token = params.get("token").ok_or(StatusCode::BAD_REQUEST)?;
+    let activate_token = format!("activate-{token}");
+
+    // Find the session with this activation token
+    use rpodder_core::repo::SessionRepo;
+    let session = with_repo!(state, |repo| {
+        SessionRepo::find_by_token(&repo, &activate_token).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Activate the user
+    match &*state.db {
+        rpodder_db::Db::Postgres(pool) => {
+            sqlx::query("UPDATE users SET is_active = true WHERE id = $1")
+                .bind(session.user_id)
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+        rpodder_db::Db::Sqlite(pool) => {
+            sqlx::query("UPDATE users SET is_active = 1 WHERE id = ?")
+                .bind(session.user_id.to_string())
+                .execute(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        }
+    }
+
+    // Delete the activation token
+    with_repo!(state, |repo| {
+        SessionRepo::delete(&repo, &activate_token).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tracing::info!(user_id = %session.user_id, "account activated");
+
+    // Redirect to login
+    Ok(axum::response::Redirect::temporary("/login"))
 }
 
 /// POST /api/admin/users/{username}/deactivate — deactivate a user

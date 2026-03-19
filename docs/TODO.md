@@ -221,7 +221,7 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Episode actions history page
 - [x] Admin panel: user management (list, create, deactivate)
 - [x] Admin panel: feed management (force update, view status)
-- [ ] OAuth / OIDC authentication (SSO)
+- [x] OAuth / OIDC authentication (SSO via generic OIDC — Authentik, Keycloak, etc.)
 - [x] User registration endpoint (web form)
 - [x] Dockerfile for standalone Svelte container (nginx)
 - [x] docker-compose profile for separate frontend

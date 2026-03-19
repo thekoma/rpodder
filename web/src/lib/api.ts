@@ -179,6 +179,22 @@ export async function forceUpdateSingleFeed(url: string): Promise<boolean> {
   return resp.ok;
 }
 
+export interface SsoInfo {
+  enabled: boolean;
+  provider_name: string;
+  registration: string;
+}
+
+export async function getSsoInfo(): Promise<SsoInfo> {
+  try {
+    const resp = await fetch(`${API_BASE}/auth/sso/info`);
+    if (!resp.ok) return { enabled: false, provider_name: 'SSO', registration: 'open' };
+    return resp.json();
+  } catch {
+    return { enabled: false, provider_name: 'SSO', registration: 'open' };
+  }
+}
+
 export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   const resp = await request(`/search.json?q=${encodeURIComponent(query)}`);
   if (!resp.ok) return [];

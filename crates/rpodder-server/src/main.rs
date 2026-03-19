@@ -1,4 +1,5 @@
 mod config;
+mod email;
 mod feed_updater;
 mod middleware;
 mod routes;
@@ -104,8 +105,18 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         db.migrate(&cfg.migrations_dir).await?;
     }
 
+    tracing::info!(
+        registration = cfg.registration,
+        smtp = cfg.smtp_configured(),
+        oauth = cfg.oauth_configured(),
+        "server config"
+    );
+
     let db = Arc::new(db);
-    let state = AppState { db: db.clone() };
+    let state = AppState {
+        db: db.clone(),
+        config: Arc::new(cfg.clone()),
+    };
     let app = api_router(state);
 
     // Spawn background feed updater (every 30 minutes)
@@ -307,8 +318,14 @@ fn api_router(state: AppState) -> Router {
             "/api/2/auth/{username}/logout.json",
             post(routes::auth::logout),
         )
-        // User registration (public)
-        .route("/api/2/register", post(routes::admin::create_user))
+        // User registration (public, respects RPODDER_REGISTRATION mode)
+        .route("/api/2/register", post(routes::registration::register))
+        // Account activation (from email link)
+        .route("/api/2/activate", get(routes::admin::activate_account))
+        // SSO/OAuth2 (public)
+        .route("/auth/sso/login", get(routes::oauth::sso_login))
+        .route("/auth/sso/callback", get(routes::oauth::sso_callback))
+        .route("/auth/sso/info", get(routes::oauth::sso_info))
         // Directory & search (public)
         .route("/search.json", get(routes::directory::search))
         .route("/toplist/{count_json}", get(routes::directory::toplist))

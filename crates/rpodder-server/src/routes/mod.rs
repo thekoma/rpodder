@@ -8,6 +8,8 @@ pub mod favorites;
 pub mod health;
 pub mod helpers;
 pub mod lists;
+pub mod oauth;
+pub mod registration;
 pub mod settings;
 pub mod subscriptions;
 pub mod sync;

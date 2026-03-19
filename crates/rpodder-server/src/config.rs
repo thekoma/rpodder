@@ -17,22 +17,65 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub run_migrations: bool,
+
+    /// Registration mode: "open" (anyone), "closed" (admin only), "invite" (email confirmation)
+    #[serde(default = "default_registration")]
+    pub registration: String,
+
+    /// Base URL for links in emails and OAuth callbacks (e.g. "https://pod.example.com")
+    #[serde(default)]
+    pub base_url: String,
+
+    // --- SMTP ---
+    #[serde(default)]
+    pub smtp_host: String,
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    #[serde(default)]
+    pub smtp_user: String,
+    #[serde(default)]
+    pub smtp_password: String,
+    #[serde(default)]
+    pub smtp_from: String,
+    /// "none", "starttls", "tls"
+    #[serde(default = "default_smtp_security")]
+    pub smtp_security: String,
+
+    // --- OAuth2/OIDC ---
+    #[serde(default)]
+    pub oauth_issuer_url: String,
+    #[serde(default)]
+    pub oauth_client_id: String,
+    #[serde(default)]
+    pub oauth_client_secret: String,
+    /// Display name for the SSO button (e.g. "Authentik", "Google")
+    #[serde(default = "default_oauth_provider_name")]
+    pub oauth_provider_name: String,
 }
 
 fn default_database_url() -> String {
     "sqlite://rpodder.db".into()
 }
-
 fn default_host() -> String {
     "127.0.0.1".into()
 }
-
 fn default_port() -> u16 {
     3005
 }
-
 fn default_migrations_dir() -> String {
     "migrations".into()
+}
+fn default_registration() -> String {
+    "open".into()
+}
+fn default_smtp_port() -> u16 {
+    25
+}
+fn default_smtp_security() -> String {
+    "none".into()
+}
+fn default_oauth_provider_name() -> String {
+    "SSO".into()
 }
 
 impl AppConfig {
@@ -40,12 +83,10 @@ impl AppConfig {
     pub fn load(config_file: Option<&str>) -> anyhow::Result<Self> {
         let mut builder = config::Config::builder();
 
-        // Load from config file if provided
         if let Some(path) = config_file {
             builder = builder.add_source(config::File::with_name(path).required(false));
         }
 
-        // Environment variables override file settings: RPODDER_DATABASE_URL, RPODDER_HOST, etc.
         builder = builder.add_source(
             config::Environment::with_prefix("RPODDER")
                 .prefix_separator("_")
@@ -54,5 +95,17 @@ impl AppConfig {
 
         let config = builder.build()?;
         Ok(config.try_deserialize()?)
+    }
+
+    pub fn smtp_configured(&self) -> bool {
+        !self.smtp_host.is_empty()
+    }
+
+    pub fn oauth_configured(&self) -> bool {
+        !self.oauth_issuer_url.is_empty() && !self.oauth_client_id.is_empty()
+    }
+
+    pub fn registration_invite(&self) -> bool {
+        self.registration == "invite"
     }
 }

@@ -49,6 +49,12 @@ clap = { version = "4", features = ["derive"] }
 # Embed static files
 rust-embed = { version = "8", features = ["mime-guess"] }
 
+# Email (SMTP)
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "tokio1-rustls-tls", "builder", "hostname"] }
+
+# URL encoding
+urlencoding = "2"
+
 # config & logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
