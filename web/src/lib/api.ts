@@ -218,6 +218,8 @@ export interface HealthInfo {
   status: string;
   version: string;
   database: string;
+  build_tag: string;
+  build_sha: string;
 }
 
 export async function getHealth(): Promise<HealthInfo | null> {

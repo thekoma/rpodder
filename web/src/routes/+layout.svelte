@@ -1,10 +1,17 @@
 <script lang="ts">
   import '../app.css';
   import { auth } from '$lib/auth.svelte';
-  import { logout as apiLogout } from '$lib/api';
+  import { logout as apiLogout, getHealth, type HealthInfo } from '$lib/api';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
 
   let { children } = $props();
+  let buildInfo = $state<HealthInfo | null>(null);
+
+  $effect(() => {
+    if (!browser) return;
+    getHealth().then(h => { buildInfo = h; });
+  });
 
   async function handleLogout() {
     if (auth.username) {
@@ -49,4 +56,18 @@
   <main class="max-w-6xl mx-auto px-4 py-6">
     {@render children()}
   </main>
+
+  <!-- Footer with build info -->
+  {#if buildInfo}
+    <footer class="border-t border-border mt-8 py-4 text-center text-xs text-text-dim">
+      rpodder v{buildInfo.version}
+      {#if buildInfo.build_tag !== 'dev'}
+        · <span class="text-brand">{buildInfo.build_tag}</span>
+      {/if}
+      {#if buildInfo.build_sha !== 'local' && buildInfo.build_sha !== 'unknown'}
+        · <code class="text-text-dim/60">{buildInfo.build_sha.substring(0, 7)}</code>
+      {/if}
+      · {buildInfo.database}
+    </footer>
+  {/if}
 </div>

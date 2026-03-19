@@ -14,6 +14,9 @@ RUN bun run build
 # --------------------------------------------------------------------------
 FROM rust:bookworm AS builder
 
+ARG RPODDER_BUILD_TAG=dev
+ARG RPODDER_BUILD_SHA=unknown
+
 WORKDIR /build
 
 # Cache dependencies: copy only manifests first, build a dummy to prime cache
@@ -44,12 +47,19 @@ RUN touch crates/rpodder-core/src/lib.rs \
           crates/rpodder-feed/src/lib.rs \
           crates/rpodder-server/src/main.rs
 
+# Pass build info as compile-time env vars
+ENV RPODDER_BUILD_TAG=${RPODDER_BUILD_TAG}
+ENV RPODDER_BUILD_SHA=${RPODDER_BUILD_SHA}
+
 RUN cargo build --release --bin rpodder
 
 # --------------------------------------------------------------------------
 # Stage 3: Runtime
 # --------------------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
+
+ARG RPODDER_BUILD_TAG=dev
+ARG RPODDER_BUILD_SHA=unknown
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 \
@@ -59,6 +69,10 @@ COPY --from=builder /build/target/release/rpodder /usr/local/bin/rpodder
 
 # Migrations are needed at runtime for the CLI `rpodder migrate` command
 COPY migrations/ /app/migrations/
+
+# Build info available at runtime
+ENV RPODDER_BUILD_TAG=${RPODDER_BUILD_TAG}
+ENV RPODDER_BUILD_SHA=${RPODDER_BUILD_SHA}
 
 WORKDIR /app
 

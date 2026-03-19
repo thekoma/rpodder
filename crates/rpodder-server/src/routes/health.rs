@@ -92,6 +92,8 @@ pub struct HealthResponse {
     pub status: &'static str,
     pub version: &'static str,
     pub database: &'static str,
+    pub build_tag: String,
+    pub build_sha: String,
 }
 
 /// GET /health — lightweight health check for load balancers
@@ -115,5 +117,7 @@ pub async fn health(State(state): State<AppState>) -> Result<impl IntoResponse, 
         status: "ok",
         version: env!("CARGO_PKG_VERSION"),
         database: db_type,
+        build_tag: std::env::var("RPODDER_BUILD_TAG").unwrap_or_else(|_| "dev".into()),
+        build_sha: std::env::var("RPODDER_BUILD_SHA").unwrap_or_else(|_| "local".into()),
     }))
 }
