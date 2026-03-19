@@ -167,7 +167,9 @@ Goal: the server fetches and indexes podcast feeds, enabling search and discover
 - [x] Rate limiting (concurrency limit, 200 max concurrent requests)
 - [x] Prometheus metrics endpoint (GET /metrics)
 - [x] Health check endpoint (`GET /health`)
-- [x] Admin API (user management, feed forcing, stats)
+- [x] Admin API (user management, feed forcing, stats, password management)
+- [x] Dynamic migration system (reads `*.up.sql` from directory, no hardcoded filenames)
+- [x] Dockerfile: mold linker for faster release builds
 - [ ] TLS termination docs (or built-in via rustls)
 - [x] Systemd service file
 - [x] docker-compose.yml with profiles (dev/release/sqlite)
@@ -190,16 +192,18 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Login page
 - [x] Home page with server status + popular podcasts (clickable)
 
-### 5.2 Discover Section (gpodder.net-style)
-- [x] Sidebar navigation (Directory / Toplist / Search)
-- [x] Directory page: categories with podcast lists, tag cloud
+### 5.2 Discover Section
+- [x] Tab navigation (Browse / Top Podcasts / Trending)
+- [x] Browse page: always-visible search bar, categories with podcast lists, tag cloud as pills
 - [x] Toplist page: ranked table with logo, subscriber bar
 - [x] Tag pages: `/discover/tag/{tag}` with subscribe button
-- [x] Search: fuzzy prefix, debounce, results with logo/description
+- [x] Search: fuzzy prefix, debounce, combined local + Podcast Index results
 - [x] Podcast detail page: logo, title, author, description, subscribe/unsubscribe toggle
 - [x] Episode list: paginated with title, description, date, duration
 - [x] On-demand feed fetch for unindexed podcasts
 - [x] All podcasts clickable everywhere (directory, toplist, tags, search, home)
+- [x] SPA navigation fix: reactive URL tracking with `$page` store
+- [x] HTTP/HTTPS dedup in directory listings (prefer HTTPS, sum subscribers)
 
 ### 5.3 Subscriptions & Devices
 - [x] Subscriptions page: grid with logo/title/author from feed metadata
@@ -208,6 +212,7 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] Devices page: real subscription count per device
 - [x] Device rename (inline editing)
 - [x] Device delete with confirmation
+- [x] HTTPS upgrade suggestions: banner with per-subscription and "upgrade all" buttons
 
 ### 5.4 Privacy & Security
 - [x] Private feed detection (token URLs hidden from public directory)
@@ -225,8 +230,30 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 - [x] CLI `--admin` flag for `rpodder user create`
 - [x] `GET /api/2/me` endpoint for current user info (including `is_admin`)
 - [x] Web UI: Admin link/badge visible only for admins
+- [x] Admin panel: stats dashboard (users, devices, subscriptions, podcasts, episode actions)
+- [x] Admin panel: set/reset password per user
+- [x] Admin panel: send password reset email
 
-### 5.6 Not Yet Implemented
+### 5.6 Password Management
+- [x] `POST /api/2/me/password` — change own password (SSO-friendly: old_password optional)
+- [x] `POST /api/admin/users/{username}/password` — admin sets password directly
+- [x] `POST /api/admin/users/{username}/reset-password` — admin triggers reset email
+- [x] `POST /api/2/password-reset` — self-service request (anti-enumeration)
+- [x] `POST /api/2/password-reset/confirm` — confirm with token + new password
+- [x] Settings page (`/settings`) with profile info and change password form
+- [x] Password reset page (`/reset-password`) with dual-mode (request/confirm)
+- [x] "Forgot password?" link on login page
+
+### 5.7 Podcast Index Integration
+- [x] Podcast Index API client (`podcast_index.rs`) with HMAC-SHA1 auth
+- [x] `GET /api/2/search/all` — combined local + Podcast Index search (parallel, dedup)
+- [x] `GET /api/2/search/external` — Podcast Index only
+- [x] `GET /api/2/trending?lang=it&max=20` — trending podcasts with language filter
+- [x] Trending page with language filter pills (All/EN/IT/DE/ES/FR)
+- [x] Search UI: separate "Local results" and "Podcast Index" sections
+- [x] Subscribe to external podcasts directly (rpodder fetches and indexes the feed)
+
+### 5.8 Previously Completed
 - [x] Episode actions history page
 - [x] Admin panel: feed management (force update, view status)
 - [x] OAuth / OIDC authentication (SSO via generic OIDC — Authentik, Keycloak, etc.)
