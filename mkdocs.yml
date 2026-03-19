@@ -1,0 +1,83 @@
+site_name: rpodder
+site_description: A modern, self-hostable gpodder.net replacement written in Rust
+site_url: https://thekoma.github.io/rpodder/
+repo_url: https://github.com/thekoma/rpodder
+repo_name: thekoma/rpodder
+edit_uri: edit/main/docs/src/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+  logo: material/headphones
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+docs_dir: docs/src
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+    - Docker: getting-started/docker.md
+    - First Steps: getting-started/first-steps.md
+  - User Guide:
+    - Web Interface: user-guide/web-ui.md
+    - Client Setup: user-guide/clients.md
+    - Discovery & Search: user-guide/discovery.md
+    - Subscriptions: user-guide/subscriptions.md
+  - Admin Guide:
+    - User Management: admin-guide/user-management.md
+    - SSO / OAuth2: admin-guide/sso.md
+    - Password Management: admin-guide/passwords.md
+    - Feed Management: admin-guide/feeds.md
+  - API Reference:
+    - Overview: api/overview.md
+    - Authentication: api/auth.md
+    - Subscriptions: api/subscriptions.md
+    - Episodes: api/episodes.md
+    - Devices: api/devices.md
+    - Directory & Search: api/directory.md
+    - Admin API: api/admin.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Database: architecture/database.md
+    - Crate Structure: architecture/crates.md
+  - Contributing: contributing.md

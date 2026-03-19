@@ -19,3 +19,6 @@
 /gpodder2go/
 /nextcloud-gpodder/
 .env.oauth
+
+# MkDocs build output
+/site/
