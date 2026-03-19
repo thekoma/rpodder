@@ -62,6 +62,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3006:3005"
+    env_file:
+      - path: .env.oauth
+        required: false
     environment:
       RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
       RPODDER_HOST: 0.0.0.0

@@ -18,3 +18,4 @@
 /mygpo/
 /gpodder2go/
 /nextcloud-gpodder/
+.env.oauth
