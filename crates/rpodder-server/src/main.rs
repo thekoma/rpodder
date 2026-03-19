@@ -192,7 +192,11 @@ async fn cmd_user(cfg: config::AppConfig, action: UserAction) -> anyhow::Result<
                 }
             }
 
-            tracing::info!("user '{}' created{}", username, if admin { " (admin)" } else { "" });
+            tracing::info!(
+                "user '{}' created{}",
+                username,
+                if admin { " (admin)" } else { "" }
+            );
         }
         UserAction::Delete { username } => {
             // For now, just deactivate the user
@@ -348,10 +352,7 @@ fn api_router(state: AppState) -> Router {
             "/api/admin/users/{username}/password",
             post(routes::admin::admin_set_password),
         )
-        .route(
-            "/api/admin/stats",
-            get(routes::admin::stats),
-        )
+        .route("/api/admin/stats", get(routes::admin::stats))
         .route(
             "/api/admin/feeds/update",
             post(routes::admin::force_feed_update),
@@ -360,9 +361,7 @@ fn api_router(state: AppState) -> Router {
             "/api/admin/feeds/update/single",
             post(routes::admin::force_single_feed_update),
         )
-        .route_layer(axum_mw::from_fn(
-            middleware::auth::require_admin_layer(),
-        ))
+        .route_layer(axum_mw::from_fn(middleware::auth::require_admin_layer()))
         .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
             state.clone(),
         )));
@@ -394,18 +393,12 @@ fn api_router(state: AppState) -> Router {
         .route("/auth/sso/info", get(routes::oauth::sso_info))
         // Directory & search (public)
         .route("/search.json", get(routes::directory::search))
-        .route(
-            "/api/2/search/all",
-            get(routes::directory::search_all),
-        )
+        .route("/api/2/search/all", get(routes::directory::search_all))
         .route(
             "/api/2/search/external",
             get(routes::directory::search_external),
         )
-        .route(
-            "/api/2/trending",
-            get(routes::directory::trending),
-        )
+        .route("/api/2/trending", get(routes::directory::trending))
         .route("/toplist/{count_json}", get(routes::directory::toplist))
         .route(
             "/api/2/data/podcast.json",

@@ -128,12 +128,7 @@ pub async fn trending(
     Query(params): Query<TrendingQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let max = params.max.unwrap_or(20).clamp(1, 50);
-    let results = crate::podcast_index::trending(
-        &state.config,
-        max,
-        params.lang.as_deref(),
-    )
-    .await;
+    let results = crate::podcast_index::trending(&state.config, max, params.lang.as_deref()).await;
     Ok(Json(results))
 }
 
@@ -172,9 +167,7 @@ pub async fn search_all(
 
     let config = state.config.clone();
     let query = params.q.clone();
-    let external_future = async move {
-        crate::podcast_index::search(&config, &query).await
-    };
+    let external_future = async move { crate::podcast_index::search(&config, &query).await };
 
     let (local, external) = tokio::join!(local_future, external_future);
 
@@ -720,10 +713,7 @@ async fn podcasts_to_responses(
             if url.starts_with("https://") {
                 // Replace the existing HTTP entry with this HTTPS one
                 if let Some(existing) = results.iter_mut().find(|r| {
-                    r.url
-                        .replacen("http://", "", 1)
-                        .replacen("https://", "", 1)
-                        == dedup_key
+                    r.url.replacen("http://", "", 1).replacen("https://", "", 1) == dedup_key
                 }) {
                     existing.url = url;
                     existing.subscribers += p.subscribers;

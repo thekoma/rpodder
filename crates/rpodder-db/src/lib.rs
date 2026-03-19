@@ -82,13 +82,19 @@ impl Db {
             info!("{pool_kind} migration applied: {fname}");
         }
 
-        info!("{pool_kind}: {count} migrations applied", count = files.len());
+        info!(
+            "{pool_kind}: {count} migrations applied",
+            count = files.len()
+        );
         Ok(())
     }
 
     /// List migration files that would be applied for the given directory.
     /// Useful for testing and debugging.
-    pub fn list_migrations(migrations_dir: &str, subdir: &str) -> anyhow::Result<Vec<std::path::PathBuf>> {
+    pub fn list_migrations(
+        migrations_dir: &str,
+        subdir: &str,
+    ) -> anyhow::Result<Vec<std::path::PathBuf>> {
         let dir = format!("{migrations_dir}/{subdir}");
         let mut files: Vec<_> = std::fs::read_dir(&dir)?
             .filter_map(|e| e.ok())
@@ -156,7 +162,11 @@ mod tests {
     #[test]
     fn list_migrations_finds_sqlite_files_sorted() {
         let files = Db::list_migrations("../../migrations", "sqlite").unwrap();
-        assert!(files.len() >= 2, "expected at least 2 sqlite migrations, got {}", files.len());
+        assert!(
+            files.len() >= 2,
+            "expected at least 2 sqlite migrations, got {}",
+            files.len()
+        );
         // All files must end with .up.sql
         for f in &files {
             let name = f.file_name().unwrap().to_str().unwrap();
@@ -164,14 +174,23 @@ mod tests {
         }
         // Files must be sorted (001 before 002)
         for w in files.windows(2) {
-            assert!(w[0] < w[1], "migrations not sorted: {:?} >= {:?}", w[0], w[1]);
+            assert!(
+                w[0] < w[1],
+                "migrations not sorted: {:?} >= {:?}",
+                w[0],
+                w[1]
+            );
         }
     }
 
     #[test]
     fn list_migrations_finds_postgresql_files_sorted() {
         let files = Db::list_migrations("../../migrations", "postgresql").unwrap();
-        assert!(files.len() >= 2, "expected at least 2 pg migrations, got {}", files.len());
+        assert!(
+            files.len() >= 2,
+            "expected at least 2 pg migrations, got {}",
+            files.len()
+        );
         for w in files.windows(2) {
             assert!(w[0] < w[1]);
         }
@@ -182,7 +201,10 @@ mod tests {
         let files = Db::list_migrations("../../migrations", "sqlite").unwrap();
         for f in &files {
             let name = f.file_name().unwrap().to_str().unwrap();
-            assert!(!name.contains(".down."), "down migration should be excluded: {name}");
+            assert!(
+                !name.contains(".down."),
+                "down migration should be excluded: {name}"
+            );
         }
     }
 

@@ -45,29 +45,61 @@ pub async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, S
     let stats = match &*state.db {
         Db::Postgres(pool) => {
             let (users,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (devices,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM devices")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (subscriptions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM subscriptions")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (podcasts,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM podcasts")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (episode_actions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM episode_actions")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            StatsResponse { users, devices, subscriptions, podcasts, episode_actions }
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            StatsResponse {
+                users,
+                devices,
+                subscriptions,
+                podcasts,
+                episode_actions,
+            }
         }
         Db::Sqlite(pool) => {
             let (users,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (devices,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM devices")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (subscriptions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM subscriptions")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (podcasts,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM podcasts")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             let (episode_actions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM episode_actions")
-                .fetch_one(pool).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            StatsResponse { users, devices, subscriptions, podcasts, episode_actions }
+                .fetch_one(pool)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            StatsResponse {
+                users,
+                devices,
+                subscriptions,
+                podcasts,
+                episode_actions,
+            }
         }
     };
     Ok(Json(stats))
@@ -318,10 +350,8 @@ pub async fn delete_user(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
-    with_repo!(state, |repo| {
-        UserRepo::delete(&repo, user.id).await
-    })
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    with_repo!(state, |repo| UserRepo::delete(&repo, user.id).await)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     tracing::info!(username = %username, "user deleted");
     Ok(StatusCode::OK)

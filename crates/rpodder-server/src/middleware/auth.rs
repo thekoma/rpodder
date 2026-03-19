@@ -141,13 +141,11 @@ pub fn hash_password(password: &str) -> std::result::Result<String, argon2::pass
 
 /// Middleware that requires the authenticated user to be an admin.
 /// Must be applied after require_auth_layer.
-pub fn require_admin_layer(
-) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+pub fn require_admin_layer()
+-> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
 + Clone
 + Send {
-    move |req, next| {
-        Box::pin(require_admin(req, next))
-    }
+    move |req, next| Box::pin(require_admin(req, next))
 }
 
 async fn require_admin(req: Request, next: Next) -> Response {
