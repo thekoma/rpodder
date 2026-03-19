@@ -65,6 +65,14 @@ FROM debian:bookworm-slim AS runtime
 ARG RPODDER_BUILD_TAG=dev
 ARG RPODDER_BUILD_SHA=unknown
 
+LABEL org.opencontainers.image.title="rpodder"
+LABEL org.opencontainers.image.description="A modern, self-hostable gpodder.net replacement written in Rust"
+LABEL org.opencontainers.image.url="https://thekoma.github.io/rpodder/"
+LABEL org.opencontainers.image.source="https://github.com/thekoma/rpodder"
+LABEL org.opencontainers.image.documentation="https://thekoma.github.io/rpodder/"
+LABEL org.opencontainers.image.vendor="thekoma"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 \
  && rm -rf /var/lib/apt/lists/*
@@ -73,6 +81,9 @@ COPY --from=builder /build/target/release/rpodder /usr/local/bin/rpodder
 
 # Migrations are needed at runtime for the CLI `rpodder migrate` command
 COPY migrations/ /app/migrations/
+
+# Logo for container management UIs (Portainer, Dockge, etc.)
+COPY web/static/logo.svg /app/logo.svg
 
 # Build info available at runtime
 ENV RPODDER_BUILD_TAG=${RPODDER_BUILD_TAG}

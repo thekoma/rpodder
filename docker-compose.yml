@@ -1,12 +1,24 @@
-# docker-compose.yml — development environment
+# docker-compose.yml — rpodder development & deployment
+#
+# Profiles:
+#   (default)  PostgreSQL + dev server with cargo-watch live reload
+#   release    PostgreSQL + production release build
+#   sqlite     Self-contained SQLite mode (no external DB)
+#   frontend   Standalone Svelte frontend (nginx) + API backend
 #
 # Usage:
-#   docker compose up -d postgres   # just the database
-#   docker compose up               # database + rpodder with live reload
-#   docker compose --profile test up # run integration tests
-#
-# The rpodder service uses Dockerfile.dev with cargo-watch for live reload.
-# Source code is bind-mounted so changes are picked up automatically.
+#   docker compose up -d                          # dev mode
+#   docker compose --profile release up -d        # release mode
+#   docker compose --profile sqlite up -d         # sqlite mode
+
+x-rpodder-labels: &rpodder-labels
+  org.opencontainers.image.title: rpodder
+  org.opencontainers.image.description: A modern, self-hostable gpodder.net replacement written in Rust
+  org.opencontainers.image.url: https://thekoma.github.io/rpodder/
+  org.opencontainers.image.source: https://github.com/thekoma/rpodder
+  org.opencontainers.image.documentation: https://thekoma.github.io/rpodder/
+  org.opencontainers.image.vendor: thekoma
+  org.opencontainers.image.licenses: AGPL-3.0-or-later
 
 services:
   # ---------------------------------------------------------------------------
@@ -35,6 +47,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
+    labels:
+      <<: *rpodder-labels
+      com.docker.compose.description: "rpodder (dev mode, cargo-watch)"
     ports:
       - "3006:3005"
     volumes:
@@ -57,12 +72,15 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # rpodder — production-like build (for testing the release image)
+  # rpodder — production-like release build
   # ---------------------------------------------------------------------------
   rpodder-release:
     build:
       context: .
       dockerfile: Dockerfile
+    labels:
+      <<: *rpodder-labels
+      com.docker.compose.description: "rpodder (release build)"
     ports:
       - "3006:3005"
     env_file:
@@ -81,12 +99,15 @@ services:
       - release
 
   # ---------------------------------------------------------------------------
-  # SQLite variant — self-hosted mode (no external DB needed)
+  # rpodder — self-hosted SQLite mode (no external DB needed)
   # ---------------------------------------------------------------------------
   rpodder-sqlite:
     build:
       context: .
       dockerfile: Dockerfile
+    labels:
+      <<: *rpodder-labels
+      com.docker.compose.description: "rpodder (SQLite mode)"
     ports:
       - "3005:3005"
     volumes:
@@ -102,12 +123,14 @@ services:
 
   # ---------------------------------------------------------------------------
   # Standalone frontend (Svelte SPA served by nginx)
-  # Use when running frontend separately from backend
   # ---------------------------------------------------------------------------
   rpodder-web:
     build:
       context: ./web
       dockerfile: Dockerfile
+    labels:
+      <<: *rpodder-labels
+      com.docker.compose.description: "rpodder web UI (nginx)"
     ports:
       - "8080:8080"
     depends_on:
@@ -123,6 +146,9 @@ services:
       dockerfile: Dockerfile
       args:
         CARGO_BUILD_FLAGS: "--no-default-features"
+    labels:
+      <<: *rpodder-labels
+      com.docker.compose.description: "rpodder API (no UI)"
     ports:
       - "3005:3005"
     volumes:
