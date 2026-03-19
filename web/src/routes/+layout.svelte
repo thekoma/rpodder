@@ -33,7 +33,7 @@
   <nav class="border-b border-border bg-surface sticky top-0 z-50">
     <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2 text-brand font-bold text-lg hover:opacity-80 transition-opacity">
-        <span class="text-2xl">🎧</span>
+        <img src="/logo.svg" alt="" class="h-7 w-auto invert" />
         rpodder
       </a>
 

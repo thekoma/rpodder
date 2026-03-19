@@ -1,3 +1,7 @@
+<div style="text-align: center; margin-bottom: 2rem;">
+  <img src="assets/logo.svg" alt="rpodder logo" width="200" style="margin-bottom: 1rem;" />
+</div>
+
 # rpodder
 
 **A modern, self-hostable [gpodder.net](https://gpodder.net) replacement written in Rust.**

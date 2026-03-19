@@ -31,7 +31,8 @@ theme:
     - content.tabs.link
   icon:
     repo: fontawesome/brands/github
-  logo: material/headphones
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
 
 markdown_extensions:
   - admonition
