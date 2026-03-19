@@ -1,22 +1,29 @@
 <script lang="ts">
+  import { page } from '$app/stores';
+
   let { children } = $props();
+
+  const tabs = [
+    { href: '/discover', label: 'Browse', match: (p: string) => p === '/discover' },
+    { href: '/discover/toplist', label: 'Top Podcasts', match: (p: string) => p === '/discover/toplist' },
+  ];
 </script>
 
-<div class="flex gap-6">
-  <!-- Sidebar -->
-  <nav class="w-48 shrink-0 hidden md:block">
-    <div class="sticky top-20 space-y-1">
-      <h3 class="text-xs text-text-dim uppercase tracking-wider mb-2 px-3">Discover</h3>
-      <a href="/discover" class="block px-3 py-1.5 text-sm rounded-md hover:bg-surface-hover transition-colors text-text-dim hover:text-text">Directory</a>
-      <a href="/discover/toplist" class="block px-3 py-1.5 text-sm rounded-md hover:bg-surface-hover transition-colors text-text-dim hover:text-text">Toplist</a>
-
-      <h3 class="text-xs text-text-dim uppercase tracking-wider mt-4 mb-2 px-3">Search</h3>
-      <a href="/discover?search=1" class="block px-3 py-1.5 text-sm rounded-md hover:bg-surface-hover transition-colors text-text-dim hover:text-text">Search</a>
-    </div>
-  </nav>
-
-  <!-- Main content -->
-  <div class="flex-1 min-w-0">
-    {@render children()}
+<div class="space-y-6">
+  <!-- Tab navigation -->
+  <div class="flex items-center gap-1 border-b border-border">
+    {#each tabs as tab}
+      <a
+        href={tab.href}
+        class="px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px no-underline
+          {tab.match($page.url.pathname)
+            ? 'border-brand text-brand'
+            : 'border-transparent text-text-dim hover:text-text hover:border-border'}"
+      >
+        {tab.label}
+      </a>
+    {/each}
   </div>
+
+  {@render children()}
 </div>

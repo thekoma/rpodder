@@ -8,9 +8,15 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 
 - **Full gpodder API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists
 - **Web UI** — built-in Svelte 5 + Tailwind interface for browsing, searching, and managing podcasts
+- **User roles** — admin/user system with first-user auto-admin, full user management panel
+- **SSO/OAuth2** — OIDC single sign-on (Authentik, Keycloak, etc.) with group-based admin mapping
+- **Registration control** — open, closed, or invite-only (email activation)
+- **Password management** — self-service change/reset via email, admin set/reset, SSO-friendly
+- **HTTPS upgrade suggestions** — detects HTTP subscriptions with HTTPS alternatives, proposes upgrade
 - **Multi-format** — JSON, OPML, and TXT for subscription import/export
 - **Dual database** — PostgreSQL for scale, SQLite for self-hosting
 - **Feed indexing** — automatic feed fetching, parsing, fuzzy search, podcast directory
+- **Dynamic migrations** — reads all `*.up.sql` from migrations directory, no hardcoded filenames
 - **Privacy** — private/paid feeds (with tokens in URL) hidden from public directory
 - **Lightweight** — single binary with embedded UI, low memory footprint
 
@@ -22,9 +28,9 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 # Build
 cargo build --release
 
-# Initialize database and create a user
+# Initialize database and create an admin user
 ./target/release/rpodder migrate
-./target/release/rpodder user create myuser mypassword
+./target/release/rpodder user create myuser mypassword --admin
 
 # Start the server
 ./target/release/rpodder serve
@@ -37,15 +43,13 @@ The server starts on `http://localhost:3005`. Point your podcast app at this URL
 ```bash
 docker compose --profile sqlite up -d
 # Create a user
-docker compose exec rpodder-sqlite rpodder user create myuser mypassword
+docker compose exec rpodder-sqlite rpodder user create myuser mypassword --admin
 ```
 
 ### Docker (PostgreSQL)
 
 ```bash
-docker compose up -d
-# Create a user inside the dev container
-docker compose exec rpodder cargo run -p rpodder-server -- user create myuser mypassword
+docker compose --profile release up -d
 ```
 
 ## Configuration
@@ -58,7 +62,13 @@ All settings can be set via environment variables or a TOML config file:
 | `RPODDER_HOST` | `127.0.0.1` | Bind address |
 | `RPODDER_PORT` | `3005` | Bind port |
 | `RPODDER_RUN_MIGRATIONS` | `false` | Run migrations on startup |
-| `RPODDER_MIGRATIONS_DIR` | `migrations` | Path to migration files |
+| `RPODDER_REGISTRATION` | `open` | `open` / `closed` / `invite` |
+| `RPODDER_SMTP_HOST` | | SMTP server for email features |
+| `RPODDER_OAUTH_ISSUER_URL` | | OIDC issuer URL for SSO |
+| `RPODDER_OAUTH_CLIENT_ID` | | OAuth2 client ID |
+| `RPODDER_OAUTH_CLIENT_SECRET` | | OAuth2 client secret |
+| `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name for admin role |
+| `RPODDER_BASE_URL` | | Public URL for OAuth callbacks and emails |
 
 Or use a config file: `rpodder -c config.toml serve`
 
@@ -67,10 +77,12 @@ See [`config/rpodder.example.toml`](config/rpodder.example.toml) for an example.
 ## CLI
 
 ```
-rpodder serve                              # Start the server
-rpodder migrate                            # Run database migrations
-rpodder user create <username> <password>  # Create a user
-rpodder user delete <username>             # Deactivate a user
+rpodder serve                                    # Start the server
+rpodder migrate                                  # Run database migrations
+rpodder user create <username> <password>         # Create a user
+rpodder user create <username> <password> --admin # Create an admin user
+rpodder user delete <username>                    # Deactivate a user
+rpodder repair                                   # Rebuild FTS5 index (SQLite)
 ```
 
 ## Client Setup
@@ -95,10 +107,16 @@ Preferences → gpodder.net → Server URL: `http://your-server:3005`
 | `GET/POST /api/2/subscriptions/{user}/{device}.json` | Delta subscription sync |
 | `GET/POST /api/2/episodes/{user}.json` | Episode action sync |
 | `GET/POST /api/2/devices/{user}/{device}.json` | Device management |
+| `GET /api/2/me` | Current user info |
+| `POST /api/2/me/password` | Change password |
+| `GET /api/2/me/upgrades` | HTTPS upgrade suggestions |
+| `POST /api/2/register` | Public registration |
+| `POST /api/2/password-reset` | Request password reset |
 | `GET /search.json?q=...` | Podcast search |
 | `GET /toplist/{count}.json` | Top podcasts |
+| `GET /api/admin/users` | Admin: list users |
+| `GET /api/admin/stats` | Admin: server statistics |
 | `GET /health` | Health check |
-| `/` | Status dashboard |
 
 See [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) for the complete API surface.
 

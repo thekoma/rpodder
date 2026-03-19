@@ -14,10 +14,14 @@ RUN bun run build
 # --------------------------------------------------------------------------
 FROM rust:bookworm AS builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends mold clang && rm -rf /var/lib/apt/lists/*
+
 ARG RPODDER_BUILD_TAG=dev
 ARG RPODDER_BUILD_SHA=unknown
 
 WORKDIR /build
+
+ENV RUSTFLAGS="-C linker=clang -C link-arg=--ld-path=/usr/bin/mold"
 
 # Cache dependencies: copy only manifests first, build a dummy to prime cache
 COPY Cargo.toml Cargo.lock ./

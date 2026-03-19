@@ -61,13 +61,14 @@ impl repo::UserRepo for SqliteRepo {
             password_hash: password_hash.to_string(),
             email: email.map(|e| e.to_string()),
             is_active: true,
+            is_admin: false,
             created_at: now,
         })
     }
 
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
         let row: Option<SqliteUserRow> = sqlx::query_as(
-            "SELECT id, username, password_hash, email, is_active, created_at
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
              FROM users WHERE username = ? COLLATE NOCASE",
         )
         .bind(username)
@@ -80,7 +81,7 @@ impl repo::UserRepo for SqliteRepo {
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>> {
         let row: Option<SqliteUserRow> = sqlx::query_as(
-            "SELECT id, username, password_hash, email, is_active, created_at
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
              FROM users WHERE id = ?",
         )
         .bind(uuid_str(&id))
@@ -88,6 +89,76 @@ impl repo::UserRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
+        Ok(row.map(|r| r.into()))
+    }
+
+    async fn list_all(&self) -> Result<Vec<User>> {
+        let rows: Vec<SqliteUserRow> = sqlx::query_as(
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
+             FROM users ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn set_admin(&self, user_id: Uuid, is_admin: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET is_admin = ? WHERE id = ?")
+            .bind(is_admin)
+            .bind(uuid_str(&user_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn set_active(&self, user_id: Uuid, is_active: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET is_active = ? WHERE id = ?")
+            .bind(is_active)
+            .bind(uuid_str(&user_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn delete(&self, user_id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM users WHERE id = ?")
+            .bind(uuid_str(&user_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn count_active(&self) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_active = 1")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.0)
+    }
+
+    async fn update_password(&self, user_id: Uuid, password_hash: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(password_hash)
+            .bind(uuid_str(&user_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>> {
+        let row: Option<SqliteUserRow> = sqlx::query_as(
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
+             FROM users WHERE email = ? COLLATE NOCASE",
+        )
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(row.map(|r| r.into()))
     }
 }
@@ -99,6 +170,7 @@ struct SqliteUserRow {
     password_hash: String,
     email: Option<String>,
     is_active: bool,
+    is_admin: bool,
     created_at: String,
 }
 
@@ -110,6 +182,7 @@ impl From<SqliteUserRow> for User {
             password_hash: r.password_hash,
             email: r.email,
             is_active: r.is_active,
+            is_admin: r.is_admin,
             created_at: r.created_at.parse().unwrap_or_default(),
         }
     }
@@ -1552,6 +1625,10 @@ mod tests {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         let schema = std::fs::read_to_string("../../migrations/sqlite/001_initial.up.sql").unwrap();
         sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
+        // Apply subsequent migrations
+        let migration2 =
+            std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
+        sqlx::raw_sql(&migration2).execute(&pool).await.unwrap();
         SqliteRepo::new(pool)
     }
 

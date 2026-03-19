@@ -6,17 +6,16 @@
 
   let podcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);
-  let loaded = $state(false);
   let tag = $state('');
   let subscribing = $state<string | null>(null);
   let subscribeMsg = $state('');
 
+  // React to URL changes (fixes SPA navigation)
   $effect(() => {
     if (!browser) return;
-    const newTag = window.location.pathname.split('/').pop() || '';
-    if (newTag === tag && loaded) return;
+    const newTag = $page.params.tag || '';
+    if (newTag === tag) return;
     tag = newTag;
-    loaded = true;
     loading = true;
     getPodcastsForTag(decodeURIComponent(tag), 50).then(p => {
       podcasts = p;
@@ -38,7 +37,7 @@
 
 <div class="space-y-6">
   <div class="flex items-center gap-3">
-    <a href="/discover" class="text-text-dim hover:text-text transition-colors">← Directory</a>
+    <a href="/discover" class="text-text-dim hover:text-text transition-colors text-sm">← Browse</a>
     <h1 class="text-2xl font-bold capitalize">{decodeURIComponent(tag)}</h1>
   </div>
 
@@ -49,7 +48,7 @@
   {#if loading}
     <div class="text-center text-text-dim py-12">Loading...</div>
   {:else if podcasts.length === 0}
-    <p class="text-text-dim text-center py-8">No podcasts found for this tag.</p>
+    <p class="text-text-dim text-center py-8">No podcasts found for this category.</p>
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       {#each podcasts as podcast}
@@ -58,12 +57,12 @@
             {#if podcast.logo_url}
               <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
             {:else}
-              <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙️</div>
+              <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙</div>
             {/if}
             <div class="flex-1 min-w-0">
               <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
               {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
-            {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
+              {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
             </div>
           </a>
           {#if auth.loggedIn}

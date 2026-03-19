@@ -30,6 +30,28 @@ pub trait UserRepo: Send + Sync {
         &self,
         id: Uuid,
     ) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
+    fn list_all(&self) -> impl std::future::Future<Output = Result<Vec<User>>> + Send;
+    fn set_admin(
+        &self,
+        user_id: Uuid,
+        is_admin: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn set_active(
+        &self,
+        user_id: Uuid,
+        is_active: bool,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn delete(&self, user_id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn count_active(&self) -> impl std::future::Future<Output = Result<i64>> + Send;
+    fn update_password(
+        &self,
+        user_id: Uuid,
+        password_hash: &str,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn find_by_email(
+        &self,
+        email: &str,
+    ) -> impl std::future::Future<Output = Result<Option<User>>> + Send;
 }
 
 // ---------------------------------------------------------------------------

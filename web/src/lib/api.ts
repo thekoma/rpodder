@@ -144,8 +144,26 @@ export interface AdminUser {
   username: string;
   email?: string;
   active: boolean;
+  is_admin: boolean;
   devices: number;
   subscriptions: number;
+}
+
+export interface MeInfo {
+  username: string;
+  email?: string;
+  is_admin: boolean;
+  is_active: boolean;
+}
+
+export async function getMe(): Promise<MeInfo | null> {
+  try {
+    const resp = await request('/api/2/me');
+    if (!resp.ok) return null;
+    return resp.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
@@ -167,6 +185,93 @@ export async function createAdminUser(username: string, password: string, email?
 export async function deactivateUser(username: string): Promise<boolean> {
   const resp = await request(`/api/admin/users/${username}/deactivate`, { method: 'POST' });
   return resp.ok;
+}
+
+export async function activateUser(username: string): Promise<boolean> {
+  const resp = await request(`/api/admin/users/${username}/activate`, { method: 'POST' });
+  return resp.ok;
+}
+
+export async function setUserRole(username: string, isAdmin: boolean): Promise<boolean> {
+  const resp = await request(`/api/admin/users/${username}/role`, {
+    method: 'POST',
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+  return resp.ok;
+}
+
+export async function adminResetPassword(username: string): Promise<{ ok: boolean; message?: string }> {
+  const resp = await request(`/api/admin/users/${username}/reset-password`, { method: 'POST' });
+  if (!resp.ok) return { ok: false };
+  const data = await resp.json();
+  return { ok: true, message: data.status || data.error };
+}
+
+export async function adminSetPassword(username: string, password: string): Promise<boolean> {
+  const resp = await request(`/api/admin/users/${username}/password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+  return resp.ok;
+}
+
+export async function changeMyPassword(oldPassword: string | null, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const body: Record<string, string> = { new_password: newPassword };
+  if (oldPassword) body.old_password = oldPassword;
+  const resp = await request('/api/2/me/password', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    try {
+      const data = await resp.json();
+      return { ok: false, error: data.error || 'Failed to change password' };
+    } catch {
+      return { ok: false, error: 'Failed to change password' };
+    }
+  }
+  return { ok: true };
+}
+
+export async function requestPasswordReset(email: string): Promise<boolean> {
+  const resp = await fetch(`${API_BASE}/api/2/password-reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return resp.ok;
+}
+
+export async function confirmPasswordReset(token: string, newPassword: string): Promise<boolean> {
+  const resp = await fetch(`${API_BASE}/api/2/password-reset/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  return resp.ok;
+}
+
+export async function deleteUser(username: string): Promise<boolean> {
+  const resp = await request(`/api/admin/users/${username}`, { method: 'DELETE' });
+  return resp.ok;
+}
+
+export interface AdminStats {
+  users: number;
+  devices: number;
+  subscriptions: number;
+  podcasts: number;
+  episode_actions: number;
+}
+
+export async function getAdminStats(): Promise<AdminStats | null> {
+  try {
+    const resp = await request('/api/admin/stats');
+    if (!resp.ok) return null;
+    return resp.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function forceUpdateFeeds(): Promise<boolean> {
@@ -246,6 +351,18 @@ export async function getHealth(): Promise<HealthInfo | null> {
   } catch {
     return null;
   }
+}
+
+export interface UpgradeableSub {
+  http_url: string;
+  https_url: string;
+  title: string;
+}
+
+export async function getSubscriptionUpgrades(): Promise<UpgradeableSub[]> {
+  const resp = await request('/api/2/me/upgrades');
+  if (!resp.ok) return [];
+  return resp.json();
 }
 
 export async function uploadSubscriptionChanges(

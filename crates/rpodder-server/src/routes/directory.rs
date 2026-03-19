@@ -617,17 +617,41 @@ fn podcast_to_response(p: rpodder_core::types::Podcast, url_hint: &str) -> Podca
 
 /// Convert podcasts to responses, looking up feed URLs from the DB.
 /// Filters out podcasts with private/token URLs.
+/// Deduplicates HTTP/HTTPS variants, preferring HTTPS.
 async fn podcasts_to_responses(
     state: &AppState,
     podcasts: Vec<rpodder_core::types::Podcast>,
 ) -> Vec<PodcastResponse> {
-    let mut results = Vec::with_capacity(podcasts.len());
+    let mut results: Vec<PodcastResponse> = Vec::with_capacity(podcasts.len());
+    let mut seen_urls: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for p in podcasts {
         let url = lookup_podcast_url(state, p.id).await.unwrap_or_default();
         // Skip private feeds from public directory
         if !url.is_empty() && is_likely_private_url(&url) {
             continue;
         }
+
+        // Dedup HTTP/HTTPS: use the URL without scheme as key
+        let dedup_key = url.replacen("http://", "", 1).replacen("https://", "", 1);
+        if seen_urls.contains(&dedup_key) {
+            // If we already have the HTTPS version, skip this one.
+            // If we have HTTP and this is HTTPS, replace it.
+            if url.starts_with("https://") {
+                // Replace the existing HTTP entry with this HTTPS one
+                if let Some(existing) = results.iter_mut().find(|r| {
+                    r.url
+                        .replacen("http://", "", 1)
+                        .replacen("https://", "", 1)
+                        == dedup_key
+                }) {
+                    existing.url = url;
+                    existing.subscribers += p.subscribers;
+                }
+            }
+            continue;
+        }
+        seen_urls.insert(dedup_key);
         results.push(podcast_to_response(p, &url));
     }
     results

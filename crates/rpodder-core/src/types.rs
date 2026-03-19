@@ -74,6 +74,7 @@ pub struct User {
     pub password_hash: String,
     pub email: Option<String>,
     pub is_active: bool,
+    pub is_admin: bool,
     pub created_at: DateTime<Utc>,
 }
 

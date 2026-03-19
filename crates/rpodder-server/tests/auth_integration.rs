@@ -23,6 +23,8 @@ async fn setup_db() -> Db {
     let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
     let schema = std::fs::read_to_string("../../migrations/sqlite/001_initial.up.sql").unwrap();
     sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
+    let m2 = std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
+    sqlx::raw_sql(&m2).execute(&pool).await.unwrap();
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&pool)
         .await

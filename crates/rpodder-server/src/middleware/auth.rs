@@ -115,6 +115,10 @@ async fn resolve_basic_auth(state: &AppState, username: &str, password: &str) ->
     }
 }
 
+pub fn verify_password_pub(password: &str, hash: &str) -> bool {
+    verify_password(password, hash)
+}
+
 fn verify_password(password: &str, hash: &str) -> bool {
     use argon2::{Argon2, PasswordHash, PasswordVerifier};
     let parsed = match PasswordHash::new(hash) {
@@ -133,6 +137,26 @@ pub fn hash_password(password: &str) -> std::result::Result<String, argon2::pass
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default().hash_password(password.as_bytes(), &salt)?;
     Ok(hash.to_string())
+}
+
+/// Middleware that requires the authenticated user to be an admin.
+/// Must be applied after require_auth_layer.
+pub fn require_admin_layer(
+) -> impl Fn(Request, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
++ Clone
++ Send {
+    move |req, next| {
+        Box::pin(require_admin(req, next))
+    }
+}
+
+async fn require_admin(req: Request, next: Next) -> Response {
+    if let Some(auth_user) = req.extensions().get::<AuthUser>()
+        && auth_user.0.is_admin
+    {
+        return next.run(req).await;
+    }
+    StatusCode::FORBIDDEN.into_response()
 }
 
 fn base64_decode(input: &str) -> Option<Vec<u8>> {

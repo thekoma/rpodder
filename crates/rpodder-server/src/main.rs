@@ -64,6 +64,9 @@ enum UserAction {
         /// Email (optional)
         #[arg(long)]
         email: Option<String>,
+        /// Make user an admin
+        #[arg(long)]
+        admin: bool,
     },
     /// Delete a user
     Delete {
@@ -158,22 +161,36 @@ async fn cmd_user(cfg: config::AppConfig, action: UserAction) -> anyhow::Result<
             username,
             password,
             email,
+            admin,
         } => {
             let hash = middleware::auth::hash_password(&password)
                 .map_err(|e| anyhow::anyhow!("failed to hash password: {e}"))?;
 
-            match &db {
+            let user = match &db {
                 Db::Postgres(pool) => {
                     let repo = PgRepo::new(pool.clone());
-                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?;
+                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?
                 }
                 Db::Sqlite(pool) => {
                     let repo = SqliteRepo::new(pool.clone());
-                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?;
+                    UserRepo::create(&repo, &username, &hash, email.as_deref()).await?
+                }
+            };
+
+            if admin {
+                match &db {
+                    Db::Postgres(pool) => {
+                        let repo = PgRepo::new(pool.clone());
+                        UserRepo::set_admin(&repo, user.id, true).await?;
+                    }
+                    Db::Sqlite(pool) => {
+                        let repo = SqliteRepo::new(pool.clone());
+                        UserRepo::set_admin(&repo, user.id, true).await?;
+                    }
                 }
             }
 
-            tracing::info!("user '{}' created", username);
+            tracing::info!("user '{}' created{}", username, if admin { " (admin)" } else { "" });
         }
         UserAction::Delete { username } => {
             // For now, just deactivate the user
@@ -288,14 +305,50 @@ fn api_router(state: AppState) -> Router {
             "/api/2/history/{username_json}",
             get(routes::admin::episode_history),
         )
-        // Admin API (authenticated, any user for now — TODO: restrict to admin role)
+        // Current user info + password change + subscription upgrades (authenticated)
+        .route("/api/2/me", get(routes::admin::me))
+        .route("/api/2/me/password", post(routes::admin::change_password))
+        .route(
+            "/api/2/me/upgrades",
+            get(routes::admin::subscription_upgrades),
+        )
+        .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
+            state.clone(),
+        )));
+
+    // Admin-only routes (requires auth + admin role)
+    let admin = Router::new()
         .route(
             "/api/admin/users",
             get(routes::admin::list_users).post(routes::admin::create_user),
         )
         .route(
+            "/api/admin/users/{username}",
+            axum::routing::delete(routes::admin::delete_user),
+        )
+        .route(
+            "/api/admin/users/{username}/activate",
+            post(routes::admin::activate_user),
+        )
+        .route(
             "/api/admin/users/{username}/deactivate",
             post(routes::admin::deactivate_user),
+        )
+        .route(
+            "/api/admin/users/{username}/role",
+            post(routes::admin::set_user_role),
+        )
+        .route(
+            "/api/admin/users/{username}/reset-password",
+            post(routes::admin::admin_reset_password),
+        )
+        .route(
+            "/api/admin/users/{username}/password",
+            post(routes::admin::admin_set_password),
+        )
+        .route(
+            "/api/admin/stats",
+            get(routes::admin::stats),
         )
         .route(
             "/api/admin/feeds/update",
@@ -305,13 +358,15 @@ fn api_router(state: AppState) -> Router {
             "/api/admin/feeds/update/single",
             post(routes::admin::force_single_feed_update),
         )
+        .route_layer(axum_mw::from_fn(
+            middleware::auth::require_admin_layer(),
+        ))
         .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
             state.clone(),
         )));
 
     // Public routes (no auth required)
     let public = Router::new()
-        .route("/admin", get(routes::admin::status_page))
         .route("/health", get(routes::health::health))
         .route("/metrics", get(routes::health::metrics))
         .route(
@@ -322,6 +377,15 @@ fn api_router(state: AppState) -> Router {
         .route("/api/2/register", post(routes::registration::register))
         // Account activation (from email link)
         .route("/api/2/activate", get(routes::admin::activate_account))
+        // Password reset (public, self-service)
+        .route(
+            "/api/2/password-reset",
+            post(routes::admin::request_password_reset),
+        )
+        .route(
+            "/api/2/password-reset/confirm",
+            post(routes::admin::confirm_password_reset),
+        )
         // SSO/OAuth2 (public)
         .route("/auth/sso/login", get(routes::oauth::sso_login))
         .route("/auth/sso/callback", get(routes::oauth::sso_callback))
@@ -347,7 +411,9 @@ fn api_router(state: AppState) -> Router {
             get(routes::directory::podcasts_for_tag),
         );
 
+    #[allow(unused_mut)]
     let mut app = authenticated
+        .merge(admin)
         .merge(public)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

@@ -71,8 +71,15 @@ pub async fn sso_login(State(state): State<AppState>) -> Result<impl IntoRespons
 
     let state_param = Uuid::now_v7().to_string();
 
+    // Request groups scope if admin group mapping is configured
+    let scope = if config.oauth_admin_group.is_empty() {
+        "openid+profile+email".to_string()
+    } else {
+        "openid+profile+email+groups".to_string()
+    };
+
     let auth_url = format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid+profile+email&state={state_param}",
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope={scope}&state={state_param}",
         auth_endpoint,
         urlencoding::encode(&config.oauth_client_id),
         urlencoding::encode(&redirect_uri),
@@ -152,7 +159,7 @@ pub async fn sso_callback(
     })?;
 
     // Get user info
-    let (username, email) = if let Some(userinfo_url) = userinfo_endpoint {
+    let (username, email, groups) = if let Some(userinfo_url) = userinfo_endpoint {
         let userinfo: serde_json::Value = http_client
             .get(userinfo_url)
             .bearer_auth(access_token)
@@ -171,8 +178,9 @@ pub async fn sso_callback(
             .to_string();
 
         let email = userinfo["email"].as_str().map(|s| s.to_string());
+        let groups = extract_groups(&userinfo);
 
-        (username, email)
+        (username, email, groups)
     } else {
         // Decode ID token JWT payload (base64 middle part)
         if let Some(id_token) = token_resp["id_token"].as_str() {
@@ -189,22 +197,27 @@ pub async fn sso_callback(
                             .unwrap_or("sso-user")
                             .to_string();
                         let email = claims["email"].as_str().map(|s| s.to_string());
-                        (username, email)
+                        let groups = extract_groups(&claims);
+                        (username, email, groups)
                     } else {
-                        ("sso-user".to_string(), None)
+                        ("sso-user".to_string(), None, vec![])
                     }
                 } else {
-                    ("sso-user".to_string(), None)
+                    ("sso-user".to_string(), None, vec![])
                 }
             } else {
-                ("sso-user".to_string(), None)
+                ("sso-user".to_string(), None, vec![])
             }
         } else {
-            ("sso-user".to_string(), None)
+            ("sso-user".to_string(), None, vec![])
         }
     };
 
-    tracing::info!(username = %username, email = ?email, "SSO login");
+    // Determine if user should be admin based on group membership
+    let should_be_admin = !config.oauth_admin_group.is_empty()
+        && groups.iter().any(|g| g == &config.oauth_admin_group);
+
+    tracing::info!(username = %username, email = ?email, groups = ?groups, is_admin = should_be_admin, "SSO login");
 
     // Find or create user
     let user = with_repo!(state, |repo| {
@@ -224,6 +237,13 @@ pub async fn sso_callback(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         }
     };
+
+    // Update admin status based on SSO group membership (on every login)
+    if !config.oauth_admin_group.is_empty() && user.is_admin != should_be_admin {
+        let _ = with_repo!(state, |repo| {
+            UserRepo::set_admin(&repo, user.id, should_be_admin).await
+        });
+    }
 
     if !user.is_active {
         return Err(StatusCode::FORBIDDEN);
@@ -245,10 +265,17 @@ pub async fn sso_callback(
     // Set session cookie and also store username in localStorage via a redirect page
     let cookie = format!("sessionid={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400");
 
+    // Determine actual admin status (may have been updated above)
+    let is_admin_now = if !config.oauth_admin_group.is_empty() {
+        should_be_admin
+    } else {
+        user.is_admin
+    };
+
     // Redirect with a small HTML page that sets localStorage before going to /
     let html = format!(
-        r#"<html><script>localStorage.setItem('rpodder_user','{}');window.location='/';</script></html>"#,
-        username
+        r#"<html><script>localStorage.setItem('rpodder_user','{}');localStorage.setItem('rpodder_admin','{}');window.location='/';</script></html>"#,
+        username, is_admin_now
     );
 
     Ok((
@@ -265,4 +292,16 @@ pub async fn sso_info(State(state): State<AppState>) -> impl IntoResponse {
         "provider_name": config.oauth_provider_name,
         "registration": config.registration,
     }))
+}
+
+/// Extract groups from OIDC claims (supports "groups" as array of strings)
+fn extract_groups(claims: &serde_json::Value) -> Vec<String> {
+    claims["groups"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
 }

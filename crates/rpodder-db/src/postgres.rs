@@ -32,6 +32,7 @@ struct UserRow {
     password_hash: String,
     email: Option<String>,
     is_active: bool,
+    is_admin: bool,
     created_at: DateTime<Utc>,
 }
 
@@ -43,6 +44,7 @@ impl From<UserRow> for User {
             password_hash: r.password_hash,
             email: r.email,
             is_active: r.is_active,
+            is_admin: r.is_admin,
             created_at: r.created_at,
         }
     }
@@ -59,7 +61,7 @@ impl repo::UserRepo for PgRepo {
         let row: UserRow = sqlx::query_as(
             "INSERT INTO users (id, username, password_hash, email)
              VALUES ($1, $2, $3, $4)
-             RETURNING id, username, password_hash, email, is_active, created_at",
+             RETURNING id, username, password_hash, email, is_active, is_admin, created_at",
         )
         .bind(id)
         .bind(username)
@@ -78,7 +80,7 @@ impl repo::UserRepo for PgRepo {
 
     async fn find_by_username(&self, username: &str) -> Result<Option<User>> {
         let row: Option<UserRow> = sqlx::query_as(
-            "SELECT id, username, password_hash, email, is_active, created_at
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
              FROM users WHERE LOWER(username) = LOWER($1)",
         )
         .bind(username)
@@ -90,10 +92,80 @@ impl repo::UserRepo for PgRepo {
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>> {
         let row: Option<UserRow> = sqlx::query_as(
-            "SELECT id, username, password_hash, email, is_active, created_at
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
              FROM users WHERE id = $1",
         )
         .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn list_all(&self) -> Result<Vec<User>> {
+        let rows: Vec<UserRow> = sqlx::query_as(
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
+             FROM users ORDER BY created_at",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn set_admin(&self, user_id: Uuid, is_admin: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET is_admin = $1 WHERE id = $2")
+            .bind(is_admin)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn set_active(&self, user_id: Uuid, is_active: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET is_active = $1 WHERE id = $2")
+            .bind(is_active)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, user_id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn count_active(&self) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE is_active = true")
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(row.0)
+    }
+
+    async fn update_password(&self, user_id: Uuid, password_hash: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+            .bind(password_hash)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>> {
+        let row: Option<UserRow> = sqlx::query_as(
+            "SELECT id, username, password_hash, email, is_active, is_admin, created_at
+             FROM users WHERE LOWER(email) = LOWER($1)",
+        )
+        .bind(email)
         .fetch_optional(&self.pool)
         .await
         .map_err(db_err)?;

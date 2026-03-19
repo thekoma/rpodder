@@ -71,7 +71,8 @@ config/             Example config, systemd service
 - **Repo trait pattern**: `rpodder-core/src/repo.rs` defines 13 async traits. `rpodder-db` implements them for PG + SQLite.
 - **Multi-DB via sqlx**: Raw queries with `query_as::<_, Row>()` + `FromRow`. No compile-time macros (no DATABASE_URL needed).
 - **UUID v7**: all entity IDs, time-sorted.
-- **Auth**: HTTP Basic Auth + session cookies (gpodder compat) + OAuth2/OIDC SSO.
+- **Auth**: HTTP Basic Auth + session cookies (gpodder compat) + OAuth2/OIDC SSO. Admin/user roles with `is_admin` flag.
+- **User roles**: Admin middleware on `/api/admin/*`. First registered user auto-admin. SSO group mapping via `RPODDER_OAUTH_ADMIN_GROUP`.
 - **Privacy**: URLs with detected tokens are hidden from public directory but visible to subscribed users.
 - **Web UI**: Svelte 5 SPA embedded via rust-embed, `ssr=false` + `prerender=false` globally, `$effect` for data loading (not `onMount`).
 - **Feed updater**: Background loop every 30min, adaptive intervals (1h-7d based on subscribers), retry with backoff, skips private feeds.
@@ -93,6 +94,7 @@ All via `RPODDER_*` env vars or TOML config file (`-c config.toml`):
 | `RPODDER_OAUTH_ISSUER_URL` | | OIDC issuer (e.g. Authentik) |
 | `RPODDER_OAUTH_CLIENT_ID` | | OAuth2 client ID |
 | `RPODDER_OAUTH_CLIENT_SECRET` | | OAuth2 client secret |
+| `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name for admin role (e.g. `admins`) |
 | `RPODDER_BASE_URL` | | Public URL for callbacks |
 
 ## Gotchas / Known Issues

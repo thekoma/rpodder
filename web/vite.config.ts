@@ -10,12 +10,13 @@ export default defineConfig({
   server: {
     proxy: {
       // Proxy API calls to rpodder backend during development
-      '/api': 'http://localhost:3005',
-      '/subscriptions': 'http://localhost:3005',
-      '/search.json': 'http://localhost:3005',
-      '/toplist': 'http://localhost:3005',
-      '/health': 'http://localhost:3005',
-      '/suggestions': 'http://localhost:3005',
+      '/api': 'http://localhost:3006',
+      '/subscriptions': 'http://localhost:3006',
+      '/search.json': 'http://localhost:3006',
+      '/toplist': 'http://localhost:3006',
+      '/health': 'http://localhost:3006',
+      '/suggestions': 'http://localhost:3006',
+      '/auth': 'http://localhost:3006',
     }
   }
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { auth } from '$lib/auth.svelte';
-  import { logout as apiLogout, getHealth, type HealthInfo } from '$lib/api';
+  import { logout as apiLogout, getHealth, getMe, type HealthInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
 
@@ -11,6 +11,12 @@
   $effect(() => {
     if (!browser) return;
     getHealth().then(h => { buildInfo = h; });
+    // Refresh admin status from server
+    if (auth.loggedIn) {
+      getMe().then(me => {
+        if (me) auth.setAdmin(me.is_admin);
+      });
+    }
   });
 
   async function handleLogout() {
@@ -37,9 +43,14 @@
           <a href="/subscriptions" class="text-sm text-text-dim hover:text-text transition-colors">Subscriptions</a>
           <a href="/history" class="text-sm text-text-dim hover:text-text transition-colors">History</a>
           <a href="/devices" class="text-sm text-text-dim hover:text-text transition-colors">Devices</a>
-          <a href="/admin" class="text-sm text-text-dim hover:text-text transition-colors">Admin</a>
+          {#if auth.isAdmin}
+            <a href="/admin" class="text-sm text-text-dim hover:text-text transition-colors">Admin</a>
+          {/if}
           <div class="flex items-center gap-2 ml-2 pl-4 border-l border-border">
-            <span class="text-sm text-text-dim">{auth.username}</span>
+            <a href="/settings" class="text-sm text-text-dim hover:text-text transition-colors">{auth.username}</a>
+            {#if auth.isAdmin}
+              <span class="text-xs px-1.5 py-0.5 rounded-full bg-brand-dim text-brand">admin</span>
+            {/if}
             <button
               onclick={handleLogout}
               class="text-xs text-danger hover:text-red-400 transition-colors cursor-pointer"

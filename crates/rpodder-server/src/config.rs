@@ -51,6 +51,9 @@ pub struct AppConfig {
     /// Display name for the SSO button (e.g. "Authentik", "Google")
     #[serde(default = "default_oauth_provider_name")]
     pub oauth_provider_name: String,
+    /// OIDC group name that grants admin role (e.g. "admins")
+    #[serde(default)]
+    pub oauth_admin_group: String,
 }
 
 fn default_database_url() -> String {

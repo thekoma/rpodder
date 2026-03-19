@@ -216,10 +216,18 @@ Goal: browser-based UI for managing subscriptions, discovering podcasts, and adm
 
 ### 5.5 Admin
 - [x] Server status page (`/admin`) with user/device/subscription stats
+- [x] User roles: admin/user with `is_admin` field + DB migration
+- [x] Admin middleware (`require_admin_layer`) protects `/api/admin/*` routes
+- [x] Admin panel: full user management (list, create, activate/deactivate, set role, delete)
+- [x] First user registered becomes admin automatically
+- [x] Registration bypass: always open if no active users exist
+- [x] SSO group-based admin mapping (`RPODDER_OAUTH_ADMIN_GROUP`)
+- [x] CLI `--admin` flag for `rpodder user create`
+- [x] `GET /api/2/me` endpoint for current user info (including `is_admin`)
+- [x] Web UI: Admin link/badge visible only for admins
 
 ### 5.6 Not Yet Implemented
 - [x] Episode actions history page
-- [x] Admin panel: user management (list, create, deactivate)
 - [x] Admin panel: feed management (force update, view status)
 - [x] OAuth / OIDC authentication (SSO via generic OIDC — Authentik, Keycloak, etc.)
 - [x] User registration endpoint (web form)

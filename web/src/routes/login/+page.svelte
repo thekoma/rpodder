@@ -1,6 +1,6 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte';
-  import { login as apiLogin, getSsoInfo, type SsoInfo } from '$lib/api';
+  import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
 
@@ -24,6 +24,8 @@
 
     if (result.ok) {
       auth.login(username);
+      const me = await getMe();
+      if (me) auth.setAdmin(me.is_admin);
       goto('/');
     } else {
       error = 'Invalid username or password';
@@ -92,8 +94,12 @@
       </button>
     </form>
 
+    <p class="text-center text-text-dim text-sm mt-3">
+      <a href="/reset-password" class="text-brand hover:underline">Forgot password?</a>
+    </p>
+
     {#if ssoInfo?.registration !== 'closed'}
-      <p class="text-center text-text-dim text-sm mt-4">
+      <p class="text-center text-text-dim text-sm mt-2">
         Don't have an account? <a href="/register" class="text-brand hover:underline">Register</a>
       </p>
     {/if}
