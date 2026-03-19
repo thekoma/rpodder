@@ -54,6 +54,12 @@ pub struct AppConfig {
     /// OIDC group name that grants admin role (e.g. "admins")
     #[serde(default)]
     pub oauth_admin_group: String,
+
+    // --- Podcast Index API ---
+    #[serde(default)]
+    pub podcastindex_key: String,
+    #[serde(default)]
+    pub podcastindex_secret: String,
 }
 
 fn default_database_url() -> String {
@@ -110,5 +116,9 @@ impl AppConfig {
 
     pub fn registration_invite(&self) -> bool {
         self.registration == "invite"
+    }
+
+    pub fn podcastindex_configured(&self) -> bool {
+        !self.podcastindex_key.is_empty() && !self.podcastindex_secret.is_empty()
     }
 }

@@ -110,6 +110,62 @@ pub async fn search(
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/2/search/external?q=query — search external podcast databases
+// ---------------------------------------------------------------------------
+
+pub async fn search_external(
+    State(state): State<AppState>,
+    Query(params): Query<SearchQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let external = crate::podcast_index::search(&state.config, &params.q).await;
+    Ok(Json(external))
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/2/search/all?q=query — combined local + external search
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct CombinedSearchResponse {
+    pub local: Vec<PodcastResponse>,
+    pub external: Vec<crate::podcast_index::ExternalPodcast>,
+}
+
+pub async fn search_all(
+    State(state): State<AppState>,
+    Query(params): Query<SearchQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // Run local and external search in parallel
+    let local_future = async {
+        let podcasts = with_repo!(state, |repo| {
+            PodcastRepo::search(&repo, &params.q, 60).await
+        })
+        .unwrap_or_default();
+        let mut results = podcasts_to_responses(&state, podcasts).await;
+        results.truncate(20);
+        results
+    };
+
+    let config = state.config.clone();
+    let query = params.q.clone();
+    let external_future = async move {
+        crate::podcast_index::search(&config, &query).await
+    };
+
+    let (local, external) = tokio::join!(local_future, external_future);
+
+    // Filter out external results that already exist locally
+    let local_urls: std::collections::HashSet<&str> =
+        local.iter().map(|p| p.url.as_str()).collect();
+    let external: Vec<_> = external
+        .into_iter()
+        .filter(|e| !local_urls.contains(e.url.as_str()))
+        .collect();
+
+    Ok(Json(CombinedSearchResponse { local, external }))
+}
+
+// ---------------------------------------------------------------------------
 // GET /toplist/{count}.json
 // ---------------------------------------------------------------------------
 

@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { searchPodcasts, getToplist, getTopTags, getPodcastsForTag, uploadSubscriptionChanges, getDevices, type PodcastInfo, type TagInfo } from '$lib/api';
+  import { searchAll, getToplist, getTopTags, getPodcastsForTag, uploadSubscriptionChanges, getDevices, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
   import { auth } from '$lib/auth.svelte';
   import { browser } from '$app/environment';
 
   let query = $state('');
-  let results = $state<PodcastInfo[]>([]);
+  let localResults = $state<PodcastInfo[]>([]);
+  let externalResults = $state<ExternalPodcast[]>([]);
   let topPodcasts = $state<PodcastInfo[]>([]);
   let tags = $state<TagInfo[]>([]);
   let categoryPodcasts = $state<Map<string, PodcastInfo[]>>(new Map());
@@ -21,7 +22,6 @@
       topPodcasts = top;
       tags = t;
       loading = false;
-      // Load podcasts for top 4 categories
       const topCats = t.slice(0, 4);
       for (const cat of topCats) {
         getPodcastsForTag(cat.tag, 6).then(podcasts => {
@@ -33,21 +33,25 @@
 
   function handleSearch() {
     clearTimeout(searchTimeout);
-    if (!query.trim()) { results = []; searching = false; return; }
+    if (!query.trim()) { localResults = []; externalResults = []; searching = false; return; }
     searching = true;
     searchTimeout = setTimeout(() => {
-      searchPodcasts(query).then(r => { results = r; searching = false; });
+      searchAll(query).then(r => {
+        localResults = r.local;
+        externalResults = r.external;
+        searching = false;
+      });
     }, 300);
   }
 
-  async function subscribe(podcast: PodcastInfo) {
+  async function subscribeUrl(url: string, title: string) {
     if (!auth.username) return;
-    subscribing = podcast.title;
+    subscribing = title;
     const devices = await getDevices(auth.username);
     const deviceId = devices.length > 0 ? devices[0].id : 'web';
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [podcast.url], []);
+    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [url], []);
     subscribing = null;
-    subscribeMsg = ok ? `Subscribed to ${podcast.title}` : 'Failed';
+    subscribeMsg = ok ? `Subscribed to ${title}` : 'Failed';
     setTimeout(() => { subscribeMsg = ''; }, 3000);
   }
 </script>
@@ -57,7 +61,7 @@
     <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{subscribeMsg}</div>
   {/if}
 
-  <!-- Search bar (always visible) -->
+  <!-- Search bar -->
   <div class="relative">
     <input
       type="search"
@@ -73,24 +77,65 @@
 
   <!-- Search results -->
   {#if query.trim()}
-    {#if results.length > 0}
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {#each results as podcast}
-          <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3 no-underline text-text">
-            {#if podcast.logo_url}
-              <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-            {:else}
-              <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙</div>
-            {/if}
-            <div class="flex-1 min-w-0">
-              <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
-              {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
-              {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
-            </div>
-          </a>
-        {/each}
+    {#if localResults.length > 0}
+      <div>
+        <h2 class="text-sm font-semibold text-text-dim mb-3">Local results</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {#each localResults as podcast}
+            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3 no-underline text-text">
+              {#if podcast.logo_url}
+                <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
+              {:else}
+                <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙</div>
+              {/if}
+              <div class="flex-1 min-w-0">
+                <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
+                {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
+                {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
+              </div>
+            </a>
+          {/each}
+        </div>
       </div>
-    {:else if !searching}
+    {/if}
+
+    {#if externalResults.length > 0}
+      <div>
+        <h2 class="text-sm font-semibold text-text-dim mb-3">
+          Podcast Index
+          <span class="font-normal text-xs ml-1 opacity-60">podcastindex.org</span>
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {#each externalResults as podcast}
+            <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3">
+              <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex gap-3 flex-1 min-w-0 no-underline text-text">
+                {#if podcast.logo_url}
+                  <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
+                {:else}
+                  <div class="w-14 h-14 rounded-lg bg-purple-900/30 flex items-center justify-center text-xl shrink-0">🔍</div>
+                {/if}
+                <div class="flex-1 min-w-0">
+                  <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
+                  {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
+                  {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
+                </div>
+              </a>
+              {#if auth.loggedIn}
+                <button
+                  onclick={() => subscribeUrl(podcast.url, podcast.title)}
+                  disabled={subscribing === podcast.title}
+                  class="self-center px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer shrink-0"
+                >
+                  {subscribing === podcast.title ? '...' : '+ Add'}
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    {#if !searching && localResults.length === 0 && externalResults.length === 0}
       <p class="text-text-dim text-center py-8">No podcasts found for "{query}"</p>
     {/if}
   {:else if loading}

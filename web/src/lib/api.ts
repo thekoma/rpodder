@@ -306,6 +306,27 @@ export async function searchPodcasts(query: string): Promise<PodcastInfo[]> {
   return resp.json();
 }
 
+export interface ExternalPodcast {
+  title: string;
+  url: string;
+  description?: string;
+  author?: string;
+  logo_url?: string;
+  language?: string;
+  source: string;
+}
+
+export interface CombinedSearchResult {
+  local: PodcastInfo[];
+  external: ExternalPodcast[];
+}
+
+export async function searchAll(query: string): Promise<CombinedSearchResult> {
+  const resp = await request(`/api/2/search/all?q=${encodeURIComponent(query)}`);
+  if (!resp.ok) return { local: [], external: [] };
+  return resp.json();
+}
+
 export async function getToplist(count: number = 50): Promise<PodcastInfo[]> {
   const resp = await request(`/toplist/${count}.json`);
   if (!resp.ok) return [];

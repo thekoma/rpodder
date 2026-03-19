@@ -2205,6 +2205,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "sha1",
  "sqlx",
  "tokio",
  "tower",

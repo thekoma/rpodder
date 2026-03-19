@@ -2,6 +2,7 @@ mod config;
 mod email;
 mod feed_updater;
 mod middleware;
+mod podcast_index;
 mod routes;
 mod state;
 #[cfg(feature = "web-ui")]
@@ -112,6 +113,7 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         registration = cfg.registration,
         smtp = cfg.smtp_configured(),
         oauth = cfg.oauth_configured(),
+        podcastindex = cfg.podcastindex_configured(),
         "server config"
     );
 
@@ -392,6 +394,14 @@ fn api_router(state: AppState) -> Router {
         .route("/auth/sso/info", get(routes::oauth::sso_info))
         // Directory & search (public)
         .route("/search.json", get(routes::directory::search))
+        .route(
+            "/api/2/search/all",
+            get(routes::directory::search_all),
+        )
+        .route(
+            "/api/2/search/external",
+            get(routes::directory::search_external),
+        )
         .route("/toplist/{count_json}", get(routes::directory::toplist))
         .route(
             "/api/2/data/podcast.json",
