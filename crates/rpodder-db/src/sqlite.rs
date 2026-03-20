@@ -352,6 +352,29 @@ impl From<SqlitePodcastRow> for Podcast {
 }
 
 impl repo::PodcastRepo for SqliteRepo {
+    async fn add_url(&self, podcast_id: Uuid, url: &str) -> Result<()> {
+        let max_order: Option<(i32,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(\"order\"), -1) FROM podcast_urls WHERE podcast_id = ?",
+        )
+        .bind(uuid_str(&podcast_id))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        let next_order = max_order.map(|r| r.0 + 1).unwrap_or(0);
+
+        sqlx::query(
+            "INSERT OR IGNORE INTO podcast_urls (id, podcast_id, url, \"order\") VALUES (?, ?, ?, ?)",
+        )
+        .bind(uuid_str(&Uuid::now_v7()))
+        .bind(uuid_str(&podcast_id))
+        .bind(url)
+        .bind(next_order)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
     async fn get_or_create_for_url(&self, url: &str) -> Result<(Podcast, bool)> {
         if let Some(podcast) = self.find_by_url(url).await? {
             return Ok((podcast, false));
@@ -456,6 +479,20 @@ impl repo::PodcastRepo for SqliteRepo {
         .execute(&self.pool)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        sqlx::query("DELETE FROM podcast_urls WHERE podcast_id = ?")
+            .bind(uuid_str(&id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        sqlx::query("DELETE FROM podcasts WHERE id = ?")
+            .bind(uuid_str(&id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(())
     }
 
@@ -754,6 +791,22 @@ impl repo::SubscriptionRepo for SqliteRepo {
         .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    async fn migrate_podcast(&self, from_podcast_id: Uuid, to_podcast_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE subscriptions SET podcast_id = ? WHERE podcast_id = ?")
+            .bind(uuid_str(&to_podcast_id))
+            .bind(uuid_str(&from_podcast_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        sqlx::query("UPDATE subscription_changes SET podcast_id = ? WHERE podcast_id = ?")
+            .bind(uuid_str(&to_podcast_id))
+            .bind(uuid_str(&from_podcast_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -796,6 +849,17 @@ impl From<SqliteEpisodeRow> for Episode {
 }
 
 impl repo::EpisodeRepo for SqliteRepo {
+    async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT e.podcast_id FROM episodes e JOIN episode_urls eu ON eu.episode_id = e.id WHERE eu.url = ? LIMIT 1",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.and_then(|r| r.0.parse().ok()))
+    }
+
     async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
         let existing: Option<SqliteEpisodeRow> = sqlx::query_as(
             "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,

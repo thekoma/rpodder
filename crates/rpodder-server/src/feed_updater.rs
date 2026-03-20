@@ -7,7 +7,7 @@ use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use rpodder_core::privacy::is_likely_private_url;
-use rpodder_core::repo::{EpisodeRepo, PodcastRepo, TagRepo};
+use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
 use rpodder_core::types::{Tag, TagSource};
 use rpodder_core::url::normalize_url;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
@@ -96,6 +96,48 @@ async fn update_podcast_feed_inner(
 
     // Parse the feed
     let parsed = parse_feed(&body)?;
+
+    // Dedup: if this is a fresh podcast (no episodes yet), check if the episodes
+    // already belong to another podcast. This catches duplicate URLs pointing to
+    // the same feed (e.g. /833 vs /833.rss).
+    if podcast.episode_count == 0
+        && let Some(first_ep) = parsed.episodes.first()
+    {
+        let ep_url = first_ep
+            .media_url
+            .as_deref()
+            .or(first_ep.link.as_deref())
+            .map(normalize_url);
+        if let Some(ep_url) = ep_url {
+            let existing_podcast_id = with_repo!(db, |repo| {
+                EpisodeRepo::find_podcast_id_by_episode_url(&repo, &ep_url).await
+            })?;
+            if let Some(canonical_id) = existing_podcast_id
+                && canonical_id != podcast.id
+            {
+                info!(
+                    url = podcast_url,
+                    canonical_id = %canonical_id,
+                    duplicate_id = %podcast.id,
+                    "detected duplicate podcast, adding URL as alias"
+                );
+                with_repo!(db, |repo| {
+                    PodcastRepo::add_url(&repo, canonical_id, podcast_url).await
+                })?;
+                with_repo!(db, |repo| {
+                    SubscriptionRepo::migrate_podcast(&repo, podcast.id, canonical_id).await
+                })
+                .unwrap_or_else(|e| {
+                    warn!(error = %e, "failed to migrate subscriptions during dedup");
+                });
+                if let Err(e) = with_repo!(db, |repo| PodcastRepo::delete(&repo, podcast.id).await)
+                {
+                    warn!(error = %e, "failed to delete duplicate podcast");
+                }
+                return Ok(());
+            }
+        }
+    }
 
     // Update podcast metadata (best-effort)
     podcast.title = parsed.title;

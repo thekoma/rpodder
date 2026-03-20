@@ -110,6 +110,13 @@ pub trait SubscriptionRepo: Send + Sync {
         device_id: Uuid,
         since: DateTime<Utc>,
     ) -> impl std::future::Future<Output = Result<Vec<SubscriptionChange>>> + Send;
+
+    /// Move all subscriptions from one podcast to another (for dedup merging).
+    fn migrate_podcast(
+        &self,
+        from_podcast_id: Uuid,
+        to_podcast_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +148,11 @@ pub trait PodcastRepo: Send + Sync {
         &self,
         url: &str,
     ) -> impl std::future::Future<Output = Result<(Podcast, bool)>> + Send;
+    fn add_url(
+        &self,
+        podcast_id: Uuid,
+        url: &str,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
     fn find_by_url(
         &self,
         url: &str,
@@ -150,6 +162,7 @@ pub trait PodcastRepo: Send + Sync {
         id: Uuid,
     ) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
     fn update(&self, podcast: &Podcast) -> impl std::future::Future<Output = Result<()>> + Send;
+    fn delete(&self, id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
     fn toplist(
         &self,
         count: i64,
@@ -172,6 +185,11 @@ pub trait EpisodeRepo: Send + Sync {
         podcast_id: Uuid,
         url: &str,
     ) -> impl std::future::Future<Output = Result<(Episode, bool)>> + Send;
+    /// Find which podcast owns an episode with the given media URL.
+    fn find_podcast_id_by_episode_url(
+        &self,
+        url: &str,
+    ) -> impl std::future::Future<Output = Result<Option<Uuid>>> + Send;
     fn find_by_id(
         &self,
         id: Uuid,

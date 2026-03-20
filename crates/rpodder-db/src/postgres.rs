@@ -341,6 +341,29 @@ impl From<PodcastRow> for Podcast {
 }
 
 impl repo::PodcastRepo for PgRepo {
+    async fn add_url(&self, podcast_id: Uuid, url: &str) -> Result<()> {
+        let max_order: Option<(i32,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(\"order\"), -1) FROM podcast_urls WHERE podcast_id = $1",
+        )
+        .bind(podcast_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        let next_order = max_order.map(|r| r.0 + 1).unwrap_or(0);
+
+        sqlx::query(
+            "INSERT INTO podcast_urls (id, podcast_id, url, \"order\") VALUES ($1, $2, $3, $4) ON CONFLICT (url) DO NOTHING",
+        )
+        .bind(Uuid::now_v7())
+        .bind(podcast_id)
+        .bind(url)
+        .bind(next_order)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
     async fn get_or_create_for_url(&self, url: &str) -> Result<(Podcast, bool)> {
         // Check if a podcast with this URL already exists
         if let Some(podcast) = self.find_by_url(url).await? {
@@ -438,6 +461,21 @@ impl repo::PodcastRepo for PgRepo {
         .execute(&self.pool)
         .await
         .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, id: Uuid) -> Result<()> {
+        // CASCADE will handle podcast_urls, episodes, episode_urls, tags
+        sqlx::query("DELETE FROM podcast_urls WHERE podcast_id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        sqlx::query("DELETE FROM podcasts WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -719,6 +757,22 @@ impl repo::SubscriptionRepo for PgRepo {
         .map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    async fn migrate_podcast(&self, from_podcast_id: Uuid, to_podcast_id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE subscriptions SET podcast_id = $2 WHERE podcast_id = $1")
+            .bind(from_podcast_id)
+            .bind(to_podcast_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        sqlx::query("UPDATE subscription_changes SET podcast_id = $2 WHERE podcast_id = $1")
+            .bind(from_podcast_id)
+            .bind(to_podcast_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -761,6 +815,17 @@ impl From<EpisodeRow> for Episode {
 }
 
 impl repo::EpisodeRepo for PgRepo {
+    async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT e.podcast_id FROM episodes e JOIN episode_urls eu ON eu.episode_id = e.id WHERE eu.url = $1 LIMIT 1",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(|r| r.0))
+    }
+
     async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
         // Check if episode URL already exists
         let existing: Option<EpisodeRow> = sqlx::query_as(
