@@ -368,9 +368,7 @@ async fn create_sync_group() {
                 .uri("/api/2/sync-devices/carol.json")
                 .header(header::COOKIE, auth_cookie(&token))
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"synchronize": [["phone", "laptop"]]}"#,
-                ))
+                .body(Body::from(r#"{"synchronize": [["phone", "laptop"]]}"#))
                 .unwrap(),
         )
         .await
@@ -420,9 +418,7 @@ async fn stop_synchronize_device() {
             .uri("/api/2/sync-devices/dave.json")
             .header(header::COOKIE, auth_cookie(&token))
             .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(
-                r#"{"synchronize": [["phone", "laptop"]]}"#,
-            ))
+            .body(Body::from(r#"{"synchronize": [["phone", "laptop"]]}"#))
             .unwrap(),
     )
     .await
