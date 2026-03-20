@@ -22,6 +22,8 @@ async fn setup_db() -> Db {
     sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
     let m2 = std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
     sqlx::raw_sql(&m2).execute(&pool).await.unwrap();
+    let m3 = std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
+    sqlx::raw_sql(&m3).execute(&pool).await.unwrap();
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&pool)
         .await
@@ -258,7 +260,7 @@ mod test_handlers {
                 }
             }
             if device_ids.len() > 1 {
-                SyncGroupRepo::create_group(&r, auth_user.0.id, &device_ids)
+                SyncGroupRepo::create_group(&r, auth_user.0.id, &device_ids, "")
                     .await
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             }

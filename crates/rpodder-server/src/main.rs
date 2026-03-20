@@ -270,6 +270,10 @@ fn api_router(state: AppState) -> Router {
             "/api/2/sync-devices/{username_json}",
             get(routes::sync::get_sync_status).post(routes::sync::update_sync_status),
         )
+        .route(
+            "/api/2/sync-group/{group_id}/rename",
+            post(routes::sync::rename_sync_group),
+        )
         // Settings
         .route(
             "/api/2/settings/{username}/{scope_json}",

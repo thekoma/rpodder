@@ -223,7 +223,14 @@ pub trait SyncGroupRepo: Send + Sync {
         &self,
         user_id: Uuid,
         device_ids: &[Uuid],
+        name: &str,
     ) -> impl std::future::Future<Output = Result<SyncGroup>> + Send;
+    fn rename_group(
+        &self,
+        group_id: Uuid,
+        user_id: Uuid,
+        name: &str,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
     fn get_groups_for_user(
         &self,
         user_id: Uuid,

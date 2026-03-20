@@ -25,6 +25,9 @@ async fn setup_db() -> Db {
     let migration2 =
         std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
     sqlx::raw_sql(&migration2).execute(&pool).await.unwrap();
+    let migration3 =
+        std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
+    sqlx::raw_sql(&migration3).execute(&pool).await.unwrap();
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&pool)
         .await
@@ -329,7 +332,7 @@ async fn sync_group_propagation_db_test() {
     .unwrap();
 
     // Create sync group
-    let _group = SyncGroupRepo::create_group(&r, user.id, &[dev1.id, dev2.id])
+    let _group = SyncGroupRepo::create_group(&r, user.id, &[dev1.id, dev2.id], "")
         .await
         .unwrap();
 

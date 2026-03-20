@@ -1132,13 +1132,19 @@ impl repo::TagRepo for SqliteRepo {
 // ---------------------------------------------------------------------------
 
 impl repo::SyncGroupRepo for SqliteRepo {
-    async fn create_group(&self, user_id: Uuid, device_ids: &[Uuid]) -> Result<SyncGroup> {
+    async fn create_group(
+        &self,
+        user_id: Uuid,
+        device_ids: &[Uuid],
+        name: &str,
+    ) -> Result<SyncGroup> {
         let id = Uuid::now_v7();
         let now = Utc::now();
 
-        sqlx::query("INSERT INTO sync_groups (id, user_id, created_at) VALUES (?, ?, ?)")
+        sqlx::query("INSERT INTO sync_groups (id, user_id, name, created_at) VALUES (?, ?, ?, ?)")
             .bind(uuid_str(&id))
             .bind(uuid_str(&user_id))
+            .bind(name)
             .bind(now.to_rfc3339())
             .execute(&self.pool)
             .await
@@ -1157,20 +1163,33 @@ impl repo::SyncGroupRepo for SqliteRepo {
         Ok(SyncGroup {
             id,
             user_id,
+            name: name.to_string(),
             created_at: now,
         })
     }
 
+    async fn rename_group(&self, group_id: Uuid, user_id: Uuid, name: &str) -> Result<()> {
+        sqlx::query("UPDATE sync_groups SET name = ? WHERE id = ? AND user_id = ?")
+            .bind(name)
+            .bind(uuid_str(&group_id))
+            .bind(uuid_str(&user_id))
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
     async fn get_groups_for_user(&self, user_id: Uuid) -> Result<Vec<(SyncGroup, Vec<Device>)>> {
-        let groups: Vec<(String, String, String)> =
-            sqlx::query_as("SELECT id, user_id, created_at FROM sync_groups WHERE user_id = ?")
-                .bind(uuid_str(&user_id))
-                .fetch_all(&self.pool)
-                .await
-                .map_err(|e| AppError::Internal(e.to_string()))?;
+        let groups: Vec<(String, String, String, String)> = sqlx::query_as(
+            "SELECT id, user_id, name, created_at FROM sync_groups WHERE user_id = ?",
+        )
+        .bind(uuid_str(&user_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut result = Vec::new();
-        for (id_s, uid_s, created_s) in groups {
+        for (id_s, uid_s, name, created_s) in groups {
             let devices: Vec<SqliteDeviceRow> = sqlx::query_as(
                 "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
                  FROM devices WHERE sync_group_id = ?",
@@ -1183,6 +1202,7 @@ impl repo::SyncGroupRepo for SqliteRepo {
             let group = SyncGroup {
                 id: id_s.parse().unwrap_or_default(),
                 user_id: uid_s.parse().unwrap_or_default(),
+                name,
                 created_at: created_s.parse().unwrap_or_default(),
             };
             result.push((group, devices.into_iter().map(Into::into).collect()));

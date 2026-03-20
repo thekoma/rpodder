@@ -110,6 +110,7 @@ pub struct Device {
 pub struct SyncGroup {
     pub id: Uuid,
     pub user_id: Uuid,
+    pub name: String,
     pub created_at: DateTime<Utc>,
 }
 

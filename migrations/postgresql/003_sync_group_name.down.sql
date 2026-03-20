@@ -1,0 +1,1 @@
+ALTER TABLE sync_groups DROP COLUMN IF EXISTS name;

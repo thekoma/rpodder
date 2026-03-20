@@ -397,20 +397,27 @@ export async function getSubscriptionUpgrades(): Promise<UpgradeableSub[]> {
 
 // --- Sync Groups ---
 
+export interface SyncGroupInfo {
+  id: string;
+  name: string;
+  devices: string[];
+}
+
 export interface SyncStatus {
   synchronized: string[][];
   'not-synchronized': string[];
+  groups: SyncGroupInfo[];
 }
 
 export async function getSyncStatus(username: string): Promise<SyncStatus> {
   const resp = await request(`/api/2/sync-devices/${username}.json`);
-  if (!resp.ok) return { synchronized: [], 'not-synchronized': [] };
+  if (!resp.ok) return { synchronized: [], 'not-synchronized': [], groups: [] };
   return resp.json();
 }
 
 export async function updateSyncStatus(
   username: string,
-  synchronize: string[][],
+  synchronize: (string[] | { devices: string[]; name?: string })[],
   stopSynchronize?: string[]
 ): Promise<boolean> {
   const body: Record<string, unknown> = { synchronize };
@@ -420,6 +427,14 @@ export async function updateSyncStatus(
   const resp = await request(`/api/2/sync-devices/${username}.json`, {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+  return resp.ok;
+}
+
+export async function renameSyncGroup(groupId: string, name: string): Promise<boolean> {
+  const resp = await request(`/api/2/sync-group/${groupId}/rename`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
   });
   return resp.ok;
 }

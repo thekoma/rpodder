@@ -31,21 +31,71 @@ fn strip_json(s: &str) -> &str {
     s.strip_suffix(".json").unwrap_or(s)
 }
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct SyncGroupInfo {
+    pub id: String,
+    pub name: String,
+    pub devices: Vec<String>,
+}
+
 #[derive(Serialize)]
 pub struct SyncStatusResponse {
+    /// gpodder compat: list of device-id groups
     pub synchronized: Vec<Vec<String>>,
     #[serde(rename = "not-synchronized")]
     pub not_synchronized: Vec<String>,
+    /// Extended: named groups with IDs
+    pub groups: Vec<SyncGroupInfo>,
 }
 
 #[derive(Deserialize)]
 pub struct SyncUpdateRequest {
-    pub synchronize: Vec<Vec<String>>,
+    pub synchronize: Vec<SyncGroupCreate>,
     #[serde(rename = "stop-synchronize")]
     pub stop_synchronize: Option<Vec<String>>,
 }
 
-/// GET /api/2/sync-devices/{username}.json
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub enum SyncGroupCreate {
+    /// Extended format: { "devices": [...], "name": "..." }
+    Named {
+        devices: Vec<String>,
+        name: Option<String>,
+    },
+    /// gpodder compat: bare array of device IDs
+    DeviceList(Vec<String>),
+}
+
+impl SyncGroupCreate {
+    fn devices(&self) -> &[String] {
+        match self {
+            SyncGroupCreate::Named { devices, .. } => devices,
+            SyncGroupCreate::DeviceList(ids) => ids,
+        }
+    }
+
+    fn name(&self) -> &str {
+        match self {
+            SyncGroupCreate::Named { name: Some(n), .. } => n,
+            _ => "",
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RenameRequest {
+    pub name: String,
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/2/sync-devices/{username}.json
+// ---------------------------------------------------------------------------
+
 pub async fn get_sync_status(
     State(state): State<AppState>,
     Path(username_json): Path<String>,
@@ -67,15 +117,21 @@ pub async fn get_sync_status(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut synchronized: Vec<Vec<String>> = Vec::new();
+    let mut group_infos: Vec<SyncGroupInfo> = Vec::new();
     let mut synced_device_ids = std::collections::HashSet::new();
 
-    for (_, devices) in &groups {
+    for (group, devices) in &groups {
         if devices.len() > 1 {
-            let group_devices: Vec<String> = devices.iter().map(|d| d.device_id.clone()).collect();
+            let device_ids: Vec<String> = devices.iter().map(|d| d.device_id.clone()).collect();
             for d in devices {
                 synced_device_ids.insert(d.device_id.clone());
             }
-            synchronized.push(group_devices);
+            synchronized.push(device_ids.clone());
+            group_infos.push(SyncGroupInfo {
+                id: group.id.to_string(),
+                name: group.name.clone(),
+                devices: device_ids,
+            });
         }
     }
 
@@ -88,10 +144,14 @@ pub async fn get_sync_status(
     Ok(Json(SyncStatusResponse {
         synchronized,
         not_synchronized,
+        groups: group_infos,
     }))
 }
 
-/// POST /api/2/sync-devices/{username}.json
+// ---------------------------------------------------------------------------
+// POST /api/2/sync-devices/{username}.json
+// ---------------------------------------------------------------------------
+
 pub async fn update_sync_status(
     State(state): State<AppState>,
     Path(username_json): Path<String>,
@@ -121,9 +181,9 @@ pub async fn update_sync_status(
     }
 
     // Create sync groups
-    for group_uids in &body.synchronize {
+    for group_spec in &body.synchronize {
         let mut device_ids = Vec::new();
-        for uid in group_uids {
+        for uid in group_spec.devices() {
             let device = with_repo!(state, |repo| {
                 DeviceRepo::find_by_uid(&repo, auth_user.0.id, uid).await
             })
@@ -136,7 +196,8 @@ pub async fn update_sync_status(
 
         if device_ids.len() > 1 {
             with_repo!(state, |repo| {
-                SyncGroupRepo::create_group(&repo, auth_user.0.id, &device_ids).await
+                SyncGroupRepo::create_group(&repo, auth_user.0.id, &device_ids, group_spec.name())
+                    .await
             })
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -148,13 +209,36 @@ pub async fn update_sync_status(
     Ok(StatusCode::OK)
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/2/sync-group/{group_id}/rename
+// ---------------------------------------------------------------------------
+
+pub async fn rename_sync_group(
+    State(state): State<AppState>,
+    Path(group_id): Path<String>,
+    Extension(auth_user): Extension<AuthUser>,
+    Json(body): Json<RenameRequest>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let group_uuid: uuid::Uuid = group_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    with_repo!(state, |repo| {
+        SyncGroupRepo::rename_group(&repo, group_uuid, auth_user.0.id, &body.name).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::OK)
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 /// Merge subscriptions so all devices in a sync group share the same set.
 async fn merge_subscriptions(
     state: &AppState,
     user_id: uuid::Uuid,
     device_ids: &[uuid::Uuid],
 ) -> Result<(), StatusCode> {
-    // Collect all (podcast_id, ref_url) pairs across all devices
     let mut all_subs: std::collections::HashMap<uuid::Uuid, String> =
         std::collections::HashMap::new();
 
@@ -169,7 +253,6 @@ async fn merge_subscriptions(
         }
     }
 
-    // Subscribe each device to any podcasts it's missing
     for &device_id in device_ids {
         let device_subs = with_repo!(state, |repo| {
             SubscriptionRepo::list_for_device(&repo, user_id, device_id).await

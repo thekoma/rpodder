@@ -1080,17 +1080,25 @@ impl repo::TagRepo for PgRepo {
 // ---------------------------------------------------------------------------
 
 impl repo::SyncGroupRepo for PgRepo {
-    async fn create_group(&self, user_id: Uuid, device_ids: &[Uuid]) -> Result<SyncGroup> {
+    async fn create_group(
+        &self,
+        user_id: Uuid,
+        device_ids: &[Uuid],
+        name: &str,
+    ) -> Result<SyncGroup> {
         let id = Uuid::now_v7();
         let now = Utc::now();
 
-        sqlx::query("INSERT INTO sync_groups (id, user_id, created_at) VALUES ($1, $2, $3)")
-            .bind(id)
-            .bind(user_id)
-            .bind(now)
-            .execute(&self.pool)
-            .await
-            .map_err(db_err)?;
+        sqlx::query(
+            "INSERT INTO sync_groups (id, user_id, name, created_at) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(name)
+        .bind(now)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
 
         for did in device_ids {
             sqlx::query("UPDATE devices SET sync_group_id = $1 WHERE id = $2 AND user_id = $3")
@@ -1105,20 +1113,33 @@ impl repo::SyncGroupRepo for PgRepo {
         Ok(SyncGroup {
             id,
             user_id,
+            name: name.to_string(),
             created_at: now,
         })
     }
 
+    async fn rename_group(&self, group_id: Uuid, user_id: Uuid, name: &str) -> Result<()> {
+        sqlx::query("UPDATE sync_groups SET name = $1 WHERE id = $2 AND user_id = $3")
+            .bind(name)
+            .bind(group_id)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
     async fn get_groups_for_user(&self, user_id: Uuid) -> Result<Vec<(SyncGroup, Vec<Device>)>> {
-        let groups: Vec<(Uuid, Uuid, DateTime<Utc>)> =
-            sqlx::query_as("SELECT id, user_id, created_at FROM sync_groups WHERE user_id = $1")
-                .bind(user_id)
-                .fetch_all(&self.pool)
-                .await
-                .map_err(db_err)?;
+        let groups: Vec<(Uuid, Uuid, String, DateTime<Utc>)> = sqlx::query_as(
+            "SELECT id, user_id, name, created_at FROM sync_groups WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
 
         let mut result = Vec::new();
-        for (id, uid, created_at) in groups {
+        for (id, uid, name, created_at) in groups {
             let devices: Vec<DeviceRow> = sqlx::query_as(
                 "SELECT id, user_id, device_id, caption, device_type, sync_group_id, created_at, updated_at
                  FROM devices WHERE sync_group_id = $1",
@@ -1131,6 +1152,7 @@ impl repo::SyncGroupRepo for PgRepo {
             let group = SyncGroup {
                 id,
                 user_id: uid,
+                name,
                 created_at,
             };
             result.push((group, devices.into_iter().map(Into::into).collect()));
