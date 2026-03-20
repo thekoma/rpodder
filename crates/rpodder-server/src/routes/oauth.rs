@@ -291,6 +291,7 @@ pub async fn sso_info(State(state): State<AppState>) -> impl IntoResponse {
         "enabled": config.oauth_configured(),
         "provider_name": config.oauth_provider_name,
         "registration": config.registration,
+        "podcastindex": config.podcastindex_configured(),
     }))
 }
 

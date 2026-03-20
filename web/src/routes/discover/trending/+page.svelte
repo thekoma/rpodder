@@ -1,16 +1,20 @@
 <script lang="ts">
-  import { getTrending, uploadSubscriptionChanges, getDevices, type ExternalPodcast } from '$lib/api';
+  import { getTrending, getSsoInfo, uploadSubscriptionChanges, getDevices, type ExternalPodcast } from '$lib/api';
   import { auth } from '$lib/auth.svelte';
   import { browser } from '$app/environment';
+
+  const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
 
   let podcasts = $state<ExternalPodcast[]>([]);
   let loading = $state(true);
   let subscribing = $state<string | null>(null);
   let subscribeMsg = $state('');
   let lang = $state('');
+  let podcastindexConfigured = $state(true);
 
   $effect(() => {
     if (!browser) return;
+    getSsoInfo().then(info => { podcastindexConfigured = info.podcastindex; });
     loadTrending();
   });
 
@@ -80,7 +84,18 @@
   {#if loading}
     <div class="text-center text-text-dim py-12">Loading...</div>
   {:else if podcasts.length === 0}
-    <p class="text-text-dim text-center py-8">No trending podcasts available.</p>
+    {#if !podcastindexConfigured}
+      <div class="text-center py-12 space-y-3">
+        <p class="text-text-dim">Trending podcasts require an external search provider.</p>
+        <a href={DOCS_URL} target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 text-sm text-brand hover:underline">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+          Learn how to configure Podcast Index
+        </a>
+      </div>
+    {:else}
+      <p class="text-text-dim text-center py-8">No trending podcasts available.</p>
+    {/if}
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       {#each podcasts as podcast}

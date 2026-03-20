@@ -288,15 +288,16 @@ export interface SsoInfo {
   enabled: boolean;
   provider_name: string;
   registration: string;
+  podcastindex: boolean;
 }
 
 export async function getSsoInfo(): Promise<SsoInfo> {
   try {
     const resp = await fetch(`${API_BASE}/auth/sso/info`);
-    if (!resp.ok) return { enabled: false, provider_name: 'SSO', registration: 'open' };
+    if (!resp.ok) return { enabled: false, provider_name: 'SSO', registration: 'open', podcastindex: false };
     return resp.json();
   } catch {
-    return { enabled: false, provider_name: 'SSO', registration: 'open' };
+    return { enabled: false, provider_name: 'SSO', registration: 'open', podcastindex: false };
   }
 }
 

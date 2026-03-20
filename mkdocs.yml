@@ -69,6 +69,7 @@ nav:
     - User Management: admin-guide/user-management.md
     - SSO / OAuth2: admin-guide/sso.md
     - Password Management: admin-guide/passwords.md
+    - External Search: admin-guide/external-search.md
     - Feed Management: admin-guide/feeds.md
   - API Reference:
     - Overview: api/overview.md

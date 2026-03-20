@@ -82,10 +82,17 @@ pub async fn search(config: &AppConfig, query: &str) -> Vec<ExternalPodcast> {
         }
     };
 
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!(%status, body = %body.chars().take(200).collect::<String>(), "Podcast Index search returned error");
+        return vec![];
+    }
+
     let body: PodcastIndexResponse = match resp.json().await {
         Ok(b) => b,
         Err(e) => {
-            tracing::warn!(error = %e, "Podcast Index response parse failed");
+            tracing::warn!(error = %e, "Podcast Index search response parse failed");
             return vec![];
         }
     };
@@ -127,10 +134,17 @@ pub async fn trending(config: &AppConfig, max: u32, lang: Option<&str>) -> Vec<E
         }
     };
 
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        tracing::warn!(%status, body = %body.chars().take(200).collect::<String>(), "Podcast Index trending returned error");
+        return vec![];
+    }
+
     let body: PodcastIndexResponse = match resp.json().await {
         Ok(b) => b,
         Err(e) => {
-            tracing::warn!(error = %e, "Podcast Index trending parse failed");
+            tracing::warn!(error = %e, "Podcast Index trending response parse failed");
             return vec![];
         }
     };

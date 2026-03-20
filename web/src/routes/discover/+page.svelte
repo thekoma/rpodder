@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { searchAll, getToplist, getTopTags, getPodcastsForTag, uploadSubscriptionChanges, getDevices, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
+  import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, uploadSubscriptionChanges, getDevices, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
   import { auth } from '$lib/auth.svelte';
   import { browser } from '$app/environment';
 
@@ -13,11 +13,15 @@
   let loading = $state(true);
   let subscribing = $state<string | null>(null);
   let subscribeMsg = $state('');
+  let podcastindexConfigured = $state(true);
   let searchTimeout: ReturnType<typeof setTimeout>;
+
+  const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
 
   $effect(() => {
     if (!browser) return;
     loading = true;
+    getSsoInfo().then(info => { podcastindexConfigured = info.podcastindex; });
     Promise.all([getToplist(6), getTopTags(30)]).then(([top, t]) => {
       topPodcasts = top;
       tags = t;
@@ -136,7 +140,16 @@
     {/if}
 
     {#if !searching && localResults.length === 0 && externalResults.length === 0}
-      <p class="text-text-dim text-center py-8">No podcasts found for "{query}"</p>
+      <div class="text-center py-8 space-y-2">
+        <p class="text-text-dim">No podcasts found for "{query}"</p>
+        {#if !podcastindexConfigured}
+          <a href={DOCS_URL} target="_blank" rel="noopener noreferrer"
+            class="inline-flex items-center gap-1.5 text-xs text-brand hover:underline">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            Configure an external search provider for more results
+          </a>
+        {/if}
+      </div>
     {/if}
   {:else if loading}
     <div class="text-center text-text-dim py-12">Loading...</div>
