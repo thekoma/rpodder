@@ -58,9 +58,20 @@ async fn update_podcast_feed_inner(
         PodcastRepo::find_by_url(&repo, podcast_url).await
     })?;
 
-    let Some(mut podcast) = podcast else {
-        warn!(url = podcast_url, "podcast not found for URL");
-        return Ok(());
+    let mut podcast = match podcast {
+        Some(p) => p,
+        None if force => {
+            // On-demand: create a stub podcast entry so we can fetch the feed
+            let (p, _) = with_repo!(db, |repo| {
+                PodcastRepo::get_or_create_for_url(&repo, podcast_url).await
+            })?;
+            info!(url = podcast_url, "created podcast on-demand");
+            p
+        }
+        None => {
+            warn!(url = podcast_url, "podcast not found for URL");
+            return Ok(());
+        }
     };
 
     // Skip private/paid feeds in background updates — but allow forced fetch for authenticated users
