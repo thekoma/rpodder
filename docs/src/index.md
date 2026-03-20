@@ -39,6 +39,27 @@ rpodder aims to be the gpodder.net you'd build today: fast, secure, self-hostabl
 - **Single binary** — one `rpodder` binary with everything included
 - **Docker ready** — multi-stage Dockerfile, compose profiles for every scenario
 
+## Screenshots
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+  <div>
+    <img src="assets/screenshots/discover-browse.png" alt="Browse podcasts" />
+    <p style="text-align:center; font-size:0.8rem; color:#888;">Browse & Search</p>
+  </div>
+  <div>
+    <img src="assets/screenshots/discover-trending.png" alt="Trending podcasts" />
+    <p style="text-align:center; font-size:0.8rem; color:#888;">Trending (Podcast Index)</p>
+  </div>
+  <div>
+    <img src="assets/screenshots/podcast-detail.png" alt="Podcast detail" />
+    <p style="text-align:center; font-size:0.8rem; color:#888;">Podcast Detail</p>
+  </div>
+  <div>
+    <img src="assets/screenshots/admin-panel.png" alt="Admin panel" />
+    <p style="text-align:center; font-size:0.8rem; color:#888;">Admin Panel</p>
+  </div>
+</div>
+
 ## Quick taste
 
 ```bash

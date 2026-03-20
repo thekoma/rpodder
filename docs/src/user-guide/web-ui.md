@@ -2,6 +2,8 @@
 
 rpodder includes a built-in web interface built with Svelte 5 and Tailwind CSS v4. It's embedded directly in the binary via `rust-embed`, so there's nothing extra to deploy.
 
+![rpodder login page](../assets/screenshots/login.png)
+
 ## Navigation
 
 The top navigation bar shows:

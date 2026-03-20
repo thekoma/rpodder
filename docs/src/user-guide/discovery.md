@@ -2,6 +2,10 @@
 
 rpodder helps you find new podcasts through local search, external databases, and trending charts.
 
+![Browse podcasts](../assets/screenshots/discover-browse.png)
+
+![Trending podcasts](../assets/screenshots/discover-trending.png)
+
 ## Local search
 
 The local search queries podcasts that are already indexed in your rpodder database — podcasts that you or other users on your instance have subscribed to.

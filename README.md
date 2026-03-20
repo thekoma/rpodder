@@ -6,6 +6,10 @@
 
 <p align="center">A modern, fast, <a href="https://gpodder.net">gpodder.net</a>-compatible podcast sync server written in Rust.</p>
 
+<p align="center">
+  <img src="docs/src/assets/screenshots/discover-browse.png" alt="rpodder screenshot" width="700" />
+</p>
+
 Sync your podcast subscriptions and episode progress across [AntennaPod](https://antennapod.org), [gPodder](https://gpodder.github.io), [Kasts](https://apps.kde.org/kasts/), and any client that supports the [gpodder.net API](https://gpoddernet.readthedocs.io/).
 
 ## Features

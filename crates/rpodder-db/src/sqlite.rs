@@ -1715,6 +1715,120 @@ mod tests {
         assert!(found.email.is_none());
     }
 
+    #[tokio::test]
+    async fn list_all_users() {
+        let repo = setup().await;
+        UserRepo::create(&repo, "user1", "hash", Some("a@b.com"))
+            .await
+            .unwrap();
+        UserRepo::create(&repo, "user2", "hash", None)
+            .await
+            .unwrap();
+        let all = UserRepo::list_all(&repo).await.unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].username, "user1");
+        assert_eq!(all[1].username, "user2");
+    }
+
+    #[tokio::test]
+    async fn set_admin_and_check() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "admin_test", "hash", None)
+            .await
+            .unwrap();
+        assert!(!user.is_admin);
+
+        UserRepo::set_admin(&repo, user.id, true).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
+        assert!(found.is_admin);
+
+        UserRepo::set_admin(&repo, user.id, false).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
+        assert!(!found.is_admin);
+    }
+
+    #[tokio::test]
+    async fn set_active_and_check() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "active_test", "hash", None)
+            .await
+            .unwrap();
+        assert!(user.is_active);
+
+        UserRepo::set_active(&repo, user.id, false).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
+        assert!(!found.is_active);
+
+        UserRepo::set_active(&repo, user.id, true).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
+        assert!(found.is_active);
+    }
+
+    #[tokio::test]
+    async fn delete_user() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "delete_me", "hash", None)
+            .await
+            .unwrap();
+        UserRepo::delete(&repo, user.id).await.unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap();
+        assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn count_active_users() {
+        let repo = setup().await;
+        assert_eq!(UserRepo::count_active(&repo).await.unwrap(), 0);
+
+        let u1 = UserRepo::create(&repo, "u1", "hash", None).await.unwrap();
+        UserRepo::create(&repo, "u2", "hash", None).await.unwrap();
+        assert_eq!(UserRepo::count_active(&repo).await.unwrap(), 2);
+
+        UserRepo::set_active(&repo, u1.id, false).await.unwrap();
+        assert_eq!(UserRepo::count_active(&repo).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_password() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "pw_test", "old_hash", None)
+            .await
+            .unwrap();
+        assert_eq!(user.password_hash, "old_hash");
+
+        UserRepo::update_password(&repo, user.id, "new_hash")
+            .await
+            .unwrap();
+        let found = UserRepo::find_by_id(&repo, user.id).await.unwrap().unwrap();
+        assert_eq!(found.password_hash, "new_hash");
+    }
+
+    #[tokio::test]
+    async fn find_by_email() {
+        let repo = setup().await;
+        UserRepo::create(&repo, "email_user", "hash", Some("test@example.com"))
+            .await
+            .unwrap();
+
+        let found = UserRepo::find_by_email(&repo, "test@example.com")
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().username, "email_user");
+
+        // Case insensitive
+        let found = UserRepo::find_by_email(&repo, "TEST@Example.COM")
+            .await
+            .unwrap();
+        assert!(found.is_some());
+
+        // Not found
+        let found = UserRepo::find_by_email(&repo, "nobody@example.com")
+            .await
+            .unwrap();
+        assert!(found.is_none());
+    }
+
     // === SessionRepo tests ===
 
     #[tokio::test]

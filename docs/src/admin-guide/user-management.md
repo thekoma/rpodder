@@ -1,5 +1,7 @@
 # User Management
 
+![Admin panel](../assets/screenshots/admin-panel.png)
+
 ## Roles
 
 rpodder has two roles:
