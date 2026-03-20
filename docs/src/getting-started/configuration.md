@@ -68,15 +68,20 @@ Required for `invite` registration mode, password reset emails, and admin-trigge
 
 ### Podcast Index
 
-For external podcast search and trending charts. Get your free API key at [podcastindex.org](https://api.podcastindex.org/).
+[Podcast Index](https://podcastindex.org/) is an open, free podcast database with over 4 million podcasts. It powers rpodder's external search and trending charts, giving your users access to the entire podcast ecosystem — not just what's already indexed locally.
+
+Get your **free** API key and secret at [api.podcastindex.org](https://api.podcastindex.org/) (takes 30 seconds, no credit card needed).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RPODDER_PODCASTINDEX_KEY` | | Podcast Index API key |
 | `RPODDER_PODCASTINDEX_SECRET` | | Podcast Index API secret |
 
+!!! tip "Highly recommended"
+    Without Podcast Index, search only returns podcasts already subscribed to by users on your instance. With it, users can discover any podcast in existence and subscribe directly from the search results. rpodder fetches and indexes the feed automatically.
+
 !!! warning "Dollar signs in secrets"
-    If your secret contains `$`, escape it as `$$` in `.env` files used by Docker Compose. For example: `RPODDER_PODCASTINDEX_SECRET=abc$$def` will be read as `abc$def`.
+    If your Podcast Index secret contains `$`, escape it as `$$` in `.env` files used by Docker Compose. For example: `RPODDER_PODCASTINDEX_SECRET=abc$$def` will be read as `abc$def`.
 
 ## Database choice
 

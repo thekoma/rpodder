@@ -77,6 +77,8 @@ All settings can be set via environment variables or a TOML config file:
 | `RPODDER_OAUTH_CLIENT_SECRET` | | OAuth2 client secret |
 | `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name for admin role |
 | `RPODDER_BASE_URL` | | Public URL for OAuth callbacks and emails |
+| `RPODDER_PODCASTINDEX_KEY` | | [Podcast Index](https://podcastindex.org/) API key (free) |
+| `RPODDER_PODCASTINDEX_SECRET` | | Podcast Index API secret |
 
 Or use a config file: `rpodder -c config.toml serve`
 

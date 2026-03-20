@@ -54,7 +54,23 @@ Searches both the local database and Podcast Index in parallel. Deduplicates res
 GET /api/2/search/external?q={query}
 ```
 
-Searches Podcast Index only.
+Searches [Podcast Index](https://podcastindex.org/) only. Requires `RPODDER_PODCASTINDEX_KEY` and `RPODDER_PODCASTINDEX_SECRET` to be configured. Returns an empty array if not configured.
+
+**Response**: array of external podcast objects
+
+```json
+[
+  {
+    "title": "My Podcast",
+    "url": "https://example.com/feed.xml",
+    "description": "A great show",
+    "author": "Jane Doe",
+    "logo_url": "https://example.com/cover.jpg",
+    "language": "en",
+    "source": "podcastindex"
+  }
+]
+```
 
 ## Trending
 
@@ -62,14 +78,14 @@ Searches Podcast Index only.
 GET /api/2/trending?lang={lang}&max={max}
 ```
 
-Returns trending podcasts from Podcast Index.
+Returns trending podcasts from [Podcast Index](https://podcastindex.org/). Requires Podcast Index API keys to be configured.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `lang` | (all) | Language filter: `en`, `it`, `de`, `es`, `fr`, etc. |
 | `max` | `20` | Maximum results (1-50) |
 
-**Response**: array of external podcast objects (same format as combined search `external` field).
+**Response**: array of external podcast objects (same format as external search).
 
 ## Toplist
 

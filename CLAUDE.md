@@ -96,6 +96,8 @@ All via `RPODDER_*` env vars or TOML config file (`-c config.toml`):
 | `RPODDER_OAUTH_CLIENT_SECRET` | | OAuth2 client secret |
 | `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name for admin role (e.g. `admins`) |
 | `RPODDER_BASE_URL` | | Public URL for callbacks |
+| `RPODDER_PODCASTINDEX_KEY` | | Podcast Index API key (free, from podcastindex.org) |
+| `RPODDER_PODCASTINDEX_SECRET` | | Podcast Index API secret |
 
 ## Gotchas / Known Issues
 
