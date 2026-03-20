@@ -228,8 +228,7 @@ pub async fn podcast_data(
     let podcast = if needs_fetch {
         let fetcher = rpodder_feed::FeedFetcher::new();
         let _ =
-            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url)
-                .await;
+            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url).await;
         with_repo!(state, |repo| {
             PodcastRepo::find_by_url(&repo, &params.url).await
         })
@@ -294,8 +293,7 @@ pub async fn podcast_episodes(
     let podcast = if needs_fetch {
         let fetcher = rpodder_feed::FeedFetcher::new();
         let _ =
-            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url)
-                .await;
+            crate::feed_updater::update_podcast_feed_forced(&state.db, &fetcher, &params.url).await;
         with_repo!(state, |repo| {
             PodcastRepo::find_by_url(&repo, &params.url).await
         })
