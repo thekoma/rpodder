@@ -58,6 +58,7 @@ nav:
     - Installation: getting-started/installation.md
     - Configuration: getting-started/configuration.md
     - Docker: getting-started/docker.md
+    - Kubernetes (Helm): getting-started/kubernetes.md
     - First Steps: getting-started/first-steps.md
   - User Guide:
     - Web Interface: user-guide/web-ui.md
