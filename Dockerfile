@@ -1,11 +1,13 @@
+# syntax=docker/dockerfile:1
+
 # --------------------------------------------------------------------------
 # Stage 1: Build frontend (Svelte + Tailwind)
 # --------------------------------------------------------------------------
 FROM oven/bun:1 AS frontend
 
 WORKDIR /web
-COPY web/package.json ./
-RUN bun install
+COPY web/package.json web/bun.lock* ./
+RUN bun install --frozen-lockfile
 COPY web/ .
 RUN bun run build
 
@@ -22,40 +24,20 @@ ARG RPODDER_BUILD_SHA=unknown
 WORKDIR /build
 
 ENV RUSTFLAGS="-C linker=clang -C link-arg=--ld-path=/usr/bin/mold"
-
-# Cache dependencies: copy only manifests first, build a dummy to prime cache
-COPY Cargo.toml Cargo.lock ./
-COPY crates/rpodder-core/Cargo.toml   crates/rpodder-core/Cargo.toml
-COPY crates/rpodder-db/Cargo.toml     crates/rpodder-db/Cargo.toml
-COPY crates/rpodder-feed/Cargo.toml   crates/rpodder-feed/Cargo.toml
-COPY crates/rpodder-server/Cargo.toml crates/rpodder-server/Cargo.toml
-
-# Create dummy lib/main files so cargo can resolve the workspace
-RUN mkdir -p crates/rpodder-core/src   && echo "" > crates/rpodder-core/src/lib.rs \
- && mkdir -p crates/rpodder-db/src     && echo "" > crates/rpodder-db/src/lib.rs \
- && mkdir -p crates/rpodder-feed/src   && echo "" > crates/rpodder-feed/src/lib.rs \
- && mkdir -p crates/rpodder-server/src && echo "fn main() {}" > crates/rpodder-server/src/main.rs
-
-# Create empty web/dist so rust-embed compiles during dep caching
-RUN mkdir -p web/dist && touch web/dist/index.html
-
-RUN cargo build --release 2>/dev/null || true
-
-# Now copy real source and built frontend
-COPY crates/ crates/
-COPY --from=frontend /web/dist/ web/dist/
-
-# Touch files so cargo detects changes vs the dummy sources
-RUN touch crates/rpodder-core/src/lib.rs \
-          crates/rpodder-db/src/lib.rs \
-          crates/rpodder-feed/src/lib.rs \
-          crates/rpodder-server/src/main.rs
-
-# Pass build info as compile-time env vars
 ENV RPODDER_BUILD_TAG=${RPODDER_BUILD_TAG}
 ENV RPODDER_BUILD_SHA=${RPODDER_BUILD_SHA}
 
-RUN cargo build --release --bin rpodder
+# Copy everything needed for the build
+COPY Cargo.toml Cargo.lock ./
+COPY crates/ crates/
+COPY --from=frontend /web/dist/ web/dist/
+
+# Build with cargo cache mounts for registry + target dir
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release --bin rpodder \
+    && cp target/release/rpodder /usr/local/bin/rpodder
 
 # --------------------------------------------------------------------------
 # Stage 3: Runtime
@@ -81,7 +63,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --gid 1000 rpodder && \
     useradd --uid 1000 --gid rpodder --shell /bin/false --create-home rpodder
 
-COPY --from=builder /build/target/release/rpodder /usr/local/bin/rpodder
+COPY --from=builder /usr/local/bin/rpodder /usr/local/bin/rpodder
 
 # Migrations are needed at runtime for the CLI `rpodder migrate` command
 COPY --chown=rpodder:rpodder migrations/ /app/migrations/
