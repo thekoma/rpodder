@@ -11,11 +11,11 @@
   "devDependencies": {
     "@sveltejs/adapter-static": "^3",
     "@sveltejs/kit": "^2",
-    "@sveltejs/vite-plugin-svelte": "^4",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "svelte": "^5",
     "tailwindcss": "^4",
     "@tailwindcss/vite": "^4",
     "typescript": "^5",
-    "vite": "^6"
+    "vite": "^8.0.0"
   }
 }
