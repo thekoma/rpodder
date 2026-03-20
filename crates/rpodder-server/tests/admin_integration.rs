@@ -5,7 +5,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
     middleware as axum_mw,
-    routing::{get, post},
+    routing::get,
 };
 use chrono::{Duration, Utc};
 use serde_json::Value;
@@ -57,10 +57,6 @@ async fn create_user_with_session(db: &Db, username: &str) -> String {
     create_user_with_session_opts(db, username, false).await
 }
 
-async fn create_admin_with_session(db: &Db, username: &str) -> String {
-    create_user_with_session_opts(db, username, true).await
-}
-
 async fn create_user_with_session_opts(db: &Db, username: &str, admin: bool) -> String {
     let r = repo(db);
     let user = UserRepo::create(&r, username, &hash_password("pass"), None)
@@ -94,7 +90,6 @@ struct TestAppState {
 mod test_handlers {
     use super::*;
     use axum::{
-        Extension,
         extract::Request,
         http::header,
         middleware::Next,
@@ -102,6 +97,7 @@ mod test_handlers {
     };
 
     #[derive(Clone)]
+    #[allow(dead_code)]
     pub struct AuthUser(pub rpodder_core::types::User);
 
     pub fn require_auth_layer(
