@@ -37,7 +37,7 @@ url = { version = "2", features = ["serde"] }
 
 # feed parsing
 feed-rs = "2"
-reqwest = { version = "0.13", features = ["json", "gzip", "brotli"] }
+reqwest = { version = "0.13", features = ["json", "form", "query", "gzip", "brotli"] }
 
 # auth & crypto
 argon2 = "0.5"
