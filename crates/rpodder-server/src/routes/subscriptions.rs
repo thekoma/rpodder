@@ -30,7 +30,14 @@ pub struct DeltaUploadRequest {
 pub struct DeltaResponse {
     pub add: Vec<String>,
     pub remove: Vec<String>,
+    pub update_urls: Vec<(String, String)>,
     pub timestamp: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UploadResponse {
+    pub timestamp: i64,
+    pub update_urls: Vec<(String, String)>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -320,9 +327,21 @@ pub async fn upload_subscription_changes(
 
     let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
-    // Normalize URLs
+    // Normalize URLs and track mappings for update_urls response
     let add_urls: Vec<String> = body.add.iter().map(|u| normalize_url(u)).collect();
     let remove_urls: Vec<String> = body.remove.iter().map(|u| normalize_url(u)).collect();
+
+    let mut update_urls: Vec<(String, String)> = Vec::new();
+    for (orig, normalized) in body.add.iter().zip(&add_urls) {
+        if orig != normalized {
+            update_urls.push((orig.clone(), normalized.clone()));
+        }
+    }
+    for (orig, normalized) in body.remove.iter().zip(&remove_urls) {
+        if orig != normalized {
+            update_urls.push((orig.clone(), normalized.clone()));
+        }
+    }
 
     for url in &remove_urls {
         let podcast = with_repo!(state, |repo| PodcastRepo::find_by_url(&repo, url).await)
@@ -372,10 +391,9 @@ pub async fn upload_subscription_changes(
 
     let timestamp = Utc::now().timestamp();
 
-    Ok(Json(DeltaResponse {
-        add: add_urls,
-        remove: remove_urls,
+    Ok(Json(UploadResponse {
         timestamp,
+        update_urls,
     }))
 }
 
@@ -422,6 +440,7 @@ pub async fn download_subscription_changes(
     Ok(Json(DeltaResponse {
         add,
         remove,
+        update_urls: vec![],
         timestamp,
     }))
 }
