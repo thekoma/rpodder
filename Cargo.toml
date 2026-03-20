@@ -19,7 +19,7 @@ tokio = { version = "1", features = ["full"] }
 
 # web framework
 axum = { version = "0.8", features = ["macros"] }
-axum-extra = { version = "0.10", features = ["typed-header", "cookie"] }
+axum-extra = { version = "0.12", features = ["typed-header", "cookie"] }
 tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
@@ -37,11 +37,11 @@ url = { version = "2", features = ["serde"] }
 
 # feed parsing
 feed-rs = "2"
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli"] }
+reqwest = { version = "0.13", features = ["json", "gzip", "brotli"] }
 
 # auth & crypto
 argon2 = "0.5"
-rand = "0.8"
+rand = "0.10"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -58,7 +58,7 @@ urlencoding = "2"
 # config & logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-config = "0.14"
+config = "0.15"
 thiserror = "2"
 anyhow = "1"
 
