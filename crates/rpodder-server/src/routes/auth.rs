@@ -90,11 +90,11 @@ pub async fn logout(State(state): State<AppState>, req: Request) -> StatusCode {
 }
 
 fn generate_token() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    use rand::RngExt;
+    let mut rng = rand::rng();
     (0..64)
         .map(|_| {
-            let idx: u8 = rng.gen_range(0..36);
+            let idx: u8 = rng.random_range(0..36);
             if idx < 10 {
                 (b'0' + idx) as char
             } else {
