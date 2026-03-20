@@ -86,9 +86,9 @@ All via `RPODDER_*` env vars or TOML config file (`-c config.toml`):
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `RPODDER_DATABASE_URL` | `sqlite://rpodder.db` | PG or SQLite |
-| `RPODDER_HOST` | `127.0.0.1` | Bind address |
+| `RPODDER_HOST` | `0.0.0.0` | Bind address |
 | `RPODDER_PORT` | `3005` | Bind port |
-| `RPODDER_RUN_MIGRATIONS` | `false` | Auto-migrate on start |
+| `RPODDER_RUN_MIGRATIONS` | `true` | Auto-migrate on start |
 | `RPODDER_REGISTRATION` | `open` | `open`/`closed`/`invite` |
 | `RPODDER_SMTP_HOST` | | SMTP server for email activation |
 | `RPODDER_OAUTH_ISSUER_URL` | | OIDC issuer (e.g. Authentik) |

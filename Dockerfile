@@ -77,19 +77,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates libssl3 \
  && rm -rf /var/lib/apt/lists/*
 
+# Create non-root user for runtime
+RUN groupadd --gid 1000 rpodder && \
+    useradd --uid 1000 --gid rpodder --shell /bin/false --create-home rpodder
+
 COPY --from=builder /build/target/release/rpodder /usr/local/bin/rpodder
 
 # Migrations are needed at runtime for the CLI `rpodder migrate` command
-COPY migrations/ /app/migrations/
+COPY --chown=rpodder:rpodder migrations/ /app/migrations/
 
 # Logo for container management UIs (Portainer, Dockge, etc.)
-COPY web/static/logo.svg /app/logo.svg
+COPY --chown=rpodder:rpodder web/static/logo.svg /app/logo.svg
 
 # Build info available at runtime
 ENV RPODDER_BUILD_TAG=${RPODDER_BUILD_TAG}
 ENV RPODDER_BUILD_SHA=${RPODDER_BUILD_SHA}
 
 WORKDIR /app
+
+USER rpodder
 
 EXPOSE 3005
 

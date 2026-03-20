@@ -15,7 +15,7 @@ pub struct AppConfig {
     #[serde(default = "default_migrations_dir")]
     pub migrations_dir: String,
 
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub run_migrations: bool,
 
     /// Registration mode: "open" (anyone), "closed" (admin only), "invite" (email confirmation)
@@ -66,7 +66,7 @@ fn default_database_url() -> String {
     "sqlite://rpodder.db".into()
 }
 fn default_host() -> String {
-    "127.0.0.1".into()
+    "0.0.0.0".into()
 }
 fn default_port() -> u16 {
     3005
@@ -76,6 +76,9 @@ fn default_migrations_dir() -> String {
 }
 fn default_registration() -> String {
     "open".into()
+}
+fn default_true() -> bool {
+    true
 }
 fn default_smtp_port() -> u16 {
     25

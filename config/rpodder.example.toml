@@ -7,15 +7,15 @@
 # SQLite:     sqlite://rpodder.db
 database_url = "sqlite://rpodder.db"
 
-# Server bind address
-host = "127.0.0.1"
+# Server bind address (default: 0.0.0.0)
+# host = "0.0.0.0"
 port = 3005
 
 # Path to migrations directory
 migrations_dir = "migrations"
 
-# Run migrations on startup (useful in Docker)
-run_migrations = false
+# Run migrations on startup (disable only if you manage migrations manually)
+# run_migrations = true
 
 # Base URL for email links and OAuth callbacks
 # base_url = "https://pod.example.com"

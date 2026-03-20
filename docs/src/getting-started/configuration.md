@@ -28,9 +28,9 @@ All settings use the `RPODDER_` prefix. The prefix is stripped and the remainder
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RPODDER_DATABASE_URL` | `sqlite://rpodder.db` | Database connection string. Use `postgres://user:pass@host:5432/db` for PostgreSQL or `sqlite:///path/to/file.db` for SQLite |
-| `RPODDER_HOST` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces |
+| `RPODDER_HOST` | `0.0.0.0` | Bind address. Use `127.0.0.1` to restrict to localhost only |
 | `RPODDER_PORT` | `3005` | Bind port |
-| `RPODDER_RUN_MIGRATIONS` | `false` | Automatically run database migrations on startup |
+| `RPODDER_RUN_MIGRATIONS` | `true` | Automatically run database migrations on startup |
 | `RPODDER_MIGRATIONS_DIR` | `migrations` | Path to the migrations directory |
 | `RPODDER_BASE_URL` | | Public URL for OAuth callbacks and email links (e.g. `https://podcast.example.com`) |
 
