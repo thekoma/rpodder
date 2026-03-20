@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{DeviceRepo, SyncGroupRepo};
+use rpodder_core::repo::{DeviceRepo, SubscriptionRepo, SyncGroupRepo};
 
 use crate::middleware::auth::AuthUser;
 use crate::state::AppState;
@@ -139,8 +139,62 @@ pub async fn update_sync_status(
                 SyncGroupRepo::create_group(&repo, auth_user.0.id, &device_ids).await
             })
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            // Merge existing subscriptions across all devices in the group
+            merge_subscriptions(&state, auth_user.0.id, &device_ids).await?;
         }
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Merge subscriptions so all devices in a sync group share the same set.
+async fn merge_subscriptions(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    device_ids: &[uuid::Uuid],
+) -> Result<(), StatusCode> {
+    // Collect all (podcast_id, ref_url) pairs across all devices
+    let mut all_subs: std::collections::HashMap<uuid::Uuid, String> =
+        std::collections::HashMap::new();
+
+    for &device_id in device_ids {
+        let subs = with_repo!(state, |repo| {
+            SubscriptionRepo::list_for_device(&repo, user_id, device_id).await
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        for sub in subs {
+            all_subs.entry(sub.podcast_id).or_insert(sub.ref_url);
+        }
+    }
+
+    // Subscribe each device to any podcasts it's missing
+    for &device_id in device_ids {
+        let device_subs = with_repo!(state, |repo| {
+            SubscriptionRepo::list_for_device(&repo, user_id, device_id).await
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        let device_podcast_ids: std::collections::HashSet<uuid::Uuid> =
+            device_subs.iter().map(|s| s.podcast_id).collect();
+
+        for (podcast_id, ref_url) in &all_subs {
+            if !device_podcast_ids.contains(podcast_id) {
+                with_repo!(state, |repo| {
+                    SubscriptionRepo::subscribe(&repo, user_id, device_id, *podcast_id, ref_url)
+                        .await
+                })
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+                tracing::info!(
+                    device_id = %device_id,
+                    podcast_url = %ref_url,
+                    "sync group merge: propagated subscription"
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

@@ -63,5 +63,6 @@ curl -u user:pass -X POST \
 
 - A sync group requires at least **2 devices**. Attempting to create a group with a single device is a no-op.
 - Removing a device from a 2-device group effectively dissolves the group.
-- Sync groups propagate **subscription changes** (add/remove). Existing subscriptions are **not** retroactively merged when creating a group.
+- When creating a sync group, existing subscriptions are **automatically merged** — each device receives all subscriptions from every other device in the group.
+- After merging, any new subscription changes are propagated in real-time.
 - Episode actions (play position, etc.) are synced independently via the episode actions API — they are not affected by sync groups.
