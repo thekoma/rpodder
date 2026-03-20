@@ -64,6 +64,7 @@ nav:
     - Web Interface: user-guide/web-ui.md
     - Client Setup: user-guide/clients.md
     - Discovery & Search: user-guide/discovery.md
+    - Sync Groups: user-guide/sync-groups.md
     - Subscriptions: user-guide/subscriptions.md
   - Admin Guide:
     - User Management: admin-guide/user-management.md

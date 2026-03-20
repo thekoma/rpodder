@@ -395,6 +395,35 @@ export async function getSubscriptionUpgrades(): Promise<UpgradeableSub[]> {
   return resp.json();
 }
 
+// --- Sync Groups ---
+
+export interface SyncStatus {
+  synchronized: string[][];
+  'not-synchronized': string[];
+}
+
+export async function getSyncStatus(username: string): Promise<SyncStatus> {
+  const resp = await request(`/api/2/sync-devices/${username}.json`);
+  if (!resp.ok) return { synchronized: [], 'not-synchronized': [] };
+  return resp.json();
+}
+
+export async function updateSyncStatus(
+  username: string,
+  synchronize: string[][],
+  stopSynchronize?: string[]
+): Promise<boolean> {
+  const body: Record<string, unknown> = { synchronize };
+  if (stopSynchronize && stopSynchronize.length > 0) {
+    body['stop-synchronize'] = stopSynchronize;
+  }
+  const resp = await request(`/api/2/sync-devices/${username}.json`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return resp.ok;
+}
+
 export async function uploadSubscriptionChanges(
   username: string,
   device: string,
