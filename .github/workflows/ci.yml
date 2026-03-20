@@ -17,10 +17,10 @@ env:
 
 jobs:
   # -------------------------------------------------------------------------
-  # Stage 1: Lint (fast, catches formatting/clippy issues early)
+  # Stage 1: Lint + Test (fmt → clippy → test, single compilation)
   # -------------------------------------------------------------------------
-  lint:
-    name: Lint
+  check:
+    name: Lint & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,42 +29,28 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
 
+      # rust-embed needs web/dist/ to exist
       - name: Create web dist placeholder
         run: mkdir -p web/dist && touch web/dist/index.html
 
+      # Fast check first (no compilation)
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      # Compiles + lint analysis
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
-  # -------------------------------------------------------------------------
-  # Stage 2: Test (depends on lint passing)
-  # -------------------------------------------------------------------------
-  test:
-    name: Test
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Create web dist placeholder
-        run: mkdir -p web/dist && touch web/dist/index.html
-
-      - name: Build
-        run: cargo build --workspace
-
+      # Reuses clippy build artifacts, only compiles test harnesses
       - name: Test
         run: cargo test --workspace
 
   # -------------------------------------------------------------------------
-  # Stage 3: Build & Release (only on main push or tag, after tests pass)
+  # Stage 2: Build & Release (only on main/tag, after tests pass)
   # -------------------------------------------------------------------------
   release:
     name: Build & Release
-    needs: test
+    needs: check
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     permissions:
