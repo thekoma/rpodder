@@ -7,7 +7,7 @@
 #   frontend   Standalone Svelte frontend (nginx) + API backend
 #
 # Usage:
-#   docker compose up -d                          # dev mode
+#   docker compose --profile dev up -d            # dev mode (cargo-watch)
 #   docker compose --profile release up -d        # release mode
 #   docker compose --profile sqlite up -d         # sqlite mode
 
@@ -70,6 +70,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles:
+      - dev
 
   # ---------------------------------------------------------------------------
   # rpodder — production-like release build
