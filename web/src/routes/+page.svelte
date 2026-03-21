@@ -1,9 +1,8 @@
 <script lang="ts">
   import { auth } from '$lib/auth.svelte';
-  import { getHealth, getToplist, type PodcastInfo, type HealthInfo } from '$lib/api';
+  import { getToplist, type PodcastInfo } from '$lib/api';
   import { browser } from '$app/environment';
 
-  let health = $state<HealthInfo | null>(null);
   let topPodcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);
   let loaded = $state(false);
@@ -12,8 +11,7 @@
     if (!browser || loaded) return;
     loaded = true;
 
-    Promise.all([getHealth(), getToplist(12)]).then(([h, top]) => {
-      health = h;
+    getToplist(12).then((top) => {
       topPodcasts = top;
       loading = false;
     }).catch(() => { loading = false; });
@@ -34,13 +32,6 @@
     {/if}
   </div>
 
-  {#if health}
-    <div class="flex justify-center gap-6 text-sm text-text-dim">
-      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-success"></span> Server online</span>
-      <span>v{health.version}</span>
-      <span class="capitalize">{health.database}</span>
-    </div>
-  {/if}
 
   {#if topPodcasts.length > 0}
     <div>

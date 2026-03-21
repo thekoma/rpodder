@@ -122,7 +122,7 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         db: db.clone(),
         config: Arc::new(cfg.clone()),
     };
-    let app = api_router(state);
+    let app = api_router(state.clone());
 
     // Spawn background feed updater (every 30 minutes)
     let db_for_updater = db.clone();
@@ -131,6 +131,28 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         feed_updater::run_feed_update_loop(db_for_updater, 1800).await;
     });
+
+    // Spawn dedicated metrics server on a separate port (if enabled)
+    if cfg.metrics_enabled {
+        let metrics_state = state.clone();
+        let metrics_addr: SocketAddr =
+            format!("{}:{}", cfg.metrics_host, cfg.metrics_port).parse()?;
+        tracing::info!("metrics server listening on {metrics_addr}");
+
+        tokio::spawn(async move {
+            let metrics_app = Router::new()
+                .route("/metrics", get(routes::health::metrics))
+                .with_state(metrics_state);
+
+            let listener = tokio::net::TcpListener::bind(metrics_addr)
+                .await
+                .expect("failed to bind metrics server");
+            axum::serve(listener, metrics_app)
+                .with_graceful_shutdown(shutdown_signal())
+                .await
+                .expect("metrics server error");
+        });
+    }
 
     let addr: SocketAddr = format!("{}:{}", cfg.host, cfg.port).parse()?;
     tracing::info!("rpodder listening on {addr}");
@@ -318,6 +340,7 @@ fn api_router(state: AppState) -> Router {
         // Current user info + password change + subscription upgrades (authenticated)
         .route("/api/2/me", get(routes::admin::me))
         .route("/api/2/me/password", post(routes::admin::change_password))
+        .route("/api/2/me/build", get(routes::health::build_info))
         .route(
             "/api/2/me/upgrades",
             get(routes::admin::subscription_upgrades),
@@ -373,7 +396,6 @@ fn api_router(state: AppState) -> Router {
     // Public routes (no auth required)
     let public = Router::new()
         .route("/health", get(routes::health::health))
-        .route("/metrics", get(routes::health::metrics))
         .route(
             "/api/2/auth/{username}/logout.json",
             post(routes::auth::logout),

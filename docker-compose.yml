@@ -83,12 +83,15 @@ services:
       com.docker.compose.description: "rpodder (release build)"
     ports:
       - "3006:3005"
+      - "9091:9091"
     env_file:
       - path: .env.oauth
         required: false
     environment:
       RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
       RPODDER_PORT: "3005"
+      RPODDER_METRICS_ENABLED: "true"
+      RPODDER_METRICS_PORT: "9091"
       RPODDER_MIGRATIONS_DIR: /app/migrations
     depends_on:
       postgres:

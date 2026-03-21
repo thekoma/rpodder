@@ -66,6 +66,23 @@ Required for `invite` registration mode, password reset emails, and admin-trigge
 | `RPODDER_OAUTH_PROVIDER_NAME` | `SSO` | Display name for the login button (e.g. `Authentik`, `Google`) |
 | `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name that grants admin role. Users in this group are automatically made admin on every SSO login |
 
+### Metrics
+
+rpodder can expose Prometheus-compatible metrics on a **dedicated port**, separate from the main API. This prevents metrics from being exposed to public traffic — in Kubernetes, only create a `Service` for the metrics port internally.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RPODDER_METRICS_ENABLED` | `false` | Enable the dedicated metrics server |
+| `RPODDER_METRICS_HOST` | `0.0.0.0` | Metrics server bind address |
+| `RPODDER_METRICS_PORT` | `9091` | Metrics server bind port |
+
+Exposed metrics include:
+
+- **Business**: `rpodder_users_total`, `rpodder_podcasts_total`, `rpodder_episodes_total`, `rpodder_subscriptions_total`, `rpodder_episode_actions_total`, `rpodder_devices_total`
+- **Build info**: `rpodder_build_info` (labels: version, tag, sha, database)
+- **Process**: `rpodder_uptime_seconds`, `rpodder_available_cpus`, `process_resident_memory_bytes`, `process_virtual_memory_bytes`, `process_open_fds`, `process_max_fds`
+- **DB pool**: `rpodder_db_pool_size`, `rpodder_db_pool_idle`
+
 ### Podcast Index
 
 [Podcast Index](https://podcastindex.org/) is an open, free podcast database with over 4 million podcasts. It powers rpodder's external search and trending charts, giving your users access to the entire podcast ecosystem — not just what's already indexed locally.

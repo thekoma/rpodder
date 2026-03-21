@@ -98,6 +98,9 @@ All via `RPODDER_*` env vars or TOML config file (`-c config.toml`):
 | `RPODDER_BASE_URL` | | Public URL for callbacks |
 | `RPODDER_PODCASTINDEX_KEY` | | Podcast Index API key (free, from podcastindex.org) |
 | `RPODDER_PODCASTINDEX_SECRET` | | Podcast Index API secret |
+| `RPODDER_METRICS_ENABLED` | `false` | Enable dedicated metrics server |
+| `RPODDER_METRICS_HOST` | `0.0.0.0` | Metrics server bind address |
+| `RPODDER_METRICS_PORT` | `9091` | Metrics server bind port |
 
 ## Gotchas / Known Issues
 

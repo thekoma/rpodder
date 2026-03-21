@@ -1,13 +1,13 @@
 <script lang="ts">
   import '../app.css';
   import { auth } from '$lib/auth.svelte';
-  import { logout as apiLogout, getHealth, getMe, type HealthInfo } from '$lib/api';
+  import { logout as apiLogout, getBuildInfo, getMe, type BuildInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
 
   let { children } = $props();
-  let buildInfo = $state<HealthInfo | null>(null);
+  let buildInfo = $state<BuildInfo | null>(null);
   let menuOpen = $state(false);
 
   // Close menu on navigation
@@ -18,11 +18,13 @@
 
   $effect(() => {
     if (!browser) return;
-    getHealth().then(h => { buildInfo = h; });
     if (auth.loggedIn) {
       getMe().then(me => {
         if (me) auth.setAdmin(me.is_admin);
       });
+      getBuildInfo().then(h => { buildInfo = h; });
+    } else {
+      buildInfo = null;
     }
   });
 

@@ -2,16 +2,16 @@
   import { auth } from '$lib/auth.svelte';
   import {
     getAdminUsers, getAdminStats, createAdminUser, deactivateUser, activateUser,
-    setUserRole, deleteUser, forceUpdateFeeds, getHealth,
+    setUserRole, deleteUser, forceUpdateFeeds, getBuildInfo,
     adminResetPassword, adminSetPassword,
-    type AdminUser, type AdminStats, type HealthInfo
+    type AdminUser, type AdminStats, type BuildInfo
   } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
 
   let users = $state<AdminUser[]>([]);
   let adminStats = $state<AdminStats | null>(null);
-  let health = $state<HealthInfo | null>(null);
+  let health = $state<BuildInfo | null>(null);
   let loading = $state(true);
   let loaded = $state(false);
   let showCreateForm = $state(false);
@@ -32,7 +32,7 @@
   });
 
   function loadData() {
-    Promise.all([getAdminUsers(), getAdminStats(), getHealth()]).then(([u, s, h]) => {
+    Promise.all([getAdminUsers(), getAdminStats(), getBuildInfo()]).then(([u, s, h]) => {
       users = u;
       adminStats = s;
       health = h;

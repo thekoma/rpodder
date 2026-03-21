@@ -80,6 +80,7 @@ WORKDIR /app
 USER rpodder
 
 EXPOSE 3005
+EXPOSE 9091
 
 ENTRYPOINT ["rpodder"]
 CMD ["serve"]

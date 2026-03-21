@@ -365,7 +365,7 @@ export async function getSuggestions(username: string, count: number = 10): Prom
   return resp.json();
 }
 
-export interface HealthInfo {
+export interface BuildInfo {
   status: string;
   version: string;
   database: string;
@@ -373,9 +373,9 @@ export interface HealthInfo {
   build_sha: string;
 }
 
-export async function getHealth(): Promise<HealthInfo | null> {
+export async function getBuildInfo(): Promise<BuildInfo | null> {
   try {
-    const resp = await fetch(`${API_BASE}/health`);
+    const resp = await request('/api/2/me/build');
     if (!resp.ok) return null;
     return resp.json();
   } catch {

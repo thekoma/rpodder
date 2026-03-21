@@ -36,3 +36,10 @@ registration = "open"
 # oauth_client_id = "your-client-id"
 # oauth_client_secret = "your-client-secret"
 # oauth_provider_name = "Authentik"
+
+# --- Metrics server (Prometheus) ---
+# Serves /metrics on a dedicated port, separate from the main API.
+# Keep this port internal (not exposed via ingress) for security.
+# metrics_enabled = true
+# metrics_host = "0.0.0.0"
+# metrics_port = 9091

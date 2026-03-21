@@ -60,6 +60,19 @@ pub struct AppConfig {
     pub podcastindex_key: String,
     #[serde(default)]
     pub podcastindex_secret: String,
+
+    // --- Metrics server ---
+    /// Enable the dedicated metrics server (default: false)
+    #[serde(default)]
+    pub metrics_enabled: bool,
+
+    /// Metrics server bind address (default: 0.0.0.0)
+    #[serde(default = "default_host")]
+    pub metrics_host: String,
+
+    /// Metrics server bind port (default: 9091)
+    #[serde(default = "default_metrics_port")]
+    pub metrics_port: u16,
 }
 
 fn default_database_url() -> String {
@@ -88,6 +101,9 @@ fn default_smtp_security() -> String {
 }
 fn default_oauth_provider_name() -> String {
     "SSO".into()
+}
+fn default_metrics_port() -> u16 {
+    9091
 }
 
 impl AppConfig {
