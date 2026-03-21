@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/database-PostgreSQL%20%7C%20SQLite-336791?logo=postgresql" alt="Database: PostgreSQL | SQLite">
   <img src="https://img.shields.io/badge/frontend-Svelte%205-FF3E00?logo=svelte&logoColor=white" alt="Frontend: Svelte 5">
   <img src="https://img.shields.io/badge/API-gpodder%20compatible-green" alt="API: gpodder compatible">
+  <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blueviolet" alt="Arch: amd64 | arm64">
   <img src="https://img.shields.io/badge/deploy-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white" alt="Deploy: Docker | K8s">
   <a href="https://thekoma.github.io/rpodder/"><img src="https://img.shields.io/badge/docs-MkDocs-4051B5?logo=materialformkdocs&logoColor=white" alt="Docs"></a>
   <img src="https://img.shields.io/badge/self--hosted-Raspberry%20Pi%20ready-C51A4A?logo=raspberrypi&logoColor=white" alt="Self-hosted: Raspberry Pi ready">

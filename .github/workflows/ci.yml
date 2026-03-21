@@ -85,6 +85,46 @@ jobs:
 
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
+      # --- Build standalone binaries (amd64 + arm64) ---
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-binaries
+
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build frontend
+        run: cd web && bun install --frozen-lockfile && bun run build
+
+      - name: Build binary (linux/amd64)
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Build binary (linux/arm64)
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+        run: cargo build --release --target aarch64-unknown-linux-gnu
+
+      - name: Prepare release assets
+        run: |
+          cp target/x86_64-unknown-linux-gnu/release/rpodder rpodder-linux-amd64
+          cp target/aarch64-unknown-linux-gnu/release/rpodder rpodder-linux-arm64
+          sha256sum rpodder-linux-amd64 rpodder-linux-arm64 > checksums.sha256
+          echo "### Binaries" >> release-notes.md
+          echo '```' >> release-notes.md
+          cat checksums.sha256 >> release-notes.md
+          echo '```' >> release-notes.md
+
+      # --- Build & push multi-arch Docker image ---
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
@@ -109,7 +149,7 @@ jobs:
         with:
           context: .
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -120,6 +160,7 @@ jobs:
           sbom: true
           provenance: true
 
+      # --- Tag + Release ---
       - name: Push git tag
         if: success() && github.ref_type != 'tag'
         run: |
@@ -134,3 +175,9 @@ jobs:
         with:
           tag_name: ${{ steps.calculate_tag.outputs.tag }}
           generate_release_notes: true
+          append_body: true
+          body_path: release-notes.md
+          files: |
+            rpodder-linux-amd64
+            rpodder-linux-arm64
+            checksums.sha256
