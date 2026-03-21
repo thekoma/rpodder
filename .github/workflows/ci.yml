@@ -97,7 +97,7 @@ jobs:
       - name: Install cross-compilation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu
+          sudo apt-get install -y --no-install-recommends crossbuild-essential-arm64
 
       - name: Install bun
         uses: oven-sh/setup-bun@v2
