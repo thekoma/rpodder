@@ -7,6 +7,21 @@
 <p align="center">A modern, fast, <a href="https://gpodder.net">gpodder.net</a>-compatible podcast sync server written in Rust.</p>
 
 <p align="center">
+  <a href="https://github.com/thekoma/rpodder/actions/workflows/ci.yml"><img src="https://github.com/thekoma/rpodder/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/thekoma/rpodder/pkgs/container/rpodder"><img src="https://ghcr-badge.egpl.dev/thekoma/rpodder/latest_tag?trim=major&label=latest" alt="Latest Release"></a>
+  <a href="https://ghcr.io/thekoma/rpodder"><img src="https://ghcr-badge.egpl.dev/thekoma/rpodder/size" alt="Image Size"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/rust-edition%202024-orange?logo=rust" alt="Rust Edition 2024">
+  <img src="https://img.shields.io/badge/database-PostgreSQL%20%7C%20SQLite-336791?logo=postgresql" alt="Database: PostgreSQL | SQLite">
+  <img src="https://img.shields.io/badge/frontend-Svelte%205-FF3E00?logo=svelte&logoColor=white" alt="Frontend: Svelte 5">
+  <img src="https://img.shields.io/badge/API-gpodder%20compatible-green" alt="API: gpodder compatible">
+  <img src="https://img.shields.io/badge/deploy-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white" alt="Deploy: Docker | K8s">
+  <a href="https://thekoma.github.io/rpodder/"><img src="https://img.shields.io/badge/docs-MkDocs-4051B5?logo=materialformkdocs&logoColor=white" alt="Docs"></a>
+  <img src="https://img.shields.io/badge/self--hosted-Raspberry%20Pi%20ready-C51A4A?logo=raspberrypi&logoColor=white" alt="Self-hosted: Raspberry Pi ready">
+  <img src="https://img.shields.io/badge/SSO-OIDC%20%2F%20OAuth2-purple?logo=openid" alt="SSO: OIDC / OAuth2">
+</p>
+
+<p align="center">
   <img src="docs/src/assets/screenshots/discover-browse.png" alt="rpodder screenshot" width="700" />
 </p>
 
