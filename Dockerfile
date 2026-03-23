@@ -2,8 +2,10 @@
 
 # --------------------------------------------------------------------------
 # Stage 1: Build frontend (Svelte + Tailwind)
+# Force amd64: output is pure static HTML/JS/CSS, identical for all arches.
+# Avoids running rolldown native bindings under QEMU (arm64 build fails).
 # --------------------------------------------------------------------------
-FROM oven/bun:1 AS frontend
+FROM --platform=linux/amd64 oven/bun:1 AS frontend
 
 WORKDIR /web
 COPY web/package.json web/bun.lock* ./
