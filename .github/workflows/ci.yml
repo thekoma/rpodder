@@ -17,25 +17,43 @@ env:
 
 jobs:
   # -------------------------------------------------------------------------
-  # Stage 1: Lint + Test (fmt → clippy → test, single compilation)
+  # Stage 1a: Format check (safe — no compilation, runs automatically)
   # -------------------------------------------------------------------------
-  check:
-    name: Lint & Test
+  format:
+    name: Format check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # -------------------------------------------------------------------------
+  # Stage 1b: Clippy + Test (compiles code — requires approval on PRs)
+  #
+  # On PRs this job uses the "ci" environment which requires a maintainer
+  # review before running. This prevents malicious build.rs / proc-macros
+  # from fork PRs from executing on our runners.
+  #
+  # On push to main/tags the environment is skipped (code already reviewed).
+  # -------------------------------------------------------------------------
+  check:
+    name: Lint & Test
+    needs: format
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'pull_request' && 'ci' || '' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
 
       # rust-embed needs web/dist/ to exist
       - name: Create web dist placeholder
         run: mkdir -p web/dist && touch web/dist/index.html
-
-      # Fast check first (no compilation)
-      - name: Check formatting
-        run: cargo fmt --all -- --check
 
       # Compiles + lint analysis
       - name: Clippy
