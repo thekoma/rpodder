@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.1.1 — 2026-03-23
+
+### Fixed
+- **SSO sessions expired after 24 hours** — OAuth/SSO sessions were hardcoded to 24h while regular login sessions lasted 365 days, causing SSO users to lose access daily until re-login
+
+### Added
+- **Configurable session duration** — new `RPODDER_SESSION_DURATION_DAYS` setting (default: 90 days) controls session lifetime for both regular and SSO login. Configurable via env var or `session_duration_days` in TOML config
+
 ## v0.1.0 — 2026-03-17
 
 Initial release. Full gpodder.net-compatible podcast sync server with web UI.

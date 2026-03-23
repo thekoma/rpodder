@@ -34,6 +34,12 @@ All settings use the `RPODDER_` prefix. The prefix is stripped and the remainder
 | `RPODDER_MIGRATIONS_DIR` | `migrations` | Path to the migrations directory |
 | `RPODDER_BASE_URL` | | Public URL for OAuth callbacks and email links (e.g. `https://podcast.example.com`) |
 
+### Sessions
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RPODDER_SESSION_DURATION_DAYS` | `90` | How long login sessions (both regular and SSO) remain valid, in days |
+
 ### Registration
 
 | Variable | Default | Description |

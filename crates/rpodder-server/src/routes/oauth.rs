@@ -251,11 +251,12 @@ pub async fn sso_callback(
 
     // Create session
     let token = format!("sso-{}", Uuid::now_v7());
+    let duration_days = config.session_duration_days;
     let session = Session {
         id: Uuid::now_v7(),
         user_id: user.id,
         token: token.clone(),
-        expires_at: Utc::now() + Duration::hours(24),
+        expires_at: Utc::now() + Duration::days(i64::from(duration_days)),
         created_at: Utc::now(),
     };
 
@@ -263,7 +264,8 @@ pub async fn sso_callback(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Set session cookie and also store username in localStorage via a redirect page
-    let cookie = format!("sessionid={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400");
+    let max_age = u64::from(duration_days) * 24 * 3600;
+    let cookie = format!("sessionid={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}");
 
     // Determine actual admin status (may have been updated above)
     let is_admin_now = if !config.oauth_admin_group.is_empty() {

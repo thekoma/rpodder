@@ -55,6 +55,11 @@ pub struct AppConfig {
     #[serde(default)]
     pub oauth_admin_group: String,
 
+    // --- Sessions ---
+    /// Session duration in days (default: 90)
+    #[serde(default = "default_session_duration_days")]
+    pub session_duration_days: u32,
+
     // --- Podcast Index API ---
     #[serde(default)]
     pub podcastindex_key: String,
@@ -101,6 +106,9 @@ fn default_smtp_security() -> String {
 }
 fn default_oauth_provider_name() -> String {
     "SSO".into()
+}
+fn default_session_duration_days() -> u32 {
+    90
 }
 fn default_metrics_port() -> u16 {
     9091

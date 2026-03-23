@@ -89,6 +89,7 @@ All via `RPODDER_*` env vars or TOML config file (`-c config.toml`):
 | `RPODDER_HOST` | `0.0.0.0` | Bind address |
 | `RPODDER_PORT` | `3005` | Bind port |
 | `RPODDER_RUN_MIGRATIONS` | `true` | Auto-migrate on start |
+| `RPODDER_SESSION_DURATION_DAYS` | `90` | Session lifetime in days (regular + SSO) |
 | `RPODDER_REGISTRATION` | `open` | `open`/`closed`/`invite` |
 | `RPODDER_SMTP_HOST` | | SMTP server for email activation |
 | `RPODDER_OAUTH_ISSUER_URL` | | OIDC issuer (e.g. Authentik) |

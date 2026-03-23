@@ -23,6 +23,9 @@ migrations_dir = "migrations"
 # Registration mode: "open" (anyone), "closed" (admin only), "invite" (email confirmation)
 registration = "open"
 
+# Session duration in days (applies to both regular and SSO login)
+# session_duration_days = 90
+
 # --- SMTP (for email confirmation when registration = "invite") ---
 # smtp_host = "mail.example.com"
 # smtp_port = 25

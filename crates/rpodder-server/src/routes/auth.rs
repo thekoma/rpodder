@@ -28,11 +28,12 @@ pub async fn login(
         return Err(StatusCode::FORBIDDEN);
     }
 
+    let duration_days = state.config.session_duration_days;
     let session = Session {
         id: Uuid::now_v7(),
         user_id: auth_user.0.id,
         token: generate_token(),
-        expires_at: Utc::now() + Duration::days(365),
+        expires_at: Utc::now() + Duration::days(i64::from(duration_days)),
         created_at: Utc::now(),
     };
 
@@ -49,10 +50,10 @@ pub async fn login(
 
     create_result.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let max_age = u64::from(duration_days) * 24 * 3600;
     let cookie = format!(
-        "sessionid={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}",
+        "sessionid={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}",
         session.token,
-        365 * 24 * 3600,
     );
 
     Ok((StatusCode::OK, [(header::SET_COOKIE, cookie)], "").into_response())
