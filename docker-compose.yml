@@ -88,6 +88,7 @@ services:
   # rpodder — production-like release build (PostgreSQL)
   # ---------------------------------------------------------------------------
   rpodder-release:
+    image: ${RPODDER_IMAGE:-rpodder}
     build:
       context: .
       dockerfile: Dockerfile
@@ -118,6 +119,7 @@ services:
   # rpodder — self-hosted SQLite mode (no external DB needed)
   # ---------------------------------------------------------------------------
   rpodder-sqlite:
+    image: ${RPODDER_IMAGE:-rpodder}
     build:
       context: .
       dockerfile: Dockerfile

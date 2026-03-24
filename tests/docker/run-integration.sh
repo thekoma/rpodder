@@ -2,13 +2,17 @@
 # ---------------------------------------------------------------------------
 # rpodder integration test runner
 #
-# Builds the Docker image, starts rpodder + mock RSS server (via compose),
-# runs API tests, cleans up.
+# Builds (or reuses) the Docker image, starts rpodder + mock RSS server
+# (via compose), runs API tests, cleans up.
 #
 # Usage:
-#   ./tests/docker/run-integration.sh sqlite     # test SQLite profile
-#   ./tests/docker/run-integration.sh postgres    # test PostgreSQL profile
-#   ./tests/docker/run-integration.sh all         # both (default)
+#   ./tests/docker/run-integration.sh sqlite              # build + test SQLite
+#   ./tests/docker/run-integration.sh postgres             # build + test PostgreSQL
+#   ./tests/docker/run-integration.sh all                  # both (default)
+#
+# Environment:
+#   RPODDER_IMAGE  — use a pre-built image instead of building (skips build)
+#                    e.g. RPODDER_IMAGE=ghcr.io/thekoma/rpodder@sha256:abc...
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -42,8 +46,16 @@ run_profile() {
   docker build -q -t rpodder-tests:latest tests/docker/ >/dev/null
 
   # Start rpodder + mock-rss
+  local build_flag="--build"
+  if [ -n "${RPODDER_IMAGE:-}" ]; then
+    echo "Using pre-built image: $RPODDER_IMAGE"
+    docker pull "$RPODDER_IMAGE" 2>/dev/null || true
+    build_flag="--no-build"
+  fi
+
   echo "Starting rpodder ($profile) + mock-rss..."
-  docker compose $compose_profiles up -d --build --quiet-pull 2>&1 | grep -v "^#" || true
+  RPODDER_IMAGE="${RPODDER_IMAGE:-rpodder}" \
+    docker compose $compose_profiles up -d $build_flag --quiet-pull 2>&1 | grep -v "^#" || true
 
   # Wait for mock-rss healthy
   echo -n "Waiting for mock-rss..."

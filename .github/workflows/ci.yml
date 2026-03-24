@@ -14,6 +14,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  REGISTRY_IMAGE: ghcr.io/thekoma/rpodder
 
 jobs:
   # -------------------------------------------------------------------------
@@ -64,12 +65,80 @@ jobs:
         run: cargo test --workspace
 
   # -------------------------------------------------------------------------
-  # Stage 1c: Integration tests (Docker, runs against SQLite + PostgreSQL)
+  # Stage 1c: Build Docker image (amd64, reused by integration tests)
+  #
+  # Builds once, pushes by digest to ghcr.io. Integration tests pull this
+  # image instead of rebuilding. On release, this digest is merged with the
+  # ARM build into a multi-arch manifest. The release binary is extracted
+  # directly from this image — no separate compilation needed.
   # -------------------------------------------------------------------------
-  integration:
-    name: Integration Tests
+  docker-build-amd64:
+    name: Docker (amd64)
     needs: check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            RPODDER_BUILD_TAG=ci-${{ github.sha }}
+            RPODDER_BUILD_SHA=${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-amd64
+          cache-to: type=gha,mode=max,scope=docker-amd64
+          sbom: true
+          provenance: true
+
+      # Extract the release binary from the image for GitHub Releases
+      - name: Extract binary from image
+        run: |
+          docker pull ${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}
+          container_id=$(docker create ${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }})
+          docker cp "$container_id:/usr/local/bin/rpodder" rpodder-linux-amd64
+          docker rm "$container_id"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-amd64
+          path: rpodder-linux-amd64
+          retention-days: 1
+
+  # -------------------------------------------------------------------------
+  # Stage 1d: Integration tests (reuse amd64 Docker image from Stage 1c)
+  # -------------------------------------------------------------------------
+  integration:
+    name: Integration (${{ matrix.profile }})
+    needs: docker-build-amd64
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -77,7 +146,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Pull the image built in Stage 1c and pass it to the test script
       - name: Run integration tests
+        env:
+          RPODDER_IMAGE: ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-amd64.outputs.digest }}
         run: ./tests/docker/run-integration.sh ${{ matrix.profile }}
 
       - name: Cleanup
@@ -87,17 +166,15 @@ jobs:
             down -v --remove-orphans 2>/dev/null || true
 
   # -------------------------------------------------------------------------
-  # Stage 2: Build & Release (only on main/tag, after tests pass)
+  # Stage 2a: Calculate release tag (shared by all release jobs)
   # -------------------------------------------------------------------------
-  release:
-    name: Build & Release
+  release-tag:
+    name: Release Tag
     needs: [check, integration]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-
+    outputs:
+      tag: ${{ steps.calculate_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -126,47 +203,25 @@ jobs:
 
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      # --- Build standalone binaries (amd64 + arm64) ---
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+  # -------------------------------------------------------------------------
+  # Stage 2b: Build Docker ARM image + extract binary (native)
+  #
+  # The amd64 image was already built and tested in Stage 1c.
+  # Only the ARM image needs building here. The binary is extracted
+  # from the image for GitHub Releases (no separate cargo build).
+  # -------------------------------------------------------------------------
+  docker-build-arm64:
+    name: Docker (arm64)
+    needs: release-tag
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v6
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: release-binaries
-
-      - name: Install cross-compilation tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends crossbuild-essential-arm64
-
-      - name: Install bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Build frontend
-        run: cd web && bun install --frozen-lockfile && bun run build
-
-      - name: Build binary (linux/amd64)
-        run: cargo build --release --target x86_64-unknown-linux-gnu
-
-      - name: Build binary (linux/arm64)
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-        run: cargo build --release --target aarch64-unknown-linux-gnu
-
-      - name: Prepare release assets
-        run: |
-          cp target/x86_64-unknown-linux-gnu/release/rpodder rpodder-linux-amd64
-          cp target/aarch64-unknown-linux-gnu/release/rpodder rpodder-linux-arm64
-          sha256sum rpodder-linux-amd64 rpodder-linux-arm64 > checksums.sha256
-          echo "### Binaries" >> release-notes.md
-          echo '```' >> release-notes.md
-          cat checksums.sha256 >> release-notes.md
-          echo '```' >> release-notes.md
-
-      # --- Build & push multi-arch Docker image ---
-      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
@@ -180,41 +235,117 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/thekoma/rpodder
-          tags: |
-            type=raw,value=${{ steps.calculate_tag.outputs.tag }}
-            type=raw,value=latest
+          images: ${{ env.REGISTRY_IMAGE }}
 
-      - name: Build and push Docker image
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/arm64
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            RPODDER_BUILD_TAG=${{ steps.calculate_tag.outputs.tag }}
+            RPODDER_BUILD_TAG=${{ needs.release-tag.outputs.tag }}
             RPODDER_BUILD_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-arm64
+          cache-to: type=gha,mode=max,scope=docker-arm64
           sbom: true
           provenance: true
 
-      # --- Tag + Release ---
+      # Extract the release binary from the image for GitHub Releases
+      - name: Extract binary from image
+        run: |
+          docker pull ${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}
+          container_id=$(docker create ${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }})
+          docker cp "$container_id:/usr/local/bin/rpodder" rpodder-linux-arm64
+          docker rm "$container_id"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-arm64
+          path: rpodder-linux-arm64
+          retention-days: 1
+
+  # -------------------------------------------------------------------------
+  # Stage 2c: Merge Docker manifests into multi-arch image
+  #
+  # Combines the amd64 digest (from Stage 1c, already tested) with the
+  # arm64 digest (from Stage 2b) into a single multi-arch manifest.
+  # Only runs after integration tests pass.
+  # -------------------------------------------------------------------------
+  docker-merge:
+    name: Docker Manifest
+    needs: [release-tag, docker-build-amd64, docker-build-arm64, integration]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=raw,value=${{ needs.release-tag.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Create manifest list and push
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-amd64.outputs.digest }} \
+            ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-arm64.outputs.digest }}
+
+  # -------------------------------------------------------------------------
+  # Stage 3: Tag + GitHub Release (after Docker manifest is ready)
+  # -------------------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: [release-tag, docker-build-amd64, docker-build-arm64, docker-merge]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Prepare release assets
+        run: |
+          sha256sum rpodder-linux-amd64 rpodder-linux-arm64 > checksums.sha256
+          echo "### Binaries" >> release-notes.md
+          echo '```' >> release-notes.md
+          cat checksums.sha256 >> release-notes.md
+          echo '```' >> release-notes.md
+
       - name: Push git tag
-        if: success() && github.ref_type != 'tag'
+        if: github.ref_type != 'tag'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.calculate_tag.outputs.tag }}
-          git push origin ${{ steps.calculate_tag.outputs.tag }}
+          git tag ${{ needs.release-tag.outputs.tag }}
+          git push origin ${{ needs.release-tag.outputs.tag }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
-        if: success()
         with:
-          tag_name: ${{ steps.calculate_tag.outputs.tag }}
+          tag_name: ${{ needs.release-tag.outputs.tag }}
           generate_release_notes: true
           append_body: true
           body_path: release-notes.md
