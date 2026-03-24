@@ -46,16 +46,20 @@ run_profile() {
   docker build -q -t rpodder-tests:latest tests/docker/ >/dev/null
 
   # Start rpodder + mock-rss
-  local build_flag="--build"
   if [ -n "${RPODDER_IMAGE:-}" ]; then
     echo "Using pre-built image: $RPODDER_IMAGE"
     docker pull "$RPODDER_IMAGE" 2>/dev/null || true
-    build_flag="--no-build"
+    # Build only ancillary services (mock-rss, postgres), not rpodder itself
+    echo "Building ancillary services..."
+    RPODDER_IMAGE="$RPODDER_IMAGE" \
+      docker compose $compose_profiles build --quiet mock-rss 2>/dev/null || true
+    echo "Starting rpodder ($profile) + mock-rss..."
+    RPODDER_IMAGE="$RPODDER_IMAGE" \
+      docker compose $compose_profiles up -d --no-build --quiet-pull 2>&1 | grep -v "^#" || true
+  else
+    echo "Starting rpodder ($profile) + mock-rss..."
+    docker compose $compose_profiles up -d --build --quiet-pull 2>&1 | grep -v "^#" || true
   fi
-
-  echo "Starting rpodder ($profile) + mock-rss..."
-  RPODDER_IMAGE="${RPODDER_IMAGE:-rpodder}" \
-    docker compose $compose_profiles up -d $build_flag --quiet-pull 2>&1 | grep -v "^#" || true
 
   # Wait for mock-rss healthy
   echo -n "Waiting for mock-rss..."
