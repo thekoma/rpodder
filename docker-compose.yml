@@ -1,7 +1,7 @@
 # docker-compose.yml — rpodder development & deployment
 #
 # Profiles:
-#   (default)  PostgreSQL + dev server with cargo-watch live reload
+#   dev        PostgreSQL + dev server with cargo-watch live reload
 #   release    PostgreSQL + production release build
 #   sqlite     Self-contained SQLite mode (no external DB)
 #   frontend   Standalone Svelte frontend (nginx) + API backend
@@ -10,6 +10,9 @@
 #   docker compose --profile dev up -d            # dev mode (cargo-watch)
 #   docker compose --profile release up -d        # release mode
 #   docker compose --profile sqlite up -d         # sqlite mode
+#
+# Create a user:
+#   docker compose --profile sqlite exec rpodder-sqlite rpodder user create myuser mypass
 
 x-rpodder-labels: &rpodder-labels
   org.opencontainers.image.title: rpodder
@@ -20,9 +23,16 @@ x-rpodder-labels: &rpodder-labels
   org.opencontainers.image.vendor: thekoma
   org.opencontainers.image.licenses: AGPL-3.0-or-later
 
+x-rpodder-healthcheck: &rpodder-healthcheck
+  test: ["CMD-SHELL", "curl -sf http://localhost:3005/health || exit 1"]
+  interval: 10s
+  timeout: 3s
+  retries: 5
+  start_period: 15s
+
 services:
   # ---------------------------------------------------------------------------
-  # PostgreSQL
+  # PostgreSQL (only starts with dev/release profiles)
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:18-alpine
@@ -39,6 +49,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    profiles:
+      - dev
+      - release
 
   # ---------------------------------------------------------------------------
   # rpodder — development mode with live reload
@@ -72,7 +85,7 @@ services:
       - dev
 
   # ---------------------------------------------------------------------------
-  # rpodder — production-like release build
+  # rpodder — production-like release build (PostgreSQL)
   # ---------------------------------------------------------------------------
   rpodder-release:
     build:
@@ -82,7 +95,7 @@ services:
       <<: *rpodder-labels
       com.docker.compose.description: "rpodder (release build)"
     ports:
-      - "3006:3005"
+      - "3005:3005"
       - "9091:9091"
     env_file:
       - path: .env.oauth
@@ -93,6 +106,8 @@ services:
       RPODDER_METRICS_ENABLED: "true"
       RPODDER_METRICS_PORT: "9091"
       RPODDER_MIGRATIONS_DIR: /app/migrations
+    healthcheck:
+      <<: *rpodder-healthcheck
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,8 +132,27 @@ services:
       RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
       RPODDER_PORT: "3005"
       RPODDER_MIGRATIONS_DIR: /app/migrations
+    healthcheck:
+      <<: *rpodder-healthcheck
     profiles:
       - sqlite
+
+  # ---------------------------------------------------------------------------
+  # Mock RSS server for integration tests
+  # ---------------------------------------------------------------------------
+  mock-rss:
+    build:
+      context: tests/docker
+      dockerfile: mock-rss.Dockerfile
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8888/stats"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
+    profiles:
+      - test
 
   # ---------------------------------------------------------------------------
   # Standalone frontend (Svelte SPA served by nginx)
@@ -133,7 +167,7 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      rpodder-sqlite:
+      rpodder-api:
         condition: service_started
     profiles:
       - frontend

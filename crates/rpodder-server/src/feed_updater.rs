@@ -83,13 +83,29 @@ async fn update_podcast_feed_inner(
         return Ok(());
     }
 
-    // Fetch the feed
-    let result = fetcher.fetch(podcast_url, None, None).await?;
+    // Fetch the feed with conditional GET (ETag / Last-Modified)
+    let result = fetcher
+        .fetch(
+            podcast_url,
+            podcast.etag.as_deref(),
+            podcast.http_last_modified.as_deref(),
+        )
+        .await?;
 
-    let body = match result {
-        rpodder_feed::FetchResult::Ok { body, .. } => body,
+    let (body, new_etag, new_last_modified) = match result {
+        rpodder_feed::FetchResult::Ok {
+            body,
+            etag,
+            last_modified,
+            ..
+        } => (body, etag, last_modified),
         rpodder_feed::FetchResult::NotModified => {
-            info!(url = podcast_url, "feed not modified");
+            info!(url = podcast_url, "feed not modified (304)");
+            // Still update last_update so we don't re-check too soon
+            podcast.last_update = Some(Utc::now());
+            if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
+                warn!(url = podcast_url, error = %e, "failed to update last_update after 304");
+            }
             return Ok(());
         }
     };
@@ -139,7 +155,7 @@ async fn update_podcast_feed_inner(
         }
     }
 
-    // Update podcast metadata (best-effort)
+    // Update podcast metadata — only if content actually changed
     podcast.title = parsed.title;
     podcast.description = parsed.description;
     podcast.link = parsed.link;
@@ -147,10 +163,13 @@ async fn update_podcast_feed_inner(
     podcast.logo_url = parsed.logo_url;
     podcast.author = parsed.author;
     podcast.last_update = Some(Utc::now());
-    podcast.updated_at = Utc::now();
+    podcast.etag = new_etag;
+    podcast.http_last_modified = new_last_modified;
 
-    if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
-        warn!(url = podcast_url, error = %e, "failed to update podcast metadata");
+    let new_hash = podcast.compute_content_hash();
+    if new_hash != podcast.content_hash {
+        podcast.content_hash = new_hash;
+        podcast.updated_at = Utc::now();
     }
 
     // Update tags from feed categories (best-effort)
@@ -174,8 +193,9 @@ async fn update_podcast_feed_inner(
         }
     }
 
-    // Update episodes (best-effort per episode)
+    // Update episodes — only write when content_hash differs
     let mut episode_count = 0i64;
+    let mut episodes_updated = 0i64;
     for parsed_ep in &parsed.episodes {
         let ep_url = parsed_ep.media_url.as_deref().or(parsed_ep.link.as_deref());
 
@@ -189,7 +209,7 @@ async fn update_podcast_feed_inner(
             EpisodeRepo::get_or_create_for_url(&repo, podcast.id, &normalized).await
         });
 
-        let (mut episode, _created) = match episode_result {
+        let (mut episode, created) = match episode_result {
             Ok(ep) => ep,
             Err(e) => {
                 warn!(url = ep_url, error = %e, "failed to create episode");
@@ -205,11 +225,17 @@ async fn update_podcast_feed_inner(
         episode.duration = parsed_ep.duration;
         episode.filesize = parsed_ep.filesize;
         episode.mimetype = parsed_ep.mimetype.clone();
-        episode.updated_at = Utc::now();
 
-        if let Err(e) = with_repo!(db, |repo| EpisodeRepo::update(&repo, &episode).await) {
-            warn!(url = ep_url, error = %e, "failed to update episode");
-            continue;
+        let new_hash = episode.compute_content_hash();
+        if created || new_hash != episode.content_hash {
+            episode.content_hash = new_hash;
+            episode.updated_at = Utc::now();
+
+            if let Err(e) = with_repo!(db, |repo| EpisodeRepo::update(&repo, &episode).await) {
+                warn!(url = ep_url, error = %e, "failed to update episode");
+                continue;
+            }
+            episodes_updated += 1;
         }
 
         episode_count += 1;
@@ -218,15 +244,16 @@ async fn update_podcast_feed_inner(
     // Update episode count and adaptive interval
     podcast.episode_count = episode_count;
     podcast.update_interval_hours = adaptive_interval(podcast.subscribers, episode_count);
-    podcast.updated_at = Utc::now();
+    // Write the podcast once (metadata + episode_count + etag + last_update)
     if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
-        warn!(url = podcast_url, error = %e, "failed to update episode count");
+        warn!(url = podcast_url, error = %e, "failed to update podcast");
     }
 
     info!(
         url = podcast_url,
         title = podcast.title,
         episodes = episode_count,
+        episodes_updated,
         "feed updated"
     );
 

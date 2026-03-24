@@ -15,7 +15,7 @@ rpodder is a modern, scalable, Rust-based replacement for [gpodder.net](https://
 ```bash
 cargo build                          # build all crates (includes web UI)
 cargo build --no-default-features    # API-only, no embedded web UI
-cargo test                           # run all tests (~85 tests)
+cargo test                           # run all tests (~105 unit/integration tests)
 cargo test -p rpodder-core           # test single crate
 cargo clippy --workspace -- -D warnings  # lint (CI enforces this)
 cargo fmt --all -- --check           # check formatting
@@ -26,6 +26,26 @@ cd web && bun run dev                   # dev server on :5173, proxies API to :3
 ```
 
 **Important**: The CI workflow needs `web/dist/` to exist for rust-embed. The CI creates a placeholder automatically. For local builds, run `bun run build` in `web/` first, or use `--no-default-features`.
+
+## Integration Tests (Docker)
+
+End-to-end API tests run inside a Docker container against a live rpodder instance. Tests cover: health, auth, devices, subscriptions, episodes, directory.
+
+```bash
+# Quick run — all-in-one script (builds image, starts rpodder, runs tests, cleans up):
+./tests/docker/run-integration.sh sqlite     # test against SQLite
+./tests/docker/run-integration.sh postgres   # test against PostgreSQL
+./tests/docker/run-integration.sh all        # both profiles
+
+# Manual run (if rpodder is already running on localhost:3005):
+docker build -t rpodder-tests tests/docker/
+docker run --rm --add-host=host.docker.internal:host-gateway \
+  -e RPODDER_URL=http://host.docker.internal:3005 rpodder-tests
+```
+
+**Adding new tests**: Create `tests/docker/tests/NN_name.sh` (numbered for ordering). The test script is sourced by `entrypoint.sh` and has access to helpers: `assert_status`, `assert_json`, `assert_json_len`, `http_status`, `http_body`, `http_post_status`, `http_post_body`, `wait_until`, `wait_mock_stat`, `pass`, `fail`, `skip`. Auth via `$AUTH_HEADER` (user:pass). Use `wait_until` instead of `sleep` for async operations — it polls with incremental backoff (max 60s). See existing test files for examples.
+
+**Mock RSS server**: `tests/docker/mock-rss.py` serves fake RSS feeds for testing the feed updater. Runs as `mock-rss` service in docker-compose (profile: `test`). Endpoints: `/feed/static` (2 episodes, supports ETag/304), `/feed/dynamic` (adds 1 episode per request), `/stats` (fetch counters), `/reset`.
 
 ## Docker & Dev Environment
 
@@ -62,8 +82,9 @@ web/                Svelte 5 + SvelteKit + Tailwind v4 (adapter-static → dist/
 migrations/
   postgresql/       Idempotent SQL migrations (IF NOT EXISTS, DO blocks)
   sqlite/           Idempotent SQL migrations (IF NOT EXISTS)
+tests/docker/        Integration test harness (Dockerfile + shell test scripts)
 config/             Example config, systemd service
-.github/workflows/  CI (test/clippy/fmt) + Release (build+push to ghcr.io)
+.github/workflows/  CI (test/clippy/fmt/integration) + Release (build+push to ghcr.io)
 ```
 
 ## Key Design Decisions

@@ -28,6 +28,9 @@ async fn setup_db() -> Db {
     let migration3 =
         std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
     sqlx::raw_sql(&migration3).execute(&pool).await.unwrap();
+    let migration4 =
+        std::fs::read_to_string("../../migrations/sqlite/004_content_hash.up.sql").unwrap();
+    sqlx::raw_sql(&migration4).execute(&pool).await.unwrap();
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&pool)
         .await

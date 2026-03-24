@@ -316,6 +316,9 @@ struct PodcastRow {
     episode_count: i64,
     last_update: Option<DateTime<Utc>>,
     update_interval_hours: i32,
+    content_hash: i64,
+    etag: Option<String>,
+    http_last_modified: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -334,6 +337,9 @@ impl From<PodcastRow> for Podcast {
             episode_count: r.episode_count,
             last_update: r.last_update,
             update_interval_hours: r.update_interval_hours,
+            content_hash: r.content_hash,
+            etag: r.etag,
+            http_last_modified: r.http_last_modified,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -380,7 +386,7 @@ impl repo::PodcastRepo for PgRepo {
              VALUES ($1, $2, $3, $3)
              RETURNING id, title, description, link, language, logo_url, author,
                        subscribers, episode_count, last_update, update_interval_hours,
-                       created_at, updated_at",
+                       content_hash, etag, http_last_modified, created_at, updated_at",
         )
         .bind(id)
         .bind(url) // Use URL as initial title
@@ -413,7 +419,7 @@ impl repo::PodcastRepo for PgRepo {
         let row: Option<PodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN podcast_urls pu ON pu.podcast_id = p.id
              WHERE pu.url = $1",
@@ -429,7 +435,7 @@ impl repo::PodcastRepo for PgRepo {
         let row: Option<PodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
-                    created_at, updated_at
+                    content_hash, etag, http_last_modified, created_at, updated_at
              FROM podcasts WHERE id = $1",
         )
         .bind(id)
@@ -443,7 +449,8 @@ impl repo::PodcastRepo for PgRepo {
         sqlx::query(
             "UPDATE podcasts SET title = $2, description = $3, link = $4, language = $5,
                     logo_url = $6, author = $7, subscribers = $8, episode_count = $9,
-                    last_update = $10, update_interval_hours = $11, updated_at = $12
+                    last_update = $10, update_interval_hours = $11,
+                    content_hash = $12, etag = $13, http_last_modified = $14, updated_at = $15
              WHERE id = $1",
         )
         .bind(podcast.id)
@@ -457,6 +464,9 @@ impl repo::PodcastRepo for PgRepo {
         .bind(podcast.episode_count)
         .bind(podcast.last_update)
         .bind(podcast.update_interval_hours)
+        .bind(podcast.content_hash)
+        .bind(&podcast.etag)
+        .bind(&podcast.http_last_modified)
         .bind(podcast.updated_at)
         .execute(&self.pool)
         .await
@@ -484,7 +494,7 @@ impl repo::PodcastRepo for PgRepo {
             sqlx::query_as(
                 "SELECT id, title, description, link, language, logo_url, author,
                         subscribers, episode_count, last_update, update_interval_hours,
-                        created_at, updated_at
+                        content_hash, etag, http_last_modified, created_at, updated_at
                  FROM podcasts WHERE language = $1 ORDER BY subscribers DESC LIMIT $2",
             )
             .bind(lang)
@@ -496,7 +506,7 @@ impl repo::PodcastRepo for PgRepo {
             sqlx::query_as(
                 "SELECT id, title, description, link, language, logo_url, author,
                         subscribers, episode_count, last_update, update_interval_hours,
-                        created_at, updated_at
+                        content_hash, etag, http_last_modified, created_at, updated_at
                  FROM podcasts ORDER BY subscribers DESC LIMIT $1",
             )
             .bind(count)
@@ -518,7 +528,7 @@ impl repo::PodcastRepo for PgRepo {
         let rows: Vec<PodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
-                    created_at, updated_at
+                    content_hash, etag, http_last_modified, created_at, updated_at
              FROM podcasts
              WHERE search_vector @@ to_tsquery('english', $1)
              ORDER BY subscribers DESC LIMIT $2",
@@ -538,7 +548,7 @@ impl repo::PodcastRepo for PgRepo {
         let rows: Vec<PodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
-                    created_at, updated_at
+                    content_hash, etag, http_last_modified, created_at, updated_at
              FROM podcasts
              WHERE title ILIKE $1 OR author ILIKE $1 OR description ILIKE $1
              ORDER BY subscribers DESC LIMIT $2",
@@ -616,7 +626,7 @@ impl repo::SubscriptionRepo for PgRepo {
         ref_url: &str,
     ) -> Result<()> {
         let sub_id = Uuid::now_v7();
-        sqlx::query(
+        let result = sqlx::query(
             "INSERT INTO subscriptions (id, user_id, device_id, podcast_id, ref_url)
              VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (user_id, device_id, podcast_id) DO NOTHING",
@@ -630,30 +640,31 @@ impl repo::SubscriptionRepo for PgRepo {
         .await
         .map_err(db_err)?;
 
-        // Record the change for delta sync
-        let change_id = Uuid::now_v7();
-        sqlx::query(
-            "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url)
-             VALUES ($1, $2, $3, $4, 'subscribe', $5)",
-        )
-        .bind(change_id)
-        .bind(user_id)
-        .bind(device_id)
-        .bind(podcast_id)
-        .bind(ref_url)
-        .execute(&self.pool)
-        .await
-        .map_err(db_err)?;
+        // Only log change and update count if a row was actually inserted
+        if result.rows_affected() > 0 {
+            let change_id = Uuid::now_v7();
+            sqlx::query(
+                "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url)
+                 VALUES ($1, $2, $3, $4, 'subscribe', $5)",
+            )
+            .bind(change_id)
+            .bind(user_id)
+            .bind(device_id)
+            .bind(podcast_id)
+            .bind(ref_url)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
 
-        // Update subscriber count
-        let _ = sqlx::query(
-            "UPDATE podcasts SET subscribers = (
-                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = $1
-             ) WHERE id = $1",
-        )
-        .bind(podcast_id)
-        .execute(&self.pool)
-        .await;
+            let _ = sqlx::query(
+                "UPDATE podcasts SET subscribers = (
+                    SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = $1
+                 ) WHERE id = $1",
+            )
+            .bind(podcast_id)
+            .execute(&self.pool)
+            .await;
+        }
 
         Ok(())
     }
@@ -791,6 +802,7 @@ struct EpisodeRow {
     duration: Option<i64>,
     filesize: Option<i64>,
     mimetype: Option<String>,
+    content_hash: i64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -808,6 +820,7 @@ impl From<EpisodeRow> for Episode {
             duration: r.duration,
             filesize: r.filesize,
             mimetype: r.mimetype,
+            content_hash: r.content_hash,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
@@ -830,7 +843,8 @@ impl repo::EpisodeRepo for PgRepo {
         // Check if episode URL already exists
         let existing: Option<EpisodeRow> = sqlx::query_as(
             "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
-                    e.released, e.duration, e.filesize, e.mimetype, e.created_at, e.updated_at
+                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
+                    e.created_at, e.updated_at
              FROM episodes e
              JOIN episode_urls eu ON eu.episode_id = e.id
              WHERE eu.url = $1",
@@ -852,7 +866,8 @@ impl repo::EpisodeRepo for PgRepo {
             "INSERT INTO episodes (id, podcast_id, title, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $4)
              RETURNING id, podcast_id, guid, title, description, link,
-                       released, duration, filesize, mimetype, created_at, updated_at",
+                       released, duration, filesize, mimetype, content_hash,
+                       created_at, updated_at",
         )
         .bind(id)
         .bind(podcast_id)
@@ -879,7 +894,7 @@ impl repo::EpisodeRepo for PgRepo {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Episode>> {
         let row: Option<EpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
-                    released, duration, filesize, mimetype, created_at, updated_at
+                    released, duration, filesize, mimetype, content_hash, created_at, updated_at
              FROM episodes WHERE id = $1",
         )
         .bind(id)
@@ -897,7 +912,7 @@ impl repo::EpisodeRepo for PgRepo {
     ) -> Result<Vec<Episode>> {
         let rows: Vec<EpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
-                    released, duration, filesize, mimetype, created_at, updated_at
+                    released, duration, filesize, mimetype, content_hash, created_at, updated_at
              FROM episodes WHERE podcast_id = $1
              ORDER BY released DESC NULLS LAST
              LIMIT $2 OFFSET $3",
@@ -914,7 +929,8 @@ impl repo::EpisodeRepo for PgRepo {
     async fn update(&self, episode: &Episode) -> Result<()> {
         sqlx::query(
             "UPDATE episodes SET guid = $2, title = $3, description = $4, link = $5,
-                    released = $6, duration = $7, filesize = $8, mimetype = $9, updated_at = $10
+                    released = $6, duration = $7, filesize = $8, mimetype = $9,
+                    content_hash = $10, updated_at = $11
              WHERE id = $1",
         )
         .bind(episode.id)
@@ -926,6 +942,7 @@ impl repo::EpisodeRepo for PgRepo {
         .bind(episode.duration)
         .bind(episode.filesize)
         .bind(&episode.mimetype)
+        .bind(episode.content_hash)
         .bind(episode.updated_at)
         .execute(&self.pool)
         .await
@@ -1094,7 +1111,7 @@ impl repo::TagRepo for PgRepo {
         let rows: Vec<PodcastRow> = sqlx::query_as(
             "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN tags t ON t.podcast_id = p.id
              WHERE LOWER(t.tag) = LOWER($1)
@@ -1406,7 +1423,7 @@ impl repo::PodcastListRepo for PgRepo {
         let rows: Vec<PodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN podcast_list_entries ple ON ple.podcast_id = p.id
              WHERE ple.list_id = $1

@@ -327,6 +327,9 @@ struct SqlitePodcastRow {
     episode_count: i64,
     last_update: Option<String>,
     update_interval_hours: i32,
+    content_hash: i64,
+    etag: Option<String>,
+    http_last_modified: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -345,6 +348,9 @@ impl From<SqlitePodcastRow> for Podcast {
             episode_count: r.episode_count,
             last_update: r.last_update.and_then(|s| s.parse().ok()),
             update_interval_hours: r.update_interval_hours,
+            content_hash: r.content_hash,
+            etag: r.etag,
+            http_last_modified: r.http_last_modified,
             created_at: r.created_at.parse().unwrap_or_default(),
             updated_at: r.updated_at.parse().unwrap_or_default(),
         }
@@ -420,6 +426,9 @@ impl repo::PodcastRepo for SqliteRepo {
             episode_count: 0,
             last_update: None,
             update_interval_hours: 168,
+            content_hash: 0,
+            etag: None,
+            http_last_modified: None,
             created_at: now,
             updated_at: now,
         };
@@ -431,7 +440,7 @@ impl repo::PodcastRepo for SqliteRepo {
         let row: Option<SqlitePodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN podcast_urls pu ON pu.podcast_id = p.id
              WHERE pu.url = ?",
@@ -447,7 +456,7 @@ impl repo::PodcastRepo for SqliteRepo {
         let row: Option<SqlitePodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
-                    created_at, updated_at
+                    content_hash, etag, http_last_modified, created_at, updated_at
              FROM podcasts WHERE id = ?",
         )
         .bind(uuid_str(&id))
@@ -461,7 +470,8 @@ impl repo::PodcastRepo for SqliteRepo {
         sqlx::query(
             "UPDATE podcasts SET title = ?, description = ?, link = ?, language = ?,
                     logo_url = ?, author = ?, subscribers = ?, episode_count = ?,
-                    last_update = ?, update_interval_hours = ?, updated_at = ?
+                    last_update = ?, update_interval_hours = ?,
+                    content_hash = ?, etag = ?, http_last_modified = ?, updated_at = ?
              WHERE id = ?",
         )
         .bind(&podcast.title)
@@ -474,6 +484,9 @@ impl repo::PodcastRepo for SqliteRepo {
         .bind(podcast.episode_count)
         .bind(podcast.last_update.map(|t| t.to_rfc3339()))
         .bind(podcast.update_interval_hours)
+        .bind(podcast.content_hash)
+        .bind(&podcast.etag)
+        .bind(&podcast.http_last_modified)
         .bind(podcast.updated_at.to_rfc3339())
         .bind(uuid_str(&podcast.id))
         .execute(&self.pool)
@@ -501,7 +514,7 @@ impl repo::PodcastRepo for SqliteRepo {
             sqlx::query_as(
                 "SELECT id, title, description, link, language, logo_url, author,
                         subscribers, episode_count, last_update, update_interval_hours,
-                        created_at, updated_at
+                        content_hash, etag, http_last_modified, created_at, updated_at
                  FROM podcasts WHERE language = ? ORDER BY subscribers DESC LIMIT ?",
             )
             .bind(lang)
@@ -513,7 +526,7 @@ impl repo::PodcastRepo for SqliteRepo {
             sqlx::query_as(
                 "SELECT id, title, description, link, language, logo_url, author,
                         subscribers, episode_count, last_update, update_interval_hours,
-                        created_at, updated_at
+                        content_hash, etag, http_last_modified, created_at, updated_at
                  FROM podcasts ORDER BY subscribers DESC LIMIT ?",
             )
             .bind(count)
@@ -542,7 +555,7 @@ impl repo::PodcastRepo for SqliteRepo {
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN podcasts_fts fts ON fts.rowid = (SELECT rowid FROM podcasts WHERE id = p.id)
              WHERE podcasts_fts MATCH ?
@@ -563,7 +576,7 @@ impl repo::PodcastRepo for SqliteRepo {
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
             "SELECT id, title, description, link, language, logo_url, author,
                     subscribers, episode_count, last_update, update_interval_hours,
-                    created_at, updated_at
+                    content_hash, etag, http_last_modified, created_at, updated_at
              FROM podcasts
              WHERE title LIKE ? COLLATE NOCASE
                 OR author LIKE ? COLLATE NOCASE
@@ -646,7 +659,7 @@ impl repo::SubscriptionRepo for SqliteRepo {
         ref_url: &str,
     ) -> Result<()> {
         let sub_id = Uuid::now_v7();
-        sqlx::query(
+        let result = sqlx::query(
             "INSERT INTO subscriptions (id, user_id, device_id, podcast_id, ref_url)
              VALUES (?, ?, ?, ?, ?)
              ON CONFLICT (user_id, device_id, podcast_id) DO NOTHING",
@@ -660,32 +673,34 @@ impl repo::SubscriptionRepo for SqliteRepo {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        let change_id = Uuid::now_v7();
-        let now_s = Utc::now().to_rfc3339();
-        sqlx::query(
-            "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url, timestamp)
-             VALUES (?, ?, ?, ?, 'subscribe', ?, ?)",
-        )
-        .bind(uuid_str(&change_id))
-        .bind(uuid_str(&user_id))
-        .bind(uuid_str(&device_id))
-        .bind(uuid_str(&podcast_id))
-        .bind(ref_url)
-        .bind(&now_s)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        // Only log change and update count if a row was actually inserted
+        if result.rows_affected() > 0 {
+            let change_id = Uuid::now_v7();
+            let now_s = Utc::now().to_rfc3339();
+            sqlx::query(
+                "INSERT INTO subscription_changes (id, user_id, device_id, podcast_id, action, ref_url, timestamp)
+                 VALUES (?, ?, ?, ?, 'subscribe', ?, ?)",
+            )
+            .bind(uuid_str(&change_id))
+            .bind(uuid_str(&user_id))
+            .bind(uuid_str(&device_id))
+            .bind(uuid_str(&podcast_id))
+            .bind(ref_url)
+            .bind(&now_s)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        // Update subscriber count
-        let _ = sqlx::query(
-            "UPDATE podcasts SET subscribers = (
-                SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = ?
-             ) WHERE id = ?",
-        )
-        .bind(uuid_str(&podcast_id))
-        .bind(uuid_str(&podcast_id))
-        .execute(&self.pool)
-        .await;
+            let _ = sqlx::query(
+                "UPDATE podcasts SET subscribers = (
+                    SELECT COUNT(DISTINCT user_id) FROM subscriptions WHERE podcast_id = ?
+                 ) WHERE id = ?",
+            )
+            .bind(uuid_str(&podcast_id))
+            .bind(uuid_str(&podcast_id))
+            .execute(&self.pool)
+            .await;
+        }
 
         Ok(())
     }
@@ -825,6 +840,7 @@ struct SqliteEpisodeRow {
     duration: Option<i64>,
     filesize: Option<i64>,
     mimetype: Option<String>,
+    content_hash: i64,
     created_at: String,
     updated_at: String,
 }
@@ -842,6 +858,7 @@ impl From<SqliteEpisodeRow> for Episode {
             duration: r.duration,
             filesize: r.filesize,
             mimetype: r.mimetype,
+            content_hash: r.content_hash,
             created_at: r.created_at.parse().unwrap_or_default(),
             updated_at: r.updated_at.parse().unwrap_or_default(),
         }
@@ -863,7 +880,8 @@ impl repo::EpisodeRepo for SqliteRepo {
     async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
         let existing: Option<SqliteEpisodeRow> = sqlx::query_as(
             "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
-                    e.released, e.duration, e.filesize, e.mimetype, e.created_at, e.updated_at
+                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
+                    e.created_at, e.updated_at
              FROM episodes e
              JOIN episode_urls eu ON eu.episode_id = e.id
              WHERE eu.url = ?",
@@ -917,6 +935,7 @@ impl repo::EpisodeRepo for SqliteRepo {
             duration: None,
             filesize: None,
             mimetype: None,
+            content_hash: 0,
             created_at: now,
             updated_at: now,
         };
@@ -927,7 +946,7 @@ impl repo::EpisodeRepo for SqliteRepo {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Episode>> {
         let row: Option<SqliteEpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
-                    released, duration, filesize, mimetype, created_at, updated_at
+                    released, duration, filesize, mimetype, content_hash, created_at, updated_at
              FROM episodes WHERE id = ?",
         )
         .bind(uuid_str(&id))
@@ -945,7 +964,7 @@ impl repo::EpisodeRepo for SqliteRepo {
     ) -> Result<Vec<Episode>> {
         let rows: Vec<SqliteEpisodeRow> = sqlx::query_as(
             "SELECT id, podcast_id, guid, title, description, link,
-                    released, duration, filesize, mimetype, created_at, updated_at
+                    released, duration, filesize, mimetype, content_hash, created_at, updated_at
              FROM episodes WHERE podcast_id = ?
              ORDER BY released DESC
              LIMIT ? OFFSET ?",
@@ -962,7 +981,8 @@ impl repo::EpisodeRepo for SqliteRepo {
     async fn update(&self, episode: &Episode) -> Result<()> {
         sqlx::query(
             "UPDATE episodes SET guid = ?, title = ?, description = ?, link = ?,
-                    released = ?, duration = ?, filesize = ?, mimetype = ?, updated_at = ?
+                    released = ?, duration = ?, filesize = ?, mimetype = ?,
+                    content_hash = ?, updated_at = ?
              WHERE id = ?",
         )
         .bind(&episode.guid)
@@ -973,6 +993,7 @@ impl repo::EpisodeRepo for SqliteRepo {
         .bind(episode.duration)
         .bind(episode.filesize)
         .bind(&episode.mimetype)
+        .bind(episode.content_hash)
         .bind(episode.updated_at.to_rfc3339())
         .bind(uuid_str(&episode.id))
         .execute(&self.pool)
@@ -1146,7 +1167,7 @@ impl repo::TagRepo for SqliteRepo {
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
             "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN tags t ON t.podcast_id = p.id
              WHERE t.tag = ? COLLATE NOCASE
@@ -1451,7 +1472,7 @@ impl repo::PodcastListRepo for SqliteRepo {
         let rows: Vec<SqlitePodcastRow> = sqlx::query_as(
             "SELECT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                     p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                    p.created_at, p.updated_at
+                    p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
              FROM podcasts p
              JOIN podcast_list_entries ple ON ple.podcast_id = p.id
              WHERE ple.list_id = ?
@@ -1713,6 +1734,12 @@ mod tests {
         let migration2 =
             std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
         sqlx::raw_sql(&migration2).execute(&pool).await.unwrap();
+        let migration3 =
+            std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
+        sqlx::raw_sql(&migration3).execute(&pool).await.unwrap();
+        let migration4 =
+            std::fs::read_to_string("../../migrations/sqlite/004_content_hash.up.sql").unwrap();
+        sqlx::raw_sql(&migration4).execute(&pool).await.unwrap();
         SqliteRepo::new(pool)
     }
 

@@ -64,11 +64,34 @@ jobs:
         run: cargo test --workspace
 
   # -------------------------------------------------------------------------
+  # Stage 1c: Integration tests (Docker, runs against SQLite + PostgreSQL)
+  # -------------------------------------------------------------------------
+  integration:
+    name: Integration Tests
+    needs: check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [sqlite, postgres]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run integration tests
+        run: ./tests/docker/run-integration.sh ${{ matrix.profile }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose --profile sqlite --profile release --profile test \
+            down -v --remove-orphans 2>/dev/null || true
+
+  # -------------------------------------------------------------------------
   # Stage 2: Build & Release (only on main/tag, after tests pass)
   # -------------------------------------------------------------------------
   release:
     name: Build & Release
-    needs: check
+    needs: [check, integration]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     permissions:

@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -19,8 +21,44 @@ pub struct Podcast {
     pub episode_count: i64,
     pub last_update: Option<DateTime<Utc>>,
     pub update_interval_hours: i32,
+    pub content_hash: i64,
+    pub etag: Option<String>,
+    pub http_last_modified: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Podcast {
+    /// Compute a content hash from metadata fields (title, description, link,
+    /// language, logo_url, author). Cheap SipHash — compare with stored hash
+    /// to skip UPDATE when nothing changed.
+    pub fn compute_content_hash(&self) -> i64 {
+        let mut h = std::hash::DefaultHasher::new();
+        self.title.hash(&mut h);
+        self.description.hash(&mut h);
+        self.link.hash(&mut h);
+        self.language.hash(&mut h);
+        self.logo_url.hash(&mut h);
+        self.author.hash(&mut h);
+        h.finish() as i64
+    }
+}
+
+impl Episode {
+    /// Compute a content hash from episode fields. Compare with stored hash
+    /// to skip UPDATE when nothing changed.
+    pub fn compute_content_hash(&self) -> i64 {
+        let mut h = std::hash::DefaultHasher::new();
+        self.guid.hash(&mut h);
+        self.title.hash(&mut h);
+        self.description.hash(&mut h);
+        self.link.hash(&mut h);
+        self.released.map(|d| d.timestamp()).hash(&mut h);
+        self.duration.hash(&mut h);
+        self.filesize.hash(&mut h);
+        self.mimetype.hash(&mut h);
+        h.finish() as i64
+    }
 }
 
 /// A podcast can have multiple URLs (redirects, migrations).
@@ -49,6 +87,7 @@ pub struct Episode {
     pub duration: Option<i64>,
     pub filesize: Option<i64>,
     pub mimetype: Option<String>,
+    pub content_hash: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -24,6 +24,10 @@ async fn setup_db() -> Db {
     sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
     let m2 = std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
     sqlx::raw_sql(&m2).execute(&pool).await.unwrap();
+    let m3 = std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
+    sqlx::raw_sql(&m3).execute(&pool).await.unwrap();
+    let m4 = std::fs::read_to_string("../../migrations/sqlite/004_content_hash.up.sql").unwrap();
+    sqlx::raw_sql(&m4).execute(&pool).await.unwrap();
     sqlx::query("PRAGMA foreign_keys=ON")
         .execute(&pool)
         .await

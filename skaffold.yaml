@@ -1,16 +1,17 @@
-# skaffold.yaml — continuous build & deploy for rpodder
-#
-# Skaffold watches for source changes, rebuilds the Docker image, and
-# redeploys via docker-compose.
+# skaffold.yaml — rpodder build, deploy & integration test pipeline
 #
 # Usage:
-#   skaffold dev                    # continuous build+deploy (dev loop)
-#   skaffold dev -p release         # test the production image
-#   skaffold build                  # one-shot build
-#   skaffold run                    # build + deploy once
-#   skaffold delete                 # tear down
+#   skaffold dev                          # dev loop (cargo-watch, docker-compose)
+#   skaffold dev -p release               # dev loop with release image
+#   skaffold build                        # one-shot build
+#   skaffold run                          # build + deploy once
+#   skaffold delete                       # tear down
 #
-# No Kubernetes cluster required — uses docker deployer.
+# Integration tests:
+#   skaffold verify -p test-sqlite        # build + deploy SQLite + run tests
+#   skaffold verify -p test-postgres      # build + deploy PostgreSQL + run tests
+#
+# No Kubernetes cluster required — uses Docker deployer.
 
 apiVersion: skaffold/v4beta13
 kind: Config
@@ -39,7 +40,7 @@ deploy:
 
 profiles:
   # -------------------------------------------------------------------------
-  # release: builds production image
+  # release: builds production image via docker-compose
   # -------------------------------------------------------------------------
   - name: release
     build:
@@ -50,3 +51,67 @@ profiles:
     deploy:
       docker:
         useCompose: true
+
+  # -------------------------------------------------------------------------
+  # test-sqlite: build release image, deploy with SQLite, run integration tests
+  # -------------------------------------------------------------------------
+  - name: test-sqlite
+    build:
+      artifacts:
+        - image: rpodder-tests
+          context: tests/docker
+          docker:
+            dockerfile: Dockerfile
+    deploy:
+      docker:
+        useCompose: true
+    hooks:
+      after:
+        deploy:
+          - command: ["sh", "-c", "docker compose --profile sqlite exec -T rpodder-sqlite rpodder user create testuser testpass 2>/dev/null; true"]
+            os: [linux, darwin]
+        cleanup:
+          - command: ["sh", "-c", "docker compose --profile sqlite down -v 2>/dev/null; true"]
+            os: [linux, darwin]
+    verify:
+      - name: integration-tests
+        container:
+          name: rpodder-integration-tests
+          image: rpodder-tests
+          env:
+            - name: RPODDER_URL
+              value: http://host.docker.internal:3005
+        executionMode:
+          local: {}
+
+  # -------------------------------------------------------------------------
+  # test-postgres: build release image, deploy with PostgreSQL, run integration tests
+  # -------------------------------------------------------------------------
+  - name: test-postgres
+    build:
+      artifacts:
+        - image: rpodder-tests
+          context: tests/docker
+          docker:
+            dockerfile: Dockerfile
+    deploy:
+      docker:
+        useCompose: true
+    hooks:
+      after:
+        deploy:
+          - command: ["sh", "-c", "docker compose --profile release exec -T rpodder-release rpodder user create testuser testpass 2>/dev/null; true"]
+            os: [linux, darwin]
+        cleanup:
+          - command: ["sh", "-c", "docker compose --profile release down -v 2>/dev/null; true"]
+            os: [linux, darwin]
+    verify:
+      - name: integration-tests
+        container:
+          name: rpodder-integration-tests
+          image: rpodder-tests
+          env:
+            - name: RPODDER_URL
+              value: http://host.docker.internal:3005
+        executionMode:
+          local: {}

@@ -551,7 +551,7 @@ pub async fn suggestions(
             sqlx::query_as::<_, PodcastRow>(
                 "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                         p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                        p.created_at, p.updated_at
+                        p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
                  FROM podcasts p
                  JOIN tags t ON t.podcast_id = p.id
                  WHERE t.tag = ANY($1) AND p.id != ALL($2)
@@ -575,7 +575,7 @@ pub async fn suggestions(
             let sql = format!(
                 "SELECT DISTINCT p.id, p.title, p.description, p.link, p.language, p.logo_url, p.author,
                         p.subscribers, p.episode_count, p.last_update, p.update_interval_hours,
-                        p.created_at, p.updated_at
+                        p.content_hash, p.etag, p.http_last_modified, p.created_at, p.updated_at
                  FROM podcasts p
                  JOIN tags t ON t.podcast_id = p.id
                  WHERE t.tag IN ({}) AND p.id NOT IN ({})
@@ -619,6 +619,9 @@ struct SqlitePodcastRow {
     episode_count: i64,
     last_update: Option<String>,
     update_interval_hours: i32,
+    content_hash: i64,
+    etag: Option<String>,
+    http_last_modified: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -637,6 +640,9 @@ impl From<SqlitePodcastRow> for rpodder_core::types::Podcast {
             episode_count: r.episode_count,
             last_update: r.last_update.and_then(|s| s.parse().ok()),
             update_interval_hours: r.update_interval_hours,
+            content_hash: r.content_hash,
+            etag: r.etag,
+            http_last_modified: r.http_last_modified,
             created_at: r.created_at.parse().unwrap_or_default(),
             updated_at: r.updated_at.parse().unwrap_or_default(),
         }
@@ -656,6 +662,9 @@ struct PodcastRow {
     episode_count: i64,
     last_update: Option<chrono::DateTime<chrono::Utc>>,
     update_interval_hours: i32,
+    content_hash: i64,
+    etag: Option<String>,
+    http_last_modified: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -674,6 +683,9 @@ impl From<PodcastRow> for rpodder_core::types::Podcast {
             episode_count: r.episode_count,
             last_update: r.last_update,
             update_interval_hours: r.update_interval_hours,
+            content_hash: r.content_hash,
+            etag: r.etag,
+            http_last_modified: r.http_last_modified,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }

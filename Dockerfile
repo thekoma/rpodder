@@ -58,7 +58,7 @@ LABEL org.opencontainers.image.vendor="thekoma"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 \
+    ca-certificates libssl3 curl \
  && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for runtime
@@ -66,6 +66,9 @@ RUN groupadd --gid 1000 rpodder && \
     useradd --uid 1000 --gid rpodder --shell /bin/false --create-home rpodder
 
 COPY --from=builder /usr/local/bin/rpodder /usr/local/bin/rpodder
+
+# Create data directory for SQLite mode (volume mount target)
+RUN mkdir -p /app/data && chown rpodder:rpodder /app/data
 
 # Migrations are needed at runtime for the CLI `rpodder migrate` command
 COPY --chown=rpodder:rpodder migrations/ /app/migrations/
