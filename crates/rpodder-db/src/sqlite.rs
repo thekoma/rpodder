@@ -1727,20 +1727,12 @@ mod tests {
     };
 
     async fn setup() -> SqliteRepo {
-        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
-        let schema = std::fs::read_to_string("../../migrations/sqlite/001_initial.up.sql").unwrap();
-        sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
-        // Apply subsequent migrations
-        let migration2 =
-            std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
-        sqlx::raw_sql(&migration2).execute(&pool).await.unwrap();
-        let migration3 =
-            std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
-        sqlx::raw_sql(&migration3).execute(&pool).await.unwrap();
-        let migration4 =
-            std::fs::read_to_string("../../migrations/sqlite/004_content_hash.up.sql").unwrap();
-        sqlx::raw_sql(&migration4).execute(&pool).await.unwrap();
-        SqliteRepo::new(pool)
+        let db = crate::Db::connect("sqlite::memory:").await.unwrap();
+        db.migrate("../../migrations").await.unwrap();
+        match db {
+            crate::Db::Sqlite(pool) => SqliteRepo::new(pool),
+            _ => unreachable!(),
+        }
     }
 
     // === UserRepo tests ===

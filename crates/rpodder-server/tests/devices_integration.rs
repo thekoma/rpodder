@@ -17,20 +17,9 @@ use rpodder_core::types::Session;
 use rpodder_db::{Db, sqlite::SqliteRepo};
 
 async fn setup_db() -> Db {
-    let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
-    let schema = std::fs::read_to_string("../../migrations/sqlite/001_initial.up.sql").unwrap();
-    sqlx::raw_sql(&schema).execute(&pool).await.unwrap();
-    let m2 = std::fs::read_to_string("../../migrations/sqlite/002_add_user_roles.up.sql").unwrap();
-    sqlx::raw_sql(&m2).execute(&pool).await.unwrap();
-    let m3 = std::fs::read_to_string("../../migrations/sqlite/003_sync_group_name.up.sql").unwrap();
-    sqlx::raw_sql(&m3).execute(&pool).await.unwrap();
-    let m4 = std::fs::read_to_string("../../migrations/sqlite/004_content_hash.up.sql").unwrap();
-    sqlx::raw_sql(&m4).execute(&pool).await.unwrap();
-    sqlx::query("PRAGMA foreign_keys=ON")
-        .execute(&pool)
-        .await
-        .unwrap();
-    Db::Sqlite(pool)
+    let db = Db::connect("sqlite::memory:").await.unwrap();
+    db.migrate("../../migrations").await.unwrap();
+    db
 }
 
 fn repo(db: &Db) -> SqliteRepo {
