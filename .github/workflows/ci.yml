@@ -16,9 +16,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # -------------------------------------------------------------------------
-  # Stage 1a: Format check (safe — no compilation, runs automatically)
-  # -------------------------------------------------------------------------
   format:
     name: Format check
     runs-on: ubuntu-latest
@@ -30,15 +27,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # -------------------------------------------------------------------------
-  # Stage 1b: Clippy + Test (compiles code — requires approval on PRs)
-  #
-  # On PRs this job uses the "ci" environment which requires a maintainer
-  # review before running. This prevents malicious build.rs / proc-macros
-  # from fork PRs from executing on our runners.
-  #
-  # On push to main/tags the environment is skipped (code already reviewed).
-  # -------------------------------------------------------------------------
   check:
     name: Lint & Test
     needs: format
@@ -51,21 +39,15 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
 
-      # rust-embed needs web/dist/ to exist
       - name: Create web dist placeholder
         run: mkdir -p web/dist && touch web/dist/index.html
 
-      # Compiles + lint analysis
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
-      # Reuses clippy build artifacts, only compiles test harnesses
       - name: Test
         run: cargo test --workspace
 
-  # -------------------------------------------------------------------------
-  # Stage 1c: Integration tests (Docker, runs against SQLite + PostgreSQL)
-  # -------------------------------------------------------------------------
   integration:
     name: Integration Tests
     needs: check
@@ -86,18 +68,15 @@ jobs:
           docker compose --profile sqlite --profile release --profile test \
             down -v --remove-orphans 2>/dev/null || true
 
-  # -------------------------------------------------------------------------
-  # Stage 2: Build & Release (only on main/tag, after tests pass)
-  # -------------------------------------------------------------------------
-  release:
-    name: Build & Release
+  release-binaries:
+    name: Build Binaries & GitHub Release
     needs: [check, integration]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
-
+    outputs:
+      tag: ${{ steps.calculate_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -107,26 +86,21 @@ jobs:
         id: calculate_tag
         run: |
           set -e
-
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             exit 0
           fi
-
           PREFIX=$(date +'%Y.%m')
           git fetch --tags
           LAST_TAG=$(git tag --list "${PREFIX}.*" | sort -V | tail -n 1)
-
           if [ -z "$LAST_TAG" ]; then
             NEW_TAG="${PREFIX}.0"
           else
             SUFFIX=${LAST_TAG#$PREFIX.}
             NEW_TAG="${PREFIX}.$((SUFFIX + 1))"
           fi
-
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      # --- Build standalone binaries (amd64 + arm64) ---
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
@@ -161,47 +135,10 @@ jobs:
           cp target/aarch64-unknown-linux-gnu/release/rpodder rpodder-linux-arm64
           sha256sum rpodder-linux-amd64 rpodder-linux-arm64 > checksums.sha256
           echo "### Binaries" >> release-notes.md
-          echo '```' >> release-notes.md
+          echo '\`\`\`' >> release-notes.md
           cat checksums.sha256 >> release-notes.md
-          echo '```' >> release-notes.md
+          echo '\`\`\`' >> release-notes.md
 
-      # --- Build & push multi-arch Docker image ---
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/thekoma/rpodder
-          tags: |
-            type=raw,value=${{ steps.calculate_tag.outputs.tag }}
-            type=raw,value=latest
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            RPODDER_BUILD_TAG=${{ steps.calculate_tag.outputs.tag }}
-            RPODDER_BUILD_SHA=${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          sbom: true
-          provenance: true
-
-      # --- Tag + Release ---
       - name: Push git tag
         if: success() && github.ref_type != 'tag'
         run: |
@@ -222,3 +159,107 @@ jobs:
             rpodder-linux-amd64
             rpodder-linux-arm64
             checksums.sha256
+
+  build-docker-images:
+    name: Build Docker Images
+    needs: release-binaries
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/thekoma/rpodder
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=ghcr.io/thekoma/rpodder,push-by-digest=true,name-canonical=true,push=true
+          build-args: |
+            RPODDER_BUILD_TAG=${{ needs.release-binaries.outputs.tag }}
+            RPODDER_BUILD_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-docker-manifests:
+    name: Merge Docker Manifests
+    needs: [release-binaries, build-docker-images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/thekoma/rpodder
+          tags: |
+            type=raw,value=${{ needs.release-binaries.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "ghcr.io/thekoma/rpodder@sha256:%s " *)
