@@ -65,7 +65,56 @@ jobs:
         run: cargo test --workspace
 
   # -------------------------------------------------------------------------
-  # Stage 1c: Build Docker image (amd64, reused by integration tests)
+  # Stage 1c: Calculate release tag (fast — just git operations)
+  #
+  # Runs early so both amd64 and arm64 builds get the correct version tag.
+  # For PRs / non-release pushes, outputs "ci-<sha>" as a fallback.
+  # -------------------------------------------------------------------------
+  release-tag:
+    name: Release Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.calculate_tag.outputs.tag }}
+      is_release: ${{ steps.calculate_tag.outputs.is_release }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Calculate tag
+        id: calculate_tag
+        run: |
+          set -e
+
+          IS_RELEASE="false"
+          if [[ "${{ github.event_name }}" == "push" ]] && \
+             [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/* ]]; then
+            IS_RELEASE="true"
+          fi
+
+          if [[ "$IS_RELEASE" == "true" && "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          elif [[ "$IS_RELEASE" == "true" ]]; then
+            PREFIX=$(date +'%Y.%m')
+            git fetch --tags
+            LAST_TAG=$(git tag --list "${PREFIX}.*" | sort -V | tail -n 1)
+
+            if [ -z "$LAST_TAG" ]; then
+              TAG="${PREFIX}.0"
+            else
+              SUFFIX=${LAST_TAG#$PREFIX.}
+              TAG="${PREFIX}.$((SUFFIX + 1))"
+            fi
+          else
+            TAG="ci-${{ github.sha }}"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+          echo "Calculated tag: $TAG (release: $IS_RELEASE)"
+
+  # -------------------------------------------------------------------------
+  # Stage 1d: Build Docker image (amd64, reused by integration tests)
   #
   # Builds once, pushes by digest to ghcr.io. Integration tests pull this
   # image instead of rebuilding. On release, this digest is merged with the
@@ -74,7 +123,7 @@ jobs:
   # -------------------------------------------------------------------------
   docker-build-amd64:
     name: Docker (amd64)
-    needs: check
+    needs: [check, release-tag]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,7 +156,7 @@ jobs:
           platforms: linux/amd64
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            RPODDER_BUILD_TAG=ci-${{ github.sha }}
+            RPODDER_BUILD_TAG=${{ needs.release-tag.outputs.tag }}
             RPODDER_BUILD_SHA=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-amd64
@@ -131,7 +180,7 @@ jobs:
           retention-days: 1
 
   # -------------------------------------------------------------------------
-  # Stage 1d: Integration tests (reuse amd64 Docker image from Stage 1c)
+  # Stage 1e: Integration tests (reuse amd64 Docker image from Stage 1d)
   # -------------------------------------------------------------------------
   integration:
     name: Integration (${{ matrix.profile }})
@@ -153,7 +202,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Pull the image built in Stage 1c and pass it to the test script
+      # Pull the image built in Stage 1d and pass it to the test script
       - name: Run integration tests
         env:
           RPODDER_IMAGE: ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-amd64.outputs.digest }}
@@ -166,53 +215,16 @@ jobs:
             down -v --remove-orphans 2>/dev/null || true
 
   # -------------------------------------------------------------------------
-  # Stage 2a: Calculate release tag (shared by all release jobs)
-  # -------------------------------------------------------------------------
-  release-tag:
-    name: Release Tag
-    needs: [check, integration]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-    runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.calculate_tag.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Calculate next tag
-        id: calculate_tag
-        run: |
-          set -e
-
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          PREFIX=$(date +'%Y.%m')
-          git fetch --tags
-          LAST_TAG=$(git tag --list "${PREFIX}.*" | sort -V | tail -n 1)
-
-          if [ -z "$LAST_TAG" ]; then
-            NEW_TAG="${PREFIX}.0"
-          else
-            SUFFIX=${LAST_TAG#$PREFIX.}
-            NEW_TAG="${PREFIX}.$((SUFFIX + 1))"
-          fi
-
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-
-  # -------------------------------------------------------------------------
-  # Stage 2b: Build Docker ARM image + extract binary (native)
+  # Stage 2: Build Docker ARM image + extract binary (native)
   #
-  # The amd64 image was already built and tested in Stage 1c.
+  # The amd64 image was already built and tested in Stage 1d.
   # Only the ARM image needs building here. The binary is extracted
   # from the image for GitHub Releases (no separate cargo build).
   # -------------------------------------------------------------------------
   docker-build-arm64:
     name: Docker (arm64)
-    needs: release-tag
+    needs: [release-tag, integration]
+    if: needs.release-tag.outputs.is_release == 'true'
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
@@ -269,15 +281,15 @@ jobs:
           retention-days: 1
 
   # -------------------------------------------------------------------------
-  # Stage 2c: Merge Docker manifests into multi-arch image
+  # Stage 3: Merge Docker manifests into multi-arch image
   #
-  # Combines the amd64 digest (from Stage 1c, already tested) with the
-  # arm64 digest (from Stage 2b) into a single multi-arch manifest.
-  # Only runs after integration tests pass.
+  # Combines the amd64 digest (from Stage 1d, already tested) with the
+  # arm64 digest (from Stage 2) into a single multi-arch manifest.
   # -------------------------------------------------------------------------
   docker-merge:
     name: Docker Manifest
-    needs: [release-tag, docker-build-amd64, docker-build-arm64, integration]
+    needs: [release-tag, docker-build-amd64, docker-build-arm64]
+    if: needs.release-tag.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -309,11 +321,12 @@ jobs:
             ${{ env.REGISTRY_IMAGE }}@${{ needs.docker-build-arm64.outputs.digest }}
 
   # -------------------------------------------------------------------------
-  # Stage 3: Tag + GitHub Release (after Docker manifest is ready)
+  # Stage 4: Tag + GitHub Release (after Docker manifest is ready)
   # -------------------------------------------------------------------------
   release:
     name: GitHub Release
     needs: [release-tag, docker-build-amd64, docker-build-arm64, docker-merge]
+    if: needs.release-tag.outputs.is_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
