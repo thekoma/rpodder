@@ -50,7 +50,11 @@ fn auth_headers(config: &AppConfig) -> (String, String, String) {
     hasher.update(config.podcastindex_key.as_bytes());
     hasher.update(config.podcastindex_secret.as_bytes());
     hasher.update(epoch.as_bytes());
-    let auth_hash = format!("{:x}", hasher.finalize());
+    let auth_hash = hasher.finalize().iter().fold(String::new(), |mut s, b| {
+        use std::fmt::Write;
+        let _ = write!(s, "{b:02x}");
+        s
+    });
 
     (config.podcastindex_key.clone(), epoch, auth_hash)
 }
