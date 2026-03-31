@@ -173,8 +173,7 @@ export async function getAdminUsers(): Promise<AdminUser[]> {
 }
 
 export async function createAdminUser(username: string, password: string, email?: string): Promise<boolean> {
-  // Try public registration endpoint first, fallback to admin endpoint
-  const resp = await fetch(`${API_BASE}/api/2/register`, {
+  const resp = await request('/api/admin/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password, email }),
