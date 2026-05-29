@@ -1,10 +1,7 @@
-# NOTE: TrueCharts mirrors images into its own registry. Before a PR is
-# accepted this must point at oci.trueforge.org (ContainerForge). Upstream
-# image kept here for local development of the chart.
 image:
-  pullPolicy: IfNotPresent
   repository: ghcr.io/thekoma/rpodder
   tag: 2026.05.1@sha256:254037adb577782f181d4e652bdc32c3b84fd77293282fe64100ba1d01e27af3
+  pullPolicy: IfNotPresent
 securityContext:
   container:
     readOnlyRootFilesystem: false
