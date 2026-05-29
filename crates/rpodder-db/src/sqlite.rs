@@ -1129,7 +1129,7 @@ impl repo::EpisodeActionRepo for SqliteRepo {
             conditions.join(" AND ")
         );
 
-        let mut q = sqlx::query_as::<_, SqliteEpActionRow>(&sql);
+        let mut q = sqlx::query_as::<_, SqliteEpActionRow>(sqlx::AssertSqlSafe(sql));
         for v in &bind_values {
             q = q.bind(v);
         }
