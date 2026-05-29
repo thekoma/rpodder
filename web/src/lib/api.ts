@@ -181,6 +181,15 @@ export async function createAdminUser(username: string, password: string, email?
   return resp.ok;
 }
 
+export async function register(username: string, password: string, email?: string): Promise<boolean> {
+  const resp = await request('/api/2/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, email }),
+  });
+  return resp.ok;
+}
+
 export async function deactivateUser(username: string): Promise<boolean> {
   const resp = await request(`/api/admin/users/${username}/deactivate`, { method: 'POST' });
   return resp.ok;

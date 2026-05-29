@@ -95,15 +95,23 @@ jobs:
           if [[ "$IS_RELEASE" == "true" && "${{ github.ref_type }}" == "tag" ]]; then
             TAG="${{ github.ref_name }}"
           elif [[ "$IS_RELEASE" == "true" ]]; then
-            PREFIX=$(date +'%Y.%m')
+            # Calendar version YYYY.M.N with an UNPADDED month (SemVer-valid, so
+            # Cargo.toml / package.json can carry the exact same string).
+            YEAR=$(date +'%Y')
+            MONTH=$(date +'%-m')
+            PREFIX="${YEAR}.${MONTH}"
             git fetch --tags
-            LAST_TAG=$(git tag --list "${PREFIX}.*" | sort -V | tail -n 1)
+            # Highest suffix among this month's tags, matching the month
+            # numerically so legacy zero-padded tags (e.g. 2026.05.3) still count
+            # and the sequence keeps incrementing across the format switch.
+            LAST_SUFFIX=$(git tag --list "${YEAR}.*" \
+              | awk -F. -v m="$MONTH" 'NF==3 && ($2+0)==m {print $3+0}' \
+              | sort -n | tail -n 1)
 
-            if [ -z "$LAST_TAG" ]; then
+            if [ -z "$LAST_SUFFIX" ]; then
               TAG="${PREFIX}.0"
             else
-              SUFFIX=${LAST_TAG#$PREFIX.}
-              TAG="${PREFIX}.$((SUFFIX + 1))"
+              TAG="${PREFIX}.$((LAST_SUFFIX + 1))"
             fi
           else
             TAG="ci-${{ github.sha }}"

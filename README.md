@@ -121,8 +121,9 @@ PostgreSQL for multi-user. See the [chart README](deploy/helm/rpodder/README.md)
 
 ### TrueCharts
 
-A chart for the [TrueCharts](https://truecharts.org) Kubernetes catalog is
-prepared in [`deploy/truecharts/rpodder/`](deploy/truecharts/rpodder/).
+We're looking into [TrueCharts](https://truecharts.org) support. Once we've
+carefully gone through their contribution guidelines, we may add rpodder to the
+catalog. Until then, use the Helm chart above.
 
 ### Bare metal (systemd)
 

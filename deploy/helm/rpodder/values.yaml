@@ -7,12 +7,50 @@ controllers:
           tag: 2026.05.1
           pullPolicy: IfNotPresent
         env:
+          # --- Database ---
+          # SQLite (default). For PostgreSQL use e.g.
+          # postgres://user:pass@host:5432/rpodder  (and disable the PVC below).
           RPODDER_DATABASE_URL: sqlite:///data/rpodder.db
+          # Auto-run DB migrations on startup (default: true)
+          # RPODDER_RUN_MIGRATIONS: "true"
+
+          # --- General ---
           RPODDER_PORT: "3005"
           RPODDER_MIGRATIONS_DIR: /app/migrations
+          # Registration mode: open (anyone) | closed (admin only) | invite (email confirmation)
           RPODDER_REGISTRATION: open
           # Public URL — required for OAuth/SSO callbacks and email links.
           # RPODDER_BASE_URL: https://podcasts.example.com
+          # Session lifetime in days (default: 90)
+          # RPODDER_SESSION_DURATION_DAYS: "90"
+
+          # --- SMTP (required for "invite" registration / password reset) ---
+          # RPODDER_SMTP_HOST: smtp.example.com
+          # RPODDER_SMTP_PORT: "25"
+          # RPODDER_SMTP_USER: ""
+          # RPODDER_SMTP_PASSWORD: ""           # prefer a secret + envFrom for secrets
+          # RPODDER_SMTP_FROM: rpodder@example.com
+          # SMTP encryption: none | starttls | tls (default: none)
+          # RPODDER_SMTP_SECURITY: none
+
+          # --- OAuth2 / OIDC SSO (e.g. Authentik, Keycloak, Google) ---
+          # RPODDER_OAUTH_ISSUER_URL: https://auth.example.com/application/o/rpodder/
+          # RPODDER_OAUTH_CLIENT_ID: ""
+          # RPODDER_OAUTH_CLIENT_SECRET: ""     # prefer a secret + envFrom for secrets
+          # Label shown on the SSO login button (default: SSO)
+          # RPODDER_OAUTH_PROVIDER_NAME: Authentik
+          # OIDC group that grants the admin role (e.g. admins)
+          # RPODDER_OAUTH_ADMIN_GROUP: ""
+
+          # --- Podcast Index API (optional, free key from podcastindex.org) ---
+          # Enables podcast search/discovery in the directory.
+          # RPODDER_PODCASTINDEX_KEY: ""
+          # RPODDER_PODCASTINDEX_SECRET: ""     # prefer a secret + envFrom for secrets
+
+          # --- Metrics (Prometheus) ---
+          # Enable a dedicated metrics server (default: false)
+          # RPODDER_METRICS_ENABLED: "false"
+          # RPODDER_METRICS_PORT: "9091"
         probes:
           liveness:
             enabled: true

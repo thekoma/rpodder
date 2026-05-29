@@ -79,9 +79,8 @@ This produces a smaller binary that only serves the API.
 
 ## Kubernetes (Helm)
 
-A packaged Helm chart (`deploy/helm/rpodder/`) and a TrueCharts chart
-(`deploy/truecharts/rpodder/`) are included. See the dedicated
-[Kubernetes (Helm)](kubernetes.md) guide.
+A packaged Helm chart (`deploy/helm/rpodder/`) is included. [TrueCharts](https://truecharts.org)
+support is being explored. See the dedicated [Kubernetes (Helm)](kubernetes.md) guide.
 
 ## Systemd service
 

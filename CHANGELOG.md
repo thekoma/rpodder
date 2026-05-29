@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.5.4 — 2026-05-30
+
+### Fixed
+- **Self-registration failed with "Username already exists or registration failed"** — the registration page posted to the admin-only `/api/admin/users` endpoint (which returns 401 for anonymous visitors) instead of the public `/api/2/register` endpoint. New users can now register again.
+
+### Changed
+- **Calendar versioning is now unpadded (`YYYY.M.N`)** — the month no longer carries a leading zero (e.g. `2026.5.4`, not `2026.05.4`). This makes the version a valid SemVer string, so the git tag, Docker image tag, `Cargo.toml` and `package.json` versions all match exactly. Historical `2026.0M.x` tags are unaffected.
+
+### Docs
+- **Helm charts document every setting** — the packaged `deploy/helm/rpodder/` chart now lists all `RPODDER_*` environment variables (database, SMTP, OAuth/OIDC, Podcast Index, metrics) as commented examples in `values.yaml`, so the full feature surface is discoverable at a glance.
+- **TrueCharts wording corrected** — docs now state that TrueCharts support is being explored and may be added after reviewing their contribution guidelines, rather than implying it is already in progress.
+
 ## 2026.05.1 — 2026-05-29
 
 ### Fixed

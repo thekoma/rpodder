@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createAdminUser } from '$lib/api';
+  import { register } from '$lib/api';
   import { goto } from '$app/navigation';
 
   let username = $state('');
@@ -27,7 +27,7 @@
     }
 
     loading = true;
-    const ok = await createAdminUser(username, password, email || undefined);
+    const ok = await register(username, password, email || undefined);
     loading = false;
 
     if (ok) {

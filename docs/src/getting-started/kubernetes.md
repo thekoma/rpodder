@@ -1,10 +1,11 @@
 # Kubernetes (Helm)
 
-There are three ways to run rpodder on Kubernetes:
+There are two ways to run rpodder on Kubernetes:
 
 1. **The packaged `rpodder` chart** (recommended) — a ready-made chart in the repo.
-2. **TrueCharts** — for users of the [TrueCharts](https://truecharts.org) catalog.
-3. **Custom `app-template` values** (advanced) — full control, e.g. bundling PostgreSQL as a sidecar.
+2. **Custom `app-template` values** (advanced) — full control, e.g. bundling PostgreSQL as a sidecar.
+
+[TrueCharts](https://truecharts.org) support is being explored (see below).
 
 ## The rpodder chart (recommended)
 
@@ -48,10 +49,9 @@ Any `RPODDER_*` setting works as a container env var. See the
 
 ## TrueCharts
 
-A chart for the [TrueCharts](https://truecharts.org) Kubernetes catalog is prepared in
-[`deploy/truecharts/rpodder/`](https://github.com/thekoma/rpodder/tree/main/deploy/truecharts/rpodder).
-It depends on the TrueCharts `common` library and follows their conventions
-(SQLite PVC at `/app/data`, non-root, probes on `/health`).
+We're looking into [TrueCharts](https://truecharts.org) support. Once we've
+carefully gone through their contribution guidelines, we may add rpodder to the
+catalog. Until then, use the app-template chart described above.
 
 ## Advanced: custom app-template values
 
