@@ -1,0 +1,22 @@
+---
+apiVersion: v2
+name: rpodder
+description: A modern, self-hostable gpodder.net replacement written in Rust
+type: application
+version: 0.1.0
+appVersion: "2026.05.1"
+kubeVersion: ">=1.23.0-0"
+home: https://thekoma.github.io/rpodder/
+sources:
+  - https://github.com/thekoma/rpodder
+maintainers:
+  - name: thekoma
+    url: https://github.com/thekoma
+keywords:
+  - podcast
+  - gpodder
+  - podcast-sync
+dependencies:
+  - name: common
+    repository: https://bjw-s-labs.github.io/helm-charts
+    version: 5.0.1

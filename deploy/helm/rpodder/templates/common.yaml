@@ -1,0 +1,12 @@
+---
+{{- include "bjw-s.common.loader.init" . }}
+
+{{- define "rpodder.hardcodedValues" -}}
+{{ if not .Values.global.nameOverride }}
+global:
+  nameOverride: "{{ .Release.Name }}"
+{{ end }}
+{{- end -}}
+{{- $_ := mergeOverwrite .Values (include "rpodder.hardcodedValues" . | fromYaml) -}}
+
+{{ include "bjw-s.common.loader.generate" . }}

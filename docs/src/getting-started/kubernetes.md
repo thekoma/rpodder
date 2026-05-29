@@ -1,6 +1,64 @@
 # Kubernetes (Helm)
 
-This guide shows how to deploy rpodder on Kubernetes using the [bjw-s app-template](https://bjw-s-labs.github.io/helm-charts/docs/app-template/) Helm chart. The example includes PostgreSQL as a sidecar controller — no external database operator required.
+There are three ways to run rpodder on Kubernetes:
+
+1. **The packaged `rpodder` chart** (recommended) — a ready-made chart in the repo.
+2. **TrueCharts** — for users of the [TrueCharts](https://truecharts.org) catalog.
+3. **Custom `app-template` values** (advanced) — full control, e.g. bundling PostgreSQL as a sidecar.
+
+## The rpodder chart (recommended)
+
+The repo ships a self-managed chart at
+[`deploy/helm/rpodder/`](https://github.com/thekoma/rpodder/tree/main/deploy/helm/rpodder),
+built on the [bjw-s common library](https://bjw-s-labs.github.io/helm-charts). It
+defaults to SQLite on a PersistentVolumeClaim and works on **Kubernetes 1.23+** with **Helm 3**.
+
+```bash
+git clone https://github.com/thekoma/rpodder.git
+helm dependency build rpodder/deploy/helm/rpodder
+helm install rpodder rpodder/deploy/helm/rpodder \
+  --namespace rpodder --create-namespace \
+  --set ingress.main.enabled=true \
+  --set 'ingress.main.hosts[0].host=podcasts.example.com'
+```
+
+Create the first admin user:
+
+```bash
+kubectl exec -n rpodder deploy/rpodder -- rpodder user create <name> <password> --admin
+```
+
+To use PostgreSQL instead of the bundled SQLite PVC, point the database URL at your
+database and disable the PVC:
+
+```yaml
+controllers:
+  rpodder:
+    containers:
+      main:
+        env:
+          RPODDER_DATABASE_URL: postgres://user:pass@my-postgres:5432/rpodder
+persistence:
+  data:
+    enabled: false
+```
+
+Any `RPODDER_*` setting works as a container env var. See the
+[chart README](https://github.com/thekoma/rpodder/tree/main/deploy/helm/rpodder).
+
+## TrueCharts
+
+A chart for the [TrueCharts](https://truecharts.org) Kubernetes catalog is prepared in
+[`deploy/truecharts/rpodder/`](https://github.com/thekoma/rpodder/tree/main/deploy/truecharts/rpodder).
+It depends on the TrueCharts `common` library and follows their conventions
+(SQLite PVC at `/app/data`, non-root, probes on `/health`).
+
+## Advanced: custom app-template values
+
+The rest of this guide deploys rpodder directly with the
+[bjw-s app-template](https://bjw-s-labs.github.io/helm-charts/docs/app-template/)
+chart and inline values. This gives full control — the example below bundles
+PostgreSQL as a sidecar controller, so no external database operator is required.
 
 ## Prerequisites
 

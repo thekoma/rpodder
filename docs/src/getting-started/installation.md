@@ -6,6 +6,12 @@ rpodder can be installed in several ways depending on your needs.
 
 Docker is the easiest way to get started. rpodder provides pre-built images and a `docker-compose.yml` with multiple profiles.
 
+!!! tip "No clone needed"
+    To run the published image without cloning, use the ready-made compose files
+    in [`examples/`](https://github.com/thekoma/rpodder/tree/main/examples) — see
+    [Docker → Self-hosting](docker.md#self-hosting-published-image). They import
+    cleanly into Dockge, Portainer and CasaOS.
+
 ```bash
 git clone https://github.com/thekoma/rpodder.git
 cd rpodder
@@ -70,6 +76,12 @@ cargo build --release --no-default-features
 ```
 
 This produces a smaller binary that only serves the API.
+
+## Kubernetes (Helm)
+
+A packaged Helm chart (`deploy/helm/rpodder/`) and a TrueCharts chart
+(`deploy/truecharts/rpodder/`) are included. See the dedicated
+[Kubernetes (Helm)](kubernetes.md) guide.
 
 ## Systemd service
 

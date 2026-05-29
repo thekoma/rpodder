@@ -1,0 +1,37 @@
+# rpodder — self-hosted (SQLite)
+#
+# The simplest way to run rpodder. One container, one volume, no external
+# database. Ideal for a single user / small household, and for paste-and-go
+# deployment on Dockge, Portainer or CasaOS.
+#
+#   docker compose up -d
+#   docker compose exec rpodder rpodder user create <name> <password> --admin
+#
+# Then point your podcast app (AntennaPod, Kasts, ...) at http://<host>:3005
+#
+# For PostgreSQL instead of SQLite, see docker-compose.postgres.yml.
+
+services:
+  rpodder:
+    image: ghcr.io/thekoma/rpodder:latest   # pin a release, e.g. :2026.05.1
+    container_name: rpodder
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    volumes:
+      - rpodder-data:/app/data
+    environment:
+      RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
+      # Public URL — required for OAuth/SSO callbacks and email links.
+      # RPODDER_BASE_URL: https://podcasts.example.com
+      # Registration: open | closed | invite
+      RPODDER_REGISTRATION: open
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  rpodder-data:

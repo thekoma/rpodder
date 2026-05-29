@@ -2,7 +2,43 @@
 
 rpodder provides a multi-stage Dockerfile and a `docker-compose.yml` with several profiles for different use cases.
 
+## Self-hosting (published image)
+
+The quickest way to run rpodder is the published image
+[`ghcr.io/thekoma/rpodder`](https://ghcr.io/thekoma/rpodder) — no build, no clone.
+Ready-to-use compose files live in [`examples/`](https://github.com/thekoma/rpodder/tree/main/examples)
+and import cleanly into **Dockge**, **Portainer** and **CasaOS**.
+
+=== "SQLite (simplest)"
+
+    ```bash
+    docker compose -f examples/docker-compose.yml up -d
+    docker compose -f examples/docker-compose.yml exec rpodder \
+      rpodder user create <name> <password> --admin
+    ```
+
+    One container, one volume. Ideal for a single user or small household.
+
+=== "PostgreSQL (multi-user)"
+
+    ```bash
+    cp examples/.env.example examples/.env   # then set POSTGRES_PASSWORD
+    docker compose -f examples/docker-compose.postgres.yml up -d
+    docker compose -f examples/docker-compose.postgres.yml exec rpodder \
+      rpodder user create <name> <password> --admin
+    ```
+
+Then point your podcast app at `http://<host>:3005`.
+
+!!! tip "Pin a version"
+    The examples track `:latest`. For reproducible deployments pin a release tag,
+    e.g. `ghcr.io/thekoma/rpodder:2026.05.1`.
+
 ## Docker Compose profiles
+
+!!! note "Development / from-source"
+    The profiles below build from this checkout and are aimed at development and
+    testing. For production self-hosting use the [published image](#self-hosting-published-image) above.
 
 ### Default (development)
 

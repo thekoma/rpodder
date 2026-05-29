@@ -76,6 +76,58 @@ docker compose exec rpodder-sqlite rpodder user create myuser mypassword --admin
 docker compose --profile release up -d
 ```
 
+> The compose profiles above build from this checkout. To run the **published
+> image** without building, use the deployment methods below.
+
+## Deployment
+
+Production self-hosting uses the published image
+[`ghcr.io/thekoma/rpodder`](https://ghcr.io/thekoma/rpodder) — no build required.
+
+### Docker Compose
+
+Ready-to-use compose files live in [`examples/`](examples/). They import cleanly
+into Dockge, Portainer and CasaOS.
+
+```bash
+# SQLite — simplest, single container
+docker compose -f examples/docker-compose.yml up -d
+
+# PostgreSQL — for multi-user instances
+cp examples/.env.example examples/.env   # then set POSTGRES_PASSWORD
+docker compose -f examples/docker-compose.postgres.yml up -d
+```
+
+Create the first admin user:
+
+```bash
+docker compose -f examples/docker-compose.yml exec rpodder rpodder user create <name> <password> --admin
+```
+
+### Kubernetes (Helm)
+
+A self-managed chart built on the [bjw-s common library](https://bjw-s-labs.github.io/helm-charts)
+lives in [`deploy/helm/rpodder/`](deploy/helm/rpodder/):
+
+```bash
+helm dependency build deploy/helm/rpodder
+helm install rpodder deploy/helm/rpodder \
+  --set ingress.main.enabled=true \
+  --set 'ingress.main.hosts[0].host=podcasts.example.com'
+```
+
+Defaults to SQLite on a PersistentVolumeClaim; point `RPODDER_DATABASE_URL` at
+PostgreSQL for multi-user. See the [chart README](deploy/helm/rpodder/README.md).
+
+### TrueCharts
+
+A chart for the [TrueCharts](https://truecharts.org) Kubernetes catalog is
+prepared in [`deploy/truecharts/rpodder/`](deploy/truecharts/rpodder/).
+
+### Bare metal (systemd)
+
+See [Systemd](#systemd) below.
+
 ## Configuration
 
 All settings can be set via environment variables or a TOML config file:
@@ -83,9 +135,9 @@ All settings can be set via environment variables or a TOML config file:
 | Env var | Default | Description |
 |---------|---------|-------------|
 | `RPODDER_DATABASE_URL` | `sqlite://rpodder.db` | Database connection URL |
-| `RPODDER_HOST` | `127.0.0.1` | Bind address |
+| `RPODDER_HOST` | `0.0.0.0` | Bind address |
 | `RPODDER_PORT` | `3005` | Bind port |
-| `RPODDER_RUN_MIGRATIONS` | `false` | Run migrations on startup |
+| `RPODDER_RUN_MIGRATIONS` | `true` | Run migrations on startup |
 | `RPODDER_REGISTRATION` | `open` | `open` / `closed` / `invite` |
 | `RPODDER_SMTP_HOST` | | SMTP server for email features |
 | `RPODDER_OAUTH_ISSUER_URL` | | OIDC issuer URL for SSO |

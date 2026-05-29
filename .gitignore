@@ -23,3 +23,10 @@
 # MkDocs build output
 /site/
 APPUNTI.md
+
+# Helm chart fetched dependencies (recreated by `helm dependency build`)
+deploy/**/charts/
+deploy/**/Chart.lock
+
+# macOS
+.DS_Store

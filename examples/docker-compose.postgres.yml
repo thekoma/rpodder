@@ -1,0 +1,51 @@
+# rpodder — self-hosted (PostgreSQL)
+#
+# Recommended for multi-user instances. rpodder + a dedicated PostgreSQL.
+#
+#   cp .env.example .env   # then edit POSTGRES_PASSWORD
+#   docker compose -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.postgres.yml exec rpodder rpodder user create <name> <password> --admin
+#
+# Then point your podcast app at http://<host>:3005
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: rpodder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rpodder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: rpodder
+    volumes:
+      - rpodder-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rpodder"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rpodder:
+    image: ghcr.io/thekoma/rpodder:latest   # pin a release, e.g. :2026.05.1
+    container_name: rpodder
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    environment:
+      RPODDER_DATABASE_URL: postgres://rpodder:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/rpodder
+      # Public URL — required for OAuth/SSO callbacks and email links.
+      # RPODDER_BASE_URL: https://podcasts.example.com
+      # Registration: open | closed | invite
+      RPODDER_REGISTRATION: open
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  rpodder-pgdata:
