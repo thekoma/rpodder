@@ -516,7 +516,7 @@ pub async fn suggestions(
                 "SELECT DISTINCT tag FROM tags WHERE podcast_id IN ({})",
                 placeholders.join(",")
             );
-            let mut q = sqlx::query_as::<_, (String,)>(&sql);
+            let mut q = sqlx::query_as::<_, (String,)>(sqlx::AssertSqlSafe(sql));
             for id in &subscribed_ids {
                 q = q.bind(id.to_string());
             }
@@ -584,7 +584,7 @@ pub async fn suggestions(
                 tag_placeholders.join(","),
                 sub_placeholders.join(",")
             );
-            let mut q = sqlx::query_as::<_, SqlitePodcastRow>(&sql);
+            let mut q = sqlx::query_as::<_, SqlitePodcastRow>(sqlx::AssertSqlSafe(sql));
             for tag in &tags {
                 q = q.bind(tag);
             }

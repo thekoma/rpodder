@@ -5,6 +5,9 @@
 ### Fixed
 - **SQLite "(code: 5) database is locked"** — on slow disks (e.g. Synology/Raspberry Pi) concurrent writes from the feed updater and API handlers collided on SQLite's single write lock. Now writes serialize through a single pooled connection, and connections use WAL + `synchronous=NORMAL` + a 30s `busy_timeout` so they queue instead of failing (#19)
 
+### Changed
+- **Dependency updates** — refreshed Rust dependencies, notably **sqlx 0.8 → 0.9** (dynamic SQL strings now wrapped with `AssertSqlSafe`), plus axum, axum-extra, clap, config, lettre, reqwest, tokio, tower-http and others (#14)
+
 ## v0.1.1 — 2026-03-23
 
 ### Fixed

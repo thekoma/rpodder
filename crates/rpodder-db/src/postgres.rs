@@ -1070,7 +1070,7 @@ impl repo::EpisodeActionRepo for PgRepo {
         }
         sql.push_str(&format!(" ORDER BY ea.timestamp LIMIT ${param_idx}"));
 
-        let mut q = sqlx::query_as::<_, EpActionRow>(&sql).bind(user_id);
+        let mut q = sqlx::query_as::<_, EpActionRow>(sqlx::AssertSqlSafe(sql)).bind(user_id);
         if let Some(did) = device_id {
             q = q.bind(did);
         }

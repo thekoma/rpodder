@@ -71,12 +71,14 @@ impl Db {
             let fname = path.file_name().unwrap_or_default().to_string_lossy();
             match self {
                 Db::Postgres(pool) => {
-                    sqlx::raw_sql(&sql).execute(pool).await?;
+                    sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+                        .execute(pool)
+                        .await?;
                 }
                 Db::Sqlite(pool) => {
                     // SQLite ALTER TABLE ADD COLUMN is not idempotent — ignore
                     // "duplicate column" errors so migrations can be re-run safely.
-                    match sqlx::raw_sql(&sql).execute(pool).await {
+                    match sqlx::raw_sql(sqlx::AssertSqlSafe(sql)).execute(pool).await {
                         Ok(_) => {}
                         Err(e) if e.to_string().contains("duplicate column") => {
                             info!("{pool_kind} migration skipped (already applied): {fname}");
