@@ -2,10 +2,13 @@
 
 # --------------------------------------------------------------------------
 # Stage 1: Build frontend (Svelte + Tailwind)
-# Force amd64: output is pure static HTML/JS/CSS, identical for all arches.
-# Avoids running rolldown native bindings under QEMU (arm64 build fails).
+# Pin to $BUILDPLATFORM (the native arch of the build host) so bun runs
+# natively, never under QEMU. The output is pure static HTML/JS/CSS, identical
+# for all arches, so building it on the host arch is always correct. A constant
+# --platform=linux/amd64 here would force amd64-under-QEMU on the native arm64
+# runner, where bun crashes with SIGILL (issue surfaced after bun rolled to 1.3.x).
 # --------------------------------------------------------------------------
-FROM --platform=linux/amd64 oven/bun:1 AS frontend
+FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend
 
 WORKDIR /web
 COPY web/package.json web/bun.lock* ./
