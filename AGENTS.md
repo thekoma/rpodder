@@ -52,6 +52,19 @@ on tag pushes:
 So **pushing to `main` auto-creates a release** (tag + multi-arch image +
 GitHub release). There is no separate "publish" step.
 
+### Source-change gating
+
+The workflow uses a `paths-ignore` filter so changes that never affect the built
+image don't run anything — no build, no release, the calendar counter does not
+advance. Ignored: `**.md`, `docs/**`, `deploy/**` (Helm/TrueCharts values),
+`config/**`, `.github/**`, `LICENSE`. Any other change (crates, web, migrations,
+`Cargo.*`, `Dockerfile`, …) runs the full pipeline.
+
+Note: this is all-or-nothing per push — a push touching only ignored paths skips
+the whole workflow (lint/test included), which is why `.github/**` is ignored
+too (a pipeline tweak shouldn't cut a release). Validate workflow edits via a PR
+that also touches source, or `workflow_dispatch`.
+
 ## Release checklist
 
 Because the push auto-tags, the in-repo version files must be bumped to the

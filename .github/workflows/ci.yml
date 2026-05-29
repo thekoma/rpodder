@@ -1,11 +1,31 @@
 name: CI / Release
 
+# Changes that never affect the built image — docs, deploy manifests
+# (Helm/TrueCharts values), CI config, license — are ignored, so they trigger
+# neither a build nor a release. Anything else (crates, web, migrations,
+# Cargo.*, Dockerfile, …) runs the full pipeline.
 on:
   push:
     branches: [main]
     tags: ["**"]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'deploy/**'
+      - 'config/**'
+      - '.github/**'
+      - 'LICENSE'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'deploy/**'
+      - 'config/**'
+      - '.github/**'
+      - 'LICENSE'
   workflow_dispatch:
 
 concurrency:
