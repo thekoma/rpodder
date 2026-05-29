@@ -29,19 +29,26 @@ impl Db {
             info!("Connected to PostgreSQL");
             Ok(Db::Postgres(pool))
         } else if url.starts_with("sqlite://") || url.starts_with("sqlite:") {
-            // Ensure create_if_missing is set for file-based SQLite
+            // Apply pragmas at connect time so they hold for the connection.
+            // WAL + synchronous=NORMAL keep write transactions short on slow
+            // disks; busy_timeout makes a contending writer wait instead of
+            // failing immediately. See issue #19.
             let connect_opts = url
                 .parse::<sqlx::sqlite::SqliteConnectOptions>()?
-                .create_if_missing(true);
+                .create_if_missing(true)
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+                .busy_timeout(std::time::Duration::from_secs(30))
+                .foreign_keys(true);
+            // SQLite permits only one writer. A single pooled connection makes
+            // all access serialize in the async pool, so contenders queue
+            // instead of colliding on the file lock and erroring with
+            // "(code: 5) database is locked". Repo methods never hold a
+            // connection across queries, so this cannot deadlock.
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
-                .max_connections(5)
+                .max_connections(1)
                 .connect_with(connect_opts)
                 .await?;
-            // Enable WAL mode and foreign keys for SQLite
-            sqlx::query("PRAGMA journal_mode=WAL")
-                .execute(&pool)
-                .await?;
-            sqlx::query("PRAGMA foreign_keys=ON").execute(&pool).await?;
             info!("Connected to SQLite");
             Ok(Db::Sqlite(pool))
         } else {
@@ -225,5 +232,61 @@ mod tests {
             .unwrap();
             assert!(has_admin, "is_admin column should exist after migration");
         }
+    }
+
+    #[tokio::test]
+    async fn sqlite_is_configured_to_avoid_database_is_locked() {
+        use std::time::Duration;
+
+        let path = std::env::temp_dir().join(format!("rpodder-test-{}.db", uuid::Uuid::now_v7()));
+        let url = format!("sqlite://{}", path.display());
+        let db = Db::connect(&url).await.unwrap();
+
+        let Db::Sqlite(pool) = &db else {
+            panic!("expected sqlite pool");
+        };
+
+        // Pragmas that keep write transactions short and prevent immediate
+        // SQLITE_BUSY on slow disks (issue #19).
+        let mut c = pool.acquire().await.unwrap();
+        let journal_mode: String = sqlx::query_scalar("PRAGMA journal_mode")
+            .fetch_one(&mut *c)
+            .await
+            .unwrap();
+        assert_eq!(journal_mode, "wal", "WAL lets readers run during a write");
+        let synchronous: i64 = sqlx::query_scalar("PRAGMA synchronous")
+            .fetch_one(&mut *c)
+            .await
+            .unwrap();
+        assert_eq!(
+            synchronous, 1,
+            "NORMAL (1) avoids fsync-per-write stalls under WAL"
+        );
+        let foreign_keys: i64 = sqlx::query_scalar("PRAGMA foreign_keys")
+            .fetch_one(&mut *c)
+            .await
+            .unwrap();
+        assert_eq!(foreign_keys, 1, "foreign keys must be enforced");
+        let busy_timeout: i64 = sqlx::query_scalar("PRAGMA busy_timeout")
+            .fetch_one(&mut *c)
+            .await
+            .unwrap();
+        assert!(
+            busy_timeout > 0,
+            "a busy_timeout must be set, got {busy_timeout}"
+        );
+
+        // SQLite has a single writer; the pool must serialize access through one
+        // connection so contenders queue instead of erroring with "database is
+        // locked". A second acquire while the first is held must not succeed.
+        let second = tokio::time::timeout(Duration::from_millis(300), pool.acquire()).await;
+        assert!(
+            second.is_err(),
+            "SQLite pool must allow only one connection so writes serialize"
+        );
+
+        drop(c);
+        pool.close().await;
+        let _ = std::fs::remove_file(&path);
     }
 }
