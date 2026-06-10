@@ -4,7 +4,7 @@ controllers:
       main:
         image:
           repository: ghcr.io/thekoma/rpodder
-          tag: 2026.5.4
+          tag: 2026.6.0
           pullPolicy: IfNotPresent
         env:
           # --- Database ---
