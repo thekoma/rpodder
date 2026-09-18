@@ -253,7 +253,7 @@ jobs:
     name: Docker (arm64)
     needs: [release-tag, integration]
     if: needs.release-tag.outputs.is_release == 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     permissions:
       contents: read
       packages: write
