@@ -36,7 +36,7 @@ chrono = { version = "0.4", features = ["serde"] }
 url = { version = "2", features = ["serde"] }
 
 # feed parsing
-feed-rs = "2"
+feed-rs = "3"
 reqwest = { version = "0.13", features = ["json", "form", "query", "gzip", "brotli"] }
 
 # auth & crypto
