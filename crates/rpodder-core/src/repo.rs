@@ -129,13 +129,16 @@ pub trait EpisodeActionRepo: Send + Sync {
         action: &EpisodeAction,
     ) -> impl std::future::Future<Output = Result<()>> + Send;
 
+    /// List actions in the order the server received them. `since` filters on
+    /// `created_at` (server receive time), not the client-supplied `timestamp`,
+    /// so actions uploaded late by one device still reach the others.
     fn list(
         &self,
         user_id: Uuid,
         device_id: Option<Uuid>,
         podcast_id: Option<Uuid>,
         since: Option<DateTime<Utc>>,
-        limit: i64,
+        limit: Option<i64>,
     ) -> impl std::future::Future<Output = Result<Vec<EpisodeAction>>> + Send;
 }
 

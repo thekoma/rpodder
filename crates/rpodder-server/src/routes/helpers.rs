@@ -23,6 +23,18 @@ macro_rules! with_repo {
     };
 }
 
+/// How far the `timestamp` returned to clients (their next `since`) lags behind
+/// the clock. `created_at` is taken before the INSERT commits, and on SQLite a
+/// write can wait for the single connection; without slack a row committed
+/// after a concurrent read but stamped before it would never be delivered.
+/// Re-delivering the last minute of actions or subscription changes is
+/// harmless: clients apply them idempotently.
+pub(crate) const SYNC_CURSOR_SLACK_SECS: i64 = 60;
+
+pub(crate) fn sync_cursor() -> i64 {
+    Utc::now().timestamp() - SYNC_CURSOR_SLACK_SECS
+}
+
 /// Find a device by user_id + device_id string, or auto-create it.
 /// This matches gpodder.net behavior where devices are created on first use.
 pub async fn find_or_create_device(

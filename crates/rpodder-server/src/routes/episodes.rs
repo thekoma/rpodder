@@ -4,6 +4,8 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
 };
+use std::collections::HashMap;
+
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -75,8 +77,9 @@ pub struct EpisodeQuery {
     pub since: Option<i64>,
     pub podcast: Option<String>,
     pub device: Option<String>,
-    #[serde(alias = "aggregated")]
-    pub _aggregated: Option<bool>,
+    /// Only return the latest action for each episode.
+    #[serde(default)]
+    pub aggregated: bool,
 }
 
 macro_rules! with_repo {
@@ -92,6 +95,14 @@ macro_rules! with_repo {
             }
         }
     };
+}
+
+/// gpodder device ids: `[\w.-]+`, and `devices.device_id` is VARCHAR(64) on PostgreSQL.
+fn is_valid_device_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
 fn strip_json_suffix(s: &str) -> &str {
@@ -147,7 +158,9 @@ pub async fn upload_episode_actions(
         return Err(StatusCode::FORBIDDEN);
     }
 
+    let timestamp = super::helpers::sync_cursor();
     let update_urls: Vec<Vec<String>> = Vec::new();
+    let mut devices: HashMap<String, Uuid> = HashMap::new();
 
     for action_input in &body.actions {
         let action_type = parse_action_type(&action_input.action).ok_or(StatusCode::BAD_REQUEST)?;
@@ -177,15 +190,38 @@ pub async fn upload_episode_actions(
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        // Resolve device (optional)
-        let device_uuid = if let Some(device_str) = &action_input.device {
-            let device = with_repo!(state, |repo| {
-                DeviceRepo::find_by_uid(&repo, auth_user.0.id, device_str).await
-            })
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            device.map(|d| d.id)
-        } else {
-            None
+        // Resolve device (optional): an existing device always matches; an
+        // unknown one is auto-created like gpodder.net does, unless its id
+        // could never be a valid device (then the action is stored without one).
+        let device_uuid = match &action_input.device {
+            Some(device_str) if !device_str.is_empty() => {
+                if let Some(id) = devices.get(device_str) {
+                    Some(*id)
+                } else {
+                    let existing = with_repo!(state, |repo| {
+                        DeviceRepo::find_by_uid(&repo, auth_user.0.id, device_str).await
+                    })
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                    let id = match existing {
+                        Some(d) => Some(d.id),
+                        None if is_valid_device_id(device_str) => Some(
+                            super::helpers::find_or_create_device(
+                                &state,
+                                auth_user.0.id,
+                                device_str,
+                            )
+                            .await?
+                            .id,
+                        ),
+                        None => None,
+                    };
+                    if let Some(id) = id {
+                        devices.insert(device_str.clone(), id);
+                    }
+                    id
+                }
+            }
+            _ => None,
         };
 
         // Parse timestamp — accept string (ISO 8601) or integer (unix epoch)
@@ -236,7 +272,7 @@ pub async fn upload_episode_actions(
     }
 
     Ok(Json(UploadResponse {
-        timestamp: Utc::now().timestamp(),
+        timestamp,
         update_urls,
     }))
 }
@@ -256,64 +292,111 @@ pub async fn download_episode_actions(
         return Err(StatusCode::FORBIDDEN);
     }
 
+    // Taken before querying, with slack (see helpers::SYNC_CURSOR_SLACK_SECS).
+    let timestamp = super::helpers::sync_cursor();
+    let empty = || {
+        Json(DownloadResponse {
+            actions: Vec::new(),
+            timestamp,
+        })
+    };
+
     let since = params
         .since
         .and_then(|ts| Utc.timestamp_opt(ts, 0).single());
 
-    // Resolve device filter
+    // Resolve device filter; an unknown device has no actions
     let device_uuid = if let Some(device_str) = &params.device {
         let device = with_repo!(state, |repo| {
             DeviceRepo::find_by_uid(&repo, auth_user.0.id, device_str).await
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        device.map(|d| d.id)
+        match device {
+            Some(d) => Some(d.id),
+            None => return Ok(empty()),
+        }
     } else {
         None
     };
 
-    // Resolve podcast filter
+    // Resolve podcast filter; an unknown podcast has no actions
     let podcast_uuid = if let Some(podcast_url) = &params.podcast {
+        let podcast_url = normalize_url(podcast_url);
         let podcast = with_repo!(state, |repo| {
-            PodcastRepo::find_by_url(&repo, podcast_url).await
+            PodcastRepo::find_by_url(&repo, &podcast_url).await
         })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        podcast.map(|p| p.id)
+        match podcast {
+            Some(p) => Some(p.id),
+            None => return Ok(empty()),
+        }
     } else {
         None
     };
 
-    let actions = with_repo!(state, |repo| {
+    // Unbounded on purpose: the gpodder API has no pagination and `since` has
+    // one-second granularity, so a page cursor would wedge a client whose
+    // backlog shares a second (e.g. one bulk first-sync upload). mygpo also
+    // returns every action since the cursor.
+    let mut actions = with_repo!(state, |repo| {
         EpisodeActionRepo::list(
             &repo,
             auth_user.0.id,
             device_uuid,
             podcast_uuid,
             since,
-            1000,
+            None,
         )
         .await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Look up device_id strings for the response
+    if params.aggregated {
+        actions = latest_per_episode(actions);
+    }
+
+    let device_uids: HashMap<Uuid, String> = with_repo!(state, |repo| {
+        DeviceRepo::list_for_user(&repo, auth_user.0.id).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .into_iter()
+    .map(|d| (d.id, d.device_id))
+    .collect();
+
     let response_actions: Vec<EpisodeActionResponse> = actions
         .into_iter()
-        .map(|a| {
-            EpisodeActionResponse {
-                podcast: a.podcast_ref_url.unwrap_or_default(),
-                episode: a.episode_ref_url.unwrap_or_default(),
-                action: action_type_str(a.action).to_string(),
-                device: None, // TODO: resolve device_id → device_uid
-                timestamp: Some(a.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string()),
-                started: a.started,
-                position: a.position,
-                total: a.total,
-            }
+        .map(|a| EpisodeActionResponse {
+            podcast: a.podcast_ref_url.unwrap_or_default(),
+            episode: a.episode_ref_url.unwrap_or_default(),
+            action: action_type_str(a.action).to_string(),
+            device: a.device_id.and_then(|id| device_uids.get(&id).cloned()),
+            timestamp: Some(a.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            started: a.started,
+            position: a.position,
+            total: a.total,
         })
         .collect();
 
     Ok(Json(DownloadResponse {
         actions: response_actions,
-        timestamp: Utc::now().timestamp(),
+        timestamp,
     }))
+}
+
+/// Keep only the most recent action (by client timestamp) for each episode,
+/// preserving the receive order of the survivors.
+fn latest_per_episode(actions: Vec<EpisodeAction>) -> Vec<EpisodeAction> {
+    let mut latest: HashMap<Uuid, usize> = HashMap::new();
+    for (i, a) in actions.iter().enumerate() {
+        let newer = latest
+            .get(&a.episode_id)
+            .is_none_or(|&j| a.timestamp >= actions[j].timestamp);
+        if newer {
+            latest.insert(a.episode_id, i);
+        }
+    }
+    let mut keep: Vec<usize> = latest.into_values().collect();
+    keep.sort_unstable();
+    let mut actions: Vec<Option<EpisodeAction>> = actions.into_iter().map(Some).collect();
+    keep.into_iter().filter_map(|i| actions[i].take()).collect()
 }

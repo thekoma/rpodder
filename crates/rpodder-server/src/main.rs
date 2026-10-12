@@ -5,6 +5,8 @@ mod middleware;
 mod podcast_index;
 mod routes;
 mod state;
+#[cfg(test)]
+mod tests;
 #[cfg(feature = "web-ui")]
 mod web_ui;
 

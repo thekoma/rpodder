@@ -9,7 +9,7 @@ use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
 use rpodder_core::repo::{EpisodeActionRepo, PodcastRepo, SubscriptionRepo};
-use rpodder_core::types::{EpisodeActionType, SubscriptionAction};
+use rpodder_core::types::{EpisodeActionType, SubscriptionAction, SubscriptionChange};
 use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
@@ -327,6 +327,9 @@ pub async fn upload_subscription_changes(
 
     let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
+    // Taken before writing, with slack (see helpers::SYNC_CURSOR_SLACK_SECS).
+    let timestamp = super::helpers::sync_cursor();
+
     // Normalize URLs and track mappings for update_urls response
     let add_urls: Vec<String> = body.add.iter().map(|u| normalize_url(u)).collect();
     let remove_urls: Vec<String> = body.remove.iter().map(|u| normalize_url(u)).collect();
@@ -389,12 +392,48 @@ pub async fn upload_subscription_changes(
         .await;
     }
 
-    let timestamp = Utc::now().timestamp();
-
     Ok(Json(UploadResponse {
         timestamp,
         update_urls,
     }))
+}
+
+/// Collapse a change log (ordered oldest first) to the latest action per
+/// podcast, like mygpo's subscription diff: a URL never appears in both lists,
+/// even when the log holds a remove and a re-add within the requested window.
+/// A repeated unsubscribe is logged with an empty `ref_url`; it keeps the
+/// podcast's last known URL rather than replacing it.
+fn split_changes(changes: Vec<SubscriptionChange>) -> (Vec<String>, Vec<String>) {
+    let mut order: Vec<uuid::Uuid> = Vec::new();
+    let mut latest: std::collections::HashMap<uuid::Uuid, (SubscriptionAction, String)> =
+        std::collections::HashMap::new();
+    for change in changes {
+        match latest.get_mut(&change.podcast_id) {
+            Some(entry) => {
+                entry.0 = change.action;
+                if !change.ref_url.is_empty() {
+                    entry.1 = change.ref_url;
+                }
+            }
+            None => {
+                order.push(change.podcast_id);
+                latest.insert(change.podcast_id, (change.action, change.ref_url));
+            }
+        }
+    }
+
+    let mut add = Vec::new();
+    let mut remove = Vec::new();
+    for (action, url) in order.into_iter().filter_map(|id| latest.remove(&id)) {
+        if url.is_empty() {
+            continue;
+        }
+        match action {
+            SubscriptionAction::Subscribe => add.push(url),
+            SubscriptionAction::Unsubscribe => remove.push(url),
+        }
+    }
+    (add, remove)
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +454,9 @@ pub async fn download_subscription_changes(
 
     let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
+    // Taken before querying, with slack (see helpers::SYNC_CURSOR_SLACK_SECS).
+    let timestamp = super::helpers::sync_cursor();
+
     let since = params
         .since
         .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
@@ -425,17 +467,7 @@ pub async fn download_subscription_changes(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let mut add = Vec::new();
-    let mut remove = Vec::new();
-
-    for change in changes {
-        match change.action {
-            SubscriptionAction::Subscribe => add.push(change.ref_url),
-            SubscriptionAction::Unsubscribe => remove.push(change.ref_url),
-        }
-    }
-
-    let timestamp = Utc::now().timestamp();
+    let (add, remove) = split_changes(changes);
 
     Ok(Json(DeltaResponse {
         add,
@@ -484,6 +516,9 @@ pub async fn combined_updates(
 
     let device = super::helpers::find_or_create_device(&state, auth_user.0.id, deviceid).await?;
 
+    // Taken before querying, with slack (see helpers::SYNC_CURSOR_SLACK_SECS).
+    let timestamp = super::helpers::sync_cursor();
+
     let since = params
         .since
         .and_then(|ts| Utc.timestamp_opt(ts, 0).single())
@@ -495,14 +530,7 @@ pub async fn combined_updates(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let mut add = Vec::new();
-    let mut remove = Vec::new();
-    for change in changes {
-        match change.action {
-            SubscriptionAction::Subscribe => add.push(change.ref_url),
-            SubscriptionAction::Unsubscribe => remove.push(change.ref_url),
-        }
-    }
+    let (add, remove) = split_changes(changes);
 
     // Episode actions
     let actions = with_repo!(state, |repo| {
@@ -512,7 +540,7 @@ pub async fn combined_updates(
             Some(device.id),
             None,
             Some(since),
-            1000,
+            None,
         )
         .await
     })
@@ -535,8 +563,6 @@ pub async fn combined_updates(
             total: a.total,
         })
         .collect();
-
-    let timestamp = Utc::now().timestamp();
 
     Ok(Json(CombinedUpdatesResponse {
         add,

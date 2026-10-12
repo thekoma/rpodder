@@ -1016,7 +1016,11 @@ impl repo::EpisodeActionRepo for PgRepo {
                  started, position, total, timestamp, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              ON CONFLICT (user_id, episode_id, COALESCE(device_id, '00000000-0000-0000-0000-000000000000'), action, timestamp)
-             DO UPDATE SET position = EXCLUDED.position, started = EXCLUDED.started, total = EXCLUDED.total",
+             DO UPDATE SET position = EXCLUDED.position, started = EXCLUDED.started, total = EXCLUDED.total,
+                           created_at = EXCLUDED.created_at
+             WHERE episode_actions.position IS DISTINCT FROM EXCLUDED.position
+                OR episode_actions.started IS DISTINCT FROM EXCLUDED.started
+                OR episode_actions.total IS DISTINCT FROM EXCLUDED.total",
         )
         .bind(action.id)
         .bind(action.user_id)
@@ -1042,7 +1046,7 @@ impl repo::EpisodeActionRepo for PgRepo {
         device_id: Option<Uuid>,
         podcast_id: Option<Uuid>,
         since: Option<DateTime<Utc>>,
-        limit: i64,
+        limit: Option<i64>,
     ) -> Result<Vec<EpisodeAction>> {
         // Build query dynamically based on filters
         let mut sql = String::from(
@@ -1065,10 +1069,13 @@ impl repo::EpisodeActionRepo for PgRepo {
             param_idx += 1;
         }
         if since.is_some() {
-            sql.push_str(&format!(" AND ea.timestamp > ${param_idx}"));
+            sql.push_str(&format!(" AND ea.created_at > ${param_idx}"));
             param_idx += 1;
         }
-        sql.push_str(&format!(" ORDER BY ea.timestamp LIMIT ${param_idx}"));
+        sql.push_str(" ORDER BY ea.created_at, ea.timestamp");
+        if limit.is_some() {
+            sql.push_str(&format!(" LIMIT ${param_idx}"));
+        }
 
         let mut q = sqlx::query_as::<_, EpActionRow>(sqlx::AssertSqlSafe(sql)).bind(user_id);
         if let Some(did) = device_id {
@@ -1080,7 +1087,9 @@ impl repo::EpisodeActionRepo for PgRepo {
         if let Some(s) = since {
             q = q.bind(s);
         }
-        q = q.bind(limit);
+        if let Some(l) = limit {
+            q = q.bind(l);
+        }
 
         let rows = q.fetch_all(&self.pool).await.map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())

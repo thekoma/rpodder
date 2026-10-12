@@ -1068,7 +1068,11 @@ impl repo::EpisodeActionRepo for SqliteRepo {
                  started, position, total, timestamp, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, episode_id, COALESCE(device_id, ''), action, timestamp)
-             DO UPDATE SET position = excluded.position, started = excluded.started, total = excluded.total",
+             DO UPDATE SET position = excluded.position, started = excluded.started, total = excluded.total,
+                           created_at = excluded.created_at
+             WHERE episode_actions.position IS NOT excluded.position
+                OR episode_actions.started IS NOT excluded.started
+                OR episode_actions.total IS NOT excluded.total",
         )
         .bind(uuid_str(&action.id))
         .bind(uuid_str(&action.user_id))
@@ -1094,7 +1098,7 @@ impl repo::EpisodeActionRepo for SqliteRepo {
         device_id: Option<Uuid>,
         podcast_id: Option<Uuid>,
         since: Option<DateTime<Utc>>,
-        limit: i64,
+        limit: Option<i64>,
     ) -> Result<Vec<EpisodeAction>> {
         // SQLite doesn't support numbered params, so we build a query with ?
         // and bind in order. We use a simpler approach: always filter, use impossible defaults.
@@ -1114,7 +1118,7 @@ impl repo::EpisodeActionRepo for SqliteRepo {
             bind_values.push(uuid_str(&pid));
         }
         if let Some(s) = since {
-            conditions.push("ea.timestamp > ?".to_string());
+            conditions.push("ea.created_at > ?".to_string());
             bind_values.push(s.to_rfc3339());
         }
 
@@ -1124,7 +1128,7 @@ impl repo::EpisodeActionRepo for SqliteRepo {
                     ea.started, ea.position, ea.total, ea.timestamp, ea.created_at
              FROM episode_actions ea
              WHERE {}
-             ORDER BY ea.timestamp
+             ORDER BY ea.created_at, ea.timestamp
              LIMIT ?",
             conditions.join(" AND ")
         );
@@ -1133,7 +1137,8 @@ impl repo::EpisodeActionRepo for SqliteRepo {
         for v in &bind_values {
             q = q.bind(v);
         }
-        q = q.bind(limit);
+        // LIMIT -1 means "no limit" in SQLite.
+        q = q.bind(limit.unwrap_or(-1));
 
         let rows = q
             .fetch_all(&self.pool)
@@ -2621,7 +2626,7 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &action).await.unwrap();
 
-        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, Some(100))
             .await
             .unwrap();
         assert_eq!(actions.len(), 1);
@@ -2666,7 +2671,7 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &action2).await.unwrap();
 
-        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+        let actions = EpisodeActionRepo::list(&repo, user.id, None, None, None, Some(100))
             .await
             .unwrap();
         assert_eq!(actions.len(), 1);
@@ -2712,16 +2717,81 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &a2).await.unwrap();
 
-        let all = EpisodeActionRepo::list(&repo, user.id, None, None, None, 100)
+        let all = EpisodeActionRepo::list(&repo, user.id, None, None, None, Some(100))
             .await
             .unwrap();
         assert_eq!(all.len(), 2);
 
-        let filtered = EpisodeActionRepo::list(&repo, user.id, Some(device.id), None, None, 100)
-            .await
-            .unwrap();
+        let filtered =
+            EpisodeActionRepo::list(&repo, user.id, Some(device.id), None, None, Some(100))
+                .await
+                .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].action, EpisodeActionType::Download);
+    }
+
+    #[tokio::test]
+    async fn episode_action_upsert_refreshes_created_at_only_on_change() {
+        let repo = setup().await;
+        let (user, device, _) = setup_subscription_fixtures(&repo).await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+        let (episode, _) =
+            EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/ep.mp3")
+                .await
+                .unwrap();
+        let action = |position: i32| EpisodeAction {
+            id: Uuid::now_v7(),
+            user_id: user.id,
+            device_id: Some(device.id),
+            episode_id: episode.id,
+            action: EpisodeActionType::Play,
+            podcast_ref_url: None,
+            episode_ref_url: None,
+            started: Some(0),
+            position: Some(position),
+            total: Some(300),
+            timestamp: Utc::now() - Duration::days(1),
+            created_at: Utc::now(),
+        };
+        let first = EpisodeAction {
+            created_at: Utc::now() - Duration::hours(1),
+            ..action(60)
+        };
+        EpisodeActionRepo::create(&repo, &first).await.unwrap();
+        let since = Utc::now() - Duration::minutes(10);
+
+        // Identical re-upload: must not look new to other devices.
+        EpisodeActionRepo::create(
+            &repo,
+            &EpisodeAction {
+                timestamp: first.timestamp,
+                ..action(60)
+            },
+        )
+        .await
+        .unwrap();
+        let listed = EpisodeActionRepo::list(&repo, user.id, None, None, Some(since), None)
+            .await
+            .unwrap();
+        assert!(listed.is_empty(), "unchanged re-upload resurfaced");
+
+        // Changed position: must be delivered again.
+        EpisodeActionRepo::create(
+            &repo,
+            &EpisodeAction {
+                timestamp: first.timestamp,
+                ..action(90)
+            },
+        )
+        .await
+        .unwrap();
+        let listed = EpisodeActionRepo::list(&repo, user.id, None, None, Some(since), None)
+            .await
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].position, Some(90));
     }
 
     #[tokio::test]
@@ -2754,9 +2824,10 @@ mod tests {
         };
         EpisodeActionRepo::create(&repo, &action).await.unwrap();
 
-        let since_before = EpisodeActionRepo::list(&repo, user.id, None, None, Some(before), 100)
-            .await
-            .unwrap();
+        let since_before =
+            EpisodeActionRepo::list(&repo, user.id, None, None, Some(before), Some(100))
+                .await
+                .unwrap();
         assert_eq!(since_before.len(), 1);
 
         let since_after = EpisodeActionRepo::list(
@@ -2765,7 +2836,7 @@ mod tests {
             None,
             None,
             Some(Utc::now() + Duration::seconds(1)),
-            100,
+            Some(100),
         )
         .await
         .unwrap();

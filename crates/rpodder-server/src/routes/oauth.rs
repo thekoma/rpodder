@@ -274,16 +274,25 @@ pub async fn sso_callback(
         user.is_admin
     };
 
-    // Redirect with a small HTML page that sets localStorage before going to /
-    let html = format!(
-        r#"<html><script>localStorage.setItem('rpodder_user','{}');localStorage.setItem('rpodder_admin','{}');window.location='/';</script></html>"#,
-        username, is_admin_now
-    );
-
     Ok((
         [(axum::http::header::SET_COOKIE, cookie)],
-        axum::response::Html(html),
+        axum::response::Html(sso_redirect_html(&username, is_admin_now)),
     ))
+}
+
+/// Small HTML page that stores the username in localStorage before going to /.
+/// The username comes from the IdP, so it is embedded as a JSON string literal
+/// with `<`, `>` and `&` escaped: it can neither close the string nor the
+/// `<script>` element.
+fn sso_redirect_html(username: &str, is_admin: bool) -> String {
+    let username = serde_json::to_string(username)
+        .unwrap_or_else(|_| "\"\"".to_string())
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026");
+    format!(
+        r#"<html><script>localStorage.setItem('rpodder_user',{username});localStorage.setItem('rpodder_admin','{is_admin}');window.location='/';</script></html>"#
+    )
 }
 
 /// GET /auth/sso/info — check if SSO is configured (public, for UI)
@@ -307,4 +316,30 @@ fn extract_groups(claims: &serde_json::Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sso_redirect_html;
+
+    #[test]
+    fn sso_redirect_html_escapes_username() {
+        let html = sso_redirect_html("x');alert(1);//</script><script>alert(2)", false);
+        assert!(
+            html.contains(r#"setItem('rpodder_user',"x');alert(1);//\u003c/script\u003e\u003cscript\u003ealert(2)")"#),
+            "{html}"
+        );
+        assert_eq!(html.matches("<script>").count(), 1, "{html}");
+        assert_eq!(html.matches("</script>").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn sso_redirect_html_plain_username() {
+        let html = sso_redirect_html("alice", true);
+        assert!(
+            html.contains(r#"setItem('rpodder_user',"alice")"#),
+            "{html}"
+        );
+        assert!(html.contains("setItem('rpodder_admin','true')"), "{html}");
+    }
 }

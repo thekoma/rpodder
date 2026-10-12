@@ -80,7 +80,7 @@ async fn resolve_session(state: &AppState, token: &str) -> Option<User> {
         }
     }?;
 
-    match &*state.db {
+    let user = match &*state.db {
         Db::Postgres(pool) => {
             let repo = PgRepo::new(pool.clone());
             UserRepo::find_by_id(&repo, session.user_id).await.ok()?
@@ -89,7 +89,9 @@ async fn resolve_session(state: &AppState, token: &str) -> Option<User> {
             let repo = SqliteRepo::new(pool.clone());
             UserRepo::find_by_id(&repo, session.user_id).await.ok()?
         }
-    }
+    }?;
+
+    user.is_active.then_some(user)
 }
 
 async fn resolve_basic_auth(state: &AppState, username: &str, password: &str) -> Option<User> {

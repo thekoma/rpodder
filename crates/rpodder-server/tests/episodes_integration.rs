@@ -307,7 +307,7 @@ mod test_handlers {
             .since
             .and_then(|ts| Utc.timestamp_opt(ts, 0).single());
 
-        let actions = EpisodeActionRepo::list(&r, auth_user.0.id, None, None, since, 1000)
+        let actions = EpisodeActionRepo::list(&r, auth_user.0.id, None, None, since, None)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
