@@ -6,6 +6,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 rpodder is a modern, scalable, Rust-based replacement for [gpodder.net](https://gpodder.net) (mygpo). It implements the [gpodder API](https://gpoddernet.readthedocs.io/en/latest/api/index.html) for syncing podcast subscriptions and episode actions across devices. Target: multi-user with tens of thousands of indexed podcasts, but also self-hostable on a Raspberry Pi.
 
+## Working with Claude Code (slash commands)
+
+Five slash commands in [.claude/commands/](.claude/commands/) wrap an "elephant/goldfish" workflow inspired by [this article](https://drensin.medium.com/elephants-goldfish-and-the-new-golden-age-of-software-engineering-c33641a48874): the "elephant" is the working session with full context (this CLAUDE.md, repo state, conversation history); the "goldfish" is a fresh subagent with no prior context. For implementation work the goldfish stress-tests a problem/design doc or a diff. For brainstorming and PRD writing, multiple goldfish run in parallel with different lenses to generate divergent ideas or research findings the elephant synthesizes.
+
+| Command | When to use |
+|---|---|
+| `/eg-brainstorm <rough idea>` | Early-stage concept design. Multiple goldfish in parallel (technical / business / UX / contrarian / market research), web search optional, elephant synthesizes a concepts brief. All questions via `AskUserQuestion`. Hands off to `/eg-prd` or `/eg-new-feature` if you pick a direction. Briefs save to `docs/eg-brainstorms/`. |
+| `/eg-prd <idea \| feature description>` | Build a thorough PRD: codebase grounding → structured gap-filling via `AskUserQuestion` → deep research with parallel goldfish (web + optional Chrome MCP for logged-in sources) → synthesized PRD. Saves to `docs/prds/`, persists durable nuggets to memory, and/or hands off to `/eg-new-feature`. |
+| `/eg-fix-bug <description \| #issue \| URL>` | Bug fix flow: problem doc → goldfish diagnosis check → failing test → fix → `/eg-precommit-review` → test gate. Skips ceremony for trivial diffs. |
+| `/eg-new-feature <description \| #issue \| URL>` | Feature flow: scope confirm → design doc (saved to `docs/specs/` when substantial) → three-goldfish design check (comprehension + critic + readiness) → implement → `/eg-precommit-review` → test gate. The design rubric covers both DB backends (idempotent PG + SQLite migrations, repo trait + both impls), gpodder client compatibility, auth/ownership on new endpoints, privacy of tokenized feed URLs, the `--no-default-features` build, the Svelte 5 `$effect` + `browser` pattern, and the Raspberry Pi footprint. |
+| `/eg-precommit-review` | Local independent-review loop on the pending diff (`cargo fmt` + `clippy -D warnings` + `cargo test` + `--no-default-features` build + `bun run build`, plus the Docker E2E on SQLite/PostgreSQL when API, migrations or repo impls change). Replaces back-and-forth with PR bots — by the time the PR opens, the substantive review is already settled. |
+
+You give a one-liner; Claude writes the doc back at you. You don't author docs by hand. Examples:
+
+```
+/eg-brainstorm what if new episodes reached clients in minutes instead of waiting for the 30-minute feed poll
+/eg-prd importing users, subscriptions and episode actions from an existing mygpo database
+/eg-fix-bug AntennaPod shows the same podcast twice after it was added with and without a trailing slash
+/eg-fix-bug #123
+/eg-new-feature group the audio and video feeds of the same show into one podcast in the directory
+/eg-precommit-review
+```
+
+Browser validation: use the Claude in Chrome MCP (`mcp__Claude_in_Chrome__*`) pointed at the Vite dev server on `http://localhost:5173` (or the embedded build on `http://localhost:3005`). Start it with `cd web && bun run dev` if it isn't already running; it proxies the API to a backend on `:3006` (`docker compose --profile dev up -d`, or `RPODDER_PORT=3006 cargo run -p rpodder-server -- serve`). `./tests/docker/run-integration.sh` runs `docker compose … down -v`, so the commands ask before running it.
+
+Each command stops short of committing. Authorize the commit explicitly when ready. Commits use Conventional Commits (`feat: …`, `fix: …`, `chore(deps): …`), and a push to `main` cuts a release (see `AGENTS.md`).
+
+**These commands are interactive by design.** `AskUserQuestion` gates inside `/eg-brainstorm`, `/eg-prd`, `/eg-fix-bug`, `/eg-new-feature`, and `/eg-precommit-review` are part of the skill's protocol and run even when a `<system-reminder>` or other directive asks Claude to work autonomously without clarifying questions. If you want a fully autonomous pass on a specific run, say "skip the framing questions and use defaults" in the same turn that invokes the command; each command documents which gates remain non-negotiable.
+
 ## Project Status
 
 **Functional.** All core gpodder API endpoints implemented, web UI working, tested with Kasts client, SSO via Authentik working. See `docs/TODO.md` for remaining items (mostly nice-to-haves). See `docs/ARCHITECTURE.md` for design decisions. See `CHANGELOG.md` for release notes.
