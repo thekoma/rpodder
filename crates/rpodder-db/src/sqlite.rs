@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use sqlx::SqlitePool;
 use uuid::Uuid;
@@ -978,6 +980,33 @@ impl repo::EpisodeRepo for SqliteRepo {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    async fn primary_urls(&self, episode_ids: &[Uuid]) -> Result<HashMap<Uuid, String>> {
+        let mut urls = HashMap::new();
+        if episode_ids.is_empty() {
+            return Ok(urls);
+        }
+        let placeholders = vec!["?"; episode_ids.len()].join(", ");
+        let sql = format!(
+            "SELECT episode_id, url FROM episode_urls
+             WHERE episode_id IN ({placeholders})
+             ORDER BY episode_id, \"order\""
+        );
+        let mut q = sqlx::query_as::<_, (String, String)>(sqlx::AssertSqlSafe(sql));
+        for id in episode_ids {
+            q = q.bind(uuid_str(id));
+        }
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        for (episode_id, url) in rows {
+            if let Ok(id) = episode_id.parse() {
+                urls.entry(id).or_insert(url);
+            }
+        }
+        Ok(urls)
+    }
+
     async fn update(&self, episode: &Episode) -> Result<()> {
         sqlx::query(
             "UPDATE episodes SET guid = ?, title = ?, description = ?, link = ?,
@@ -1146,6 +1175,61 @@ impl repo::EpisodeActionRepo for SqliteRepo {
             .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    async fn latest_plays(
+        &self,
+        user_id: Uuid,
+        filter: &LatestPlaysFilter,
+    ) -> Result<Vec<LatestPlay>> {
+        let sql = crate::latest_plays_sql(
+            "?",
+            filter.podcast_id.map(|_| "?"),
+            filter.in_progress_only,
+            filter.limit.map(|_| "?"),
+            "",
+        );
+        let mut q = sqlx::query_as::<_, SqliteLatestPlayRow>(sqlx::AssertSqlSafe(sql))
+            .bind(uuid_str(&user_id));
+        if let Some(pid) = filter.podcast_id {
+            q = q.bind(uuid_str(&pid));
+        }
+        if let Some(limit) = filter.limit {
+            q = q.bind(limit);
+        }
+        let rows = q
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .map(|r| LatestPlay {
+                podcast_title: crate::meaningful_title(r.podcast_title, &r.podcast_url),
+                episode_title: crate::meaningful_title(r.episode_title, &r.episode_url),
+                podcast_url: r.podcast_url,
+                podcast_logo_url: r.podcast_logo_url,
+                episode_url: r.episode_url,
+                mimetype: r.mimetype,
+                position: r.pos,
+                total: r.eff_total.and_then(|t| i32::try_from(t).ok()),
+                timestamp: r.ts.parse().unwrap_or_default(),
+                device_uid: r.device_uid,
+            })
+            .collect())
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteLatestPlayRow {
+    podcast_url: String,
+    podcast_title: Option<String>,
+    podcast_logo_url: Option<String>,
+    episode_url: String,
+    episode_title: Option<String>,
+    mimetype: Option<String>,
+    pos: i32,
+    eff_total: Option<i64>,
+    ts: String,
+    device_uid: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

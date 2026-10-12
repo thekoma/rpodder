@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/lib/playerLogic.test.ts"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3",

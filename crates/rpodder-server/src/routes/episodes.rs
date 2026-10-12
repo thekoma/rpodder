@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use rpodder_core::repo::{DeviceRepo, EpisodeActionRepo, EpisodeRepo, PodcastRepo};
-use rpodder_core::types::{EpisodeAction, EpisodeActionType};
+use rpodder_core::types::{EpisodeAction, EpisodeActionType, LatestPlay, LatestPlaysFilter};
 use rpodder_core::url::normalize_url;
 
 use crate::middleware::auth::AuthUser;
@@ -399,4 +399,96 @@ fn latest_per_episode(actions: Vec<EpisodeAction>) -> Vec<EpisodeAction> {
     keep.sort_unstable();
     let mut actions: Vec<Option<EpisodeAction>> = actions.into_iter().map(Some).collect();
     keep.into_iter().filter_map(|i| actions[i].take()).collect()
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/2/me/in-progress?limit=N   (rpodder extension, web player)
+// GET /api/2/me/positions?podcast=URL (rpodder extension, web player)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct InProgressQuery {
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PositionsQuery {
+    pub podcast: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlayItem {
+    pub podcast_url: String,
+    pub podcast_title: Option<String>,
+    pub podcast_logo_url: Option<String>,
+    pub episode_url: String,
+    pub episode_title: Option<String>,
+    pub mimetype: Option<String>,
+    pub position: i32,
+    pub total: Option<i32>,
+    pub timestamp: String,
+    pub device: Option<String>,
+}
+
+impl From<LatestPlay> for PlayItem {
+    fn from(p: LatestPlay) -> Self {
+        PlayItem {
+            podcast_url: p.podcast_url,
+            podcast_title: p.podcast_title,
+            podcast_logo_url: p.podcast_logo_url,
+            episode_url: p.episode_url,
+            episode_title: p.episode_title,
+            mimetype: p.mimetype,
+            position: p.position,
+            total: p.total,
+            timestamp: p.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            device: p.device_uid,
+        }
+    }
+}
+
+/// Episodes the user started and has not finished, newest first.
+pub async fn in_progress(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<InProgressQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let filter = LatestPlaysFilter {
+        podcast_id: None,
+        in_progress_only: true,
+        limit: Some(params.limit.unwrap_or(20).clamp(1, 50)),
+    };
+    let plays = with_repo!(state, |repo| {
+        EpisodeActionRepo::latest_plays(&repo, auth_user.0.id, &filter).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(
+        plays.into_iter().map(PlayItem::from).collect::<Vec<_>>(),
+    ))
+}
+
+/// Latest play position of every episode of one podcast the user has played.
+pub async fn positions(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<PositionsQuery>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let podcast_url = normalize_url(&params.podcast);
+    let podcast = with_repo!(state, |repo| {
+        PodcastRepo::find_by_url(&repo, &podcast_url).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let Some(podcast) = podcast else {
+        return Ok(Json(Vec::new()));
+    };
+    let filter = LatestPlaysFilter {
+        podcast_id: Some(podcast.id),
+        in_progress_only: false,
+        limit: None,
+    };
+    let plays = with_repo!(state, |repo| {
+        EpisodeActionRepo::latest_plays(&repo, auth_user.0.id, &filter).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(plays.into_iter().map(PlayItem::from).collect()))
 }

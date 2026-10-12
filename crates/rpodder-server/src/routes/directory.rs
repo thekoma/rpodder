@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use rpodder_core::privacy::is_likely_private_url;
 use rpodder_core::repo::{EpisodeRepo, PodcastRepo, SubscriptionRepo, TagRepo};
+use rpodder_core::url::normalize_url;
 
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
@@ -264,6 +265,13 @@ pub struct EpisodeListItem {
     pub duration: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mimetype: Option<String>,
+    /// Primary URL of the episode: its enclosure, or its `<link>` page when the
+    /// feed item has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Whether `url` is a media file (enclosure) rather than a web page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -313,18 +321,34 @@ pub async fn podcast_episodes(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let episode_ids: Vec<_> = episodes.iter().map(|e| e.id).collect();
+    let mut urls = with_repo!(state, |repo| {
+        EpisodeRepo::primary_urls(&repo, &episode_ids).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     let episode_items: Vec<EpisodeListItem> = episodes
         .into_iter()
-        .map(|e| EpisodeListItem {
-            title: e.title,
-            description: if e.description.is_empty() {
-                None
-            } else {
-                Some(e.description)
-            },
-            released: e.released.map(|r| r.to_rfc3339()),
-            duration: e.duration,
-            mimetype: e.mimetype,
+        .map(|e| {
+            let url = urls.remove(&e.id);
+            // The feed parser sets `mimetype` only from an enclosure; an item
+            // without one is stored under its `<link>`.
+            let media = url.as_ref().map(|u| {
+                e.mimetype.is_some() || e.link.as_deref().map(normalize_url).as_ref() != Some(u)
+            });
+            EpisodeListItem {
+                title: e.title,
+                description: if e.description.is_empty() {
+                    None
+                } else {
+                    Some(e.description)
+                },
+                released: e.released.map(|r| r.to_rfc3339()),
+                duration: e.duration,
+                mimetype: e.mimetype,
+                url,
+                media,
+            }
         })
         .collect();
 

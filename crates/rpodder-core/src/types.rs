@@ -222,6 +222,33 @@ pub struct EpisodeAction {
     pub created_at: DateTime<Utc>,
 }
 
+/// Which "latest play per episode" rows to return.
+#[derive(Debug, Clone, Default)]
+pub struct LatestPlaysFilter {
+    /// Only episodes of this podcast.
+    pub podcast_id: Option<Uuid>,
+    /// Only episodes still in progress: position > 0, more than 30 s left, and
+    /// not marked unplayed (`new`) after the play.
+    pub in_progress_only: bool,
+    pub limit: Option<i64>,
+}
+
+/// A user's latest `play` action for one episode, with display metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestPlay {
+    pub podcast_url: String,
+    pub podcast_title: Option<String>,
+    pub podcast_logo_url: Option<String>,
+    pub episode_url: String,
+    pub episode_title: Option<String>,
+    pub mimetype: Option<String>,
+    pub position: i32,
+    /// The action's total, else the episode's duration.
+    pub total: Option<i32>,
+    pub timestamp: DateTime<Utc>,
+    pub device_uid: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Settings (key-value per scope)
 // ---------------------------------------------------------------------------

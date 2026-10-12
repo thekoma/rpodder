@@ -7,6 +7,69 @@
 pub mod postgres;
 pub mod sqlite;
 
+/// SQL shared by both backends for `EpisodeActionRepo::latest_plays`. `{user}`,
+/// `{podcast}` and `{limit}` are placeholders the caller substitutes with its
+/// bind syntax; the bracketed filters are added or removed by the caller.
+pub(crate) fn latest_plays_sql(
+    user: &str,
+    podcast: Option<&str>,
+    in_progress_only: bool,
+    limit: Option<&str>,
+    eff_total_cast: &str,
+) -> String {
+    // The window only ranks the user's play rows; metadata joins and the
+    // podcast URL fallback run afterwards, once per episode.
+    // Placeholders appear in bind order (user, podcast, limit): SQLite `?` is positional.
+    let podcast_filter = podcast
+        .map(|p| format!(" AND r.episode_id IN (SELECT id FROM episodes WHERE podcast_id = {p})"))
+        .unwrap_or_default();
+    let progress_filter = if in_progress_only {
+        " AND pos > 0 AND (eff_total IS NULL OR pos < eff_total - 30)
+          AND NOT EXISTS (SELECT 1 FROM episode_actions n
+                           WHERE n.user_id = t.user_id AND n.episode_id = t.episode_id
+                             AND n.action = 'new' AND n.timestamp > t.ts)"
+    } else {
+        ""
+    };
+    let limit = limit.map(|l| format!(" LIMIT {l}")).unwrap_or_default();
+    format!(
+        "SELECT podcast_url, podcast_title, podcast_logo_url, episode_url, episode_title,
+                mimetype, pos, eff_total, ts, device_uid
+         FROM (
+           SELECT ea.user_id, ea.episode_id,
+                  COALESCE(ea.podcast_ref_url,
+                           (SELECT pu.url FROM podcast_urls pu
+                             WHERE pu.podcast_id = e.podcast_id AND pu.\"order\" = 0)) AS podcast_url,
+                  p.title AS podcast_title, p.logo_url AS podcast_logo_url,
+                  ea.episode_ref_url AS episode_url, e.title AS episode_title,
+                  e.mimetype AS mimetype, ea.position AS pos,
+                  COALESCE(NULLIF(ea.total, 0), NULLIF(e.duration, 0)){eff_total_cast} AS eff_total,
+                  ea.timestamp AS ts, d.device_id AS device_uid
+           FROM (
+             SELECT r.id,
+                    ROW_NUMBER() OVER (PARTITION BY r.episode_id
+                                       ORDER BY r.timestamp DESC, r.created_at DESC, r.id DESC) AS rn
+             FROM episode_actions r
+             WHERE r.user_id = {user} AND r.action = 'play'
+                   AND r.episode_ref_url IS NOT NULL AND r.position IS NOT NULL{podcast_filter}
+           ) latest
+           JOIN episode_actions ea ON ea.id = latest.id
+           JOIN episodes e ON e.id = ea.episode_id
+           LEFT JOIN podcasts p ON p.id = e.podcast_id
+           LEFT JOIN devices d ON d.id = ea.device_id
+           WHERE latest.rn = 1
+         ) t
+         WHERE podcast_url IS NOT NULL{progress_filter}
+         ORDER BY ts DESC{limit}"
+    )
+}
+
+/// `None` for an empty title or one that is just the URL (episodes created from
+/// an action upload get their URL as title).
+pub(crate) fn meaningful_title(title: Option<String>, url: &str) -> Option<String> {
+    title.filter(|t| !t.trim().is_empty() && t != url)
+}
+
 use tracing::info;
 
 /// Database backend, determined from the connection URL.

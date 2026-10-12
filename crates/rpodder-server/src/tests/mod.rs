@@ -3,6 +3,7 @@
 
 mod episode_sync;
 mod subscription_sync;
+mod web_player;
 
 use std::sync::Arc;
 

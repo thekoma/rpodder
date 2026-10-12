@@ -3,12 +3,14 @@
   import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
+  import { page } from '$app/stores';
 
   let username = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
   let ssoInfo = $state<SsoInfo | null>(null);
+  let expired = $derived($page.url.searchParams.get('expired') === '1');
 
   $effect(() => {
     if (!browser) return;
@@ -41,6 +43,10 @@
       <h1 class="text-2xl font-bold mt-2 text-brand">rpodder</h1>
       <p class="text-text-dim text-sm mt-1">Sign in to sync your podcasts</p>
     </div>
+
+    {#if expired}
+      <p class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center mb-4">Your session expired, please log in again.</p>
+    {/if}
 
     {#if ssoInfo?.enabled}
       <a

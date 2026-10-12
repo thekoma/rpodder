@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { getTrending, getSsoInfo, uploadSubscriptionChanges, getDevices, type ExternalPodcast } from '$lib/api';
-  import { auth } from '$lib/auth.svelte';
+  import { getTrending, getSsoInfo, type ExternalPodcast } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
+  import { subscribe as subscribeEverywhere } from '$lib/webDevice';
   import { browser } from '$app/environment';
 
   const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
@@ -27,11 +28,16 @@
   }
 
   async function subscribe(podcast: ExternalPodcast) {
-    if (!auth.username) return;
+    const username = auth.username;
+    if (!username) return;
     subscribing = podcast.title;
-    const devices = await getDevices(auth.username);
-    const deviceId = devices.length > 0 ? devices[0].id : 'web';
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [podcast.url], []);
+    let ok = true;
+    try {
+      await subscribeEverywhere(username, podcast.url);
+    } catch (e) {
+      if (isAuthError(e)) { subscribing = null; sessionExpired(username); return; }
+      ok = false;
+    }
     subscribing = null;
     subscribeMsg = ok ? `Subscribed to ${podcast.title}` : 'Failed';
     setTimeout(() => { subscribeMsg = ''; }, 3000);

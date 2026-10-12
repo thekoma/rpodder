@@ -3,6 +3,8 @@
 //! Each trait is a small, focused interface. Implementations live in rpodder-db.
 //! This design allows swapping PostgreSQL ↔ SQLite without touching business logic.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -140,6 +142,13 @@ pub trait EpisodeActionRepo: Send + Sync {
         since: Option<DateTime<Utc>>,
         limit: Option<i64>,
     ) -> impl std::future::Future<Output = Result<Vec<EpisodeAction>>> + Send;
+
+    /// The user's latest `play` action per episode, newest first.
+    fn latest_plays(
+        &self,
+        user_id: Uuid,
+        filter: &LatestPlaysFilter,
+    ) -> impl std::future::Future<Output = Result<Vec<LatestPlay>>> + Send;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +213,12 @@ pub trait EpisodeRepo: Send + Sync {
         offset: i64,
     ) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
     fn update(&self, episode: &Episode) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Primary (lowest "order") URL for each given episode; episodes without a
+    /// URL are absent from the map.
+    fn primary_urls(
+        &self,
+        episode_ids: &[Uuid],
+    ) -> impl std::future::Future<Output = Result<HashMap<Uuid, String>>> + Send;
 }
 
 // ---------------------------------------------------------------------------

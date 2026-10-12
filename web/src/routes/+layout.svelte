@@ -5,6 +5,10 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
+  import MiniPlayer from '$lib/components/MiniPlayer.svelte';
+  import { player } from '$lib/player.svelte';
+  import { localClear } from '$lib/positions';
+  import { getWebSettings, peekWebSettings } from '$lib/webDevice';
 
   let { children } = $props();
   let buildInfo = $state<BuildInfo | null>(null);
@@ -28,9 +32,28 @@
     }
   });
 
+  async function syncSetting(username: string): Promise<boolean | null> {
+    const cached = peekWebSettings(username);
+    if (cached) return cached.syncPositions;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 2000); });
+      return (await Promise.race([getWebSettings(username), timeout])).syncPositions;
+    } catch {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function handleLogout() {
-    if (auth.username) {
-      await apiLogout(auth.username);
+    const username = auth.username;
+    if (username) {
+      const sync = await syncSetting(username);
+      await player.close({ timeoutMs: 3000 });
+      // D7: with sync off the local positions are the only copy, keep them.
+      if (sync === true) localClear(username);
+      await apiLogout(username);
     }
     auth.logout();
     goto('/login');
@@ -42,7 +65,7 @@
   }
 </script>
 
-<div class="min-h-screen bg-bg text-text">
+<div class="min-h-screen bg-bg text-text {auth.loggedIn && player.episode ? 'pb-24' : ''}">
   <!-- Nav -->
   <nav class="border-b border-border bg-surface sticky top-0 z-50">
     <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -137,4 +160,6 @@
       · {buildInfo.database}
     </footer>
   {/if}
+
+  <MiniPlayer />
 </div>

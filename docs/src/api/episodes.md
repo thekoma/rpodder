@@ -78,6 +78,8 @@ Download episode actions since the given timestamp.
 | `device` | Filter by device ID |
 | `aggregated` | If true, only return the latest action per episode |
 
+`since` refers to when rpodder **received** an action, not the action's own `timestamp`, so actions a device uploads late (after listening offline) still reach devices that synced in the meantime. The returned `timestamp` lags the server clock by a minute, so a client may receive a few recent actions twice; applying them again is harmless.
+
 **Response**:
 
 ```json
@@ -120,6 +122,10 @@ Returns episode actions with enriched podcast and episode metadata (titles inste
   }
 ]
 ```
+
+## The web player device
+
+The web UI's player reports listening positions as an ordinary device with id `rpodder-web` (caption "Web player", type `other`) when "Sync listening positions" is on in the web UI settings. It uploads standard `play` actions with `started`, `position`, `total` and a fresh timestamp: when you pause, seek, switch episodes, close the player or leave the page, and every 5 minutes while playing. Other clients see these actions with `"device": "rpodder-web"`.
 
 ## Deduplication
 

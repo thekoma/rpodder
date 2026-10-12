@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -926,6 +928,26 @@ impl repo::EpisodeRepo for PgRepo {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    async fn primary_urls(&self, episode_ids: &[Uuid]) -> Result<HashMap<Uuid, String>> {
+        let mut urls = HashMap::new();
+        if episode_ids.is_empty() {
+            return Ok(urls);
+        }
+        let rows: Vec<(Uuid, String)> = sqlx::query_as(
+            "SELECT episode_id, url FROM episode_urls
+             WHERE episode_id = ANY($1)
+             ORDER BY episode_id, \"order\"",
+        )
+        .bind(episode_ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        for (id, url) in rows {
+            urls.entry(id).or_insert(url);
+        }
+        Ok(urls)
+    }
+
     async fn update(&self, episode: &Episode) -> Result<()> {
         sqlx::query(
             "UPDATE episodes SET guid = $2, title = $3, description = $4, link = $5,
@@ -1094,6 +1116,62 @@ impl repo::EpisodeActionRepo for PgRepo {
         let rows = q.fetch_all(&self.pool).await.map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
+
+    async fn latest_plays(
+        &self,
+        user_id: Uuid,
+        filter: &LatestPlaysFilter,
+    ) -> Result<Vec<LatestPlay>> {
+        let limit_param = if filter.podcast_id.is_some() {
+            "$3"
+        } else {
+            "$2"
+        };
+        let sql = crate::latest_plays_sql(
+            "$1",
+            filter.podcast_id.map(|_| "$2"),
+            filter.in_progress_only,
+            filter.limit.map(|_| limit_param),
+            "::INT8",
+        );
+        let mut q = sqlx::query_as::<_, PgLatestPlayRow>(sqlx::AssertSqlSafe(sql)).bind(user_id);
+        if let Some(pid) = filter.podcast_id {
+            q = q.bind(pid);
+        }
+        if let Some(limit) = filter.limit {
+            q = q.bind(limit);
+        }
+        let rows = q.fetch_all(&self.pool).await.map_err(db_err)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| LatestPlay {
+                podcast_title: crate::meaningful_title(r.podcast_title, &r.podcast_url),
+                episode_title: crate::meaningful_title(r.episode_title, &r.episode_url),
+                podcast_url: r.podcast_url,
+                podcast_logo_url: r.podcast_logo_url,
+                episode_url: r.episode_url,
+                mimetype: r.mimetype,
+                position: r.pos,
+                total: r.eff_total.and_then(|t| i32::try_from(t).ok()),
+                timestamp: r.ts,
+                device_uid: r.device_uid,
+            })
+            .collect())
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct PgLatestPlayRow {
+    podcast_url: String,
+    podcast_title: Option<String>,
+    podcast_logo_url: Option<String>,
+    episode_url: String,
+    episode_title: Option<String>,
+    mimetype: Option<String>,
+    pos: i32,
+    eff_total: Option<i64>,
+    ts: DateTime<Utc>,
+    device_uid: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

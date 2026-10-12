@@ -341,6 +341,8 @@ fn api_router(state: AppState) -> Router {
         )
         // Current user info + password change + subscription upgrades (authenticated)
         .route("/api/2/me", get(routes::admin::me))
+        .route("/api/2/me/in-progress", get(routes::episodes::in_progress))
+        .route("/api/2/me/positions", get(routes::episodes::positions))
         .route("/api/2/me/password", post(routes::admin::change_password))
         .route("/api/2/me/build", get(routes::health::build_info))
         .route(

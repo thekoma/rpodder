@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, uploadSubscriptionChanges, getDevices, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
-  import { auth } from '$lib/auth.svelte';
+  import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
+  import { subscribe } from '$lib/webDevice';
   import { browser } from '$app/environment';
 
   let query = $state('');
@@ -49,11 +50,16 @@
   }
 
   async function subscribeUrl(url: string, title: string) {
-    if (!auth.username) return;
+    const username = auth.username;
+    if (!username) return;
     subscribing = title;
-    const devices = await getDevices(auth.username);
-    const deviceId = devices.length > 0 ? devices[0].id : 'web';
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [url], []);
+    let ok = true;
+    try {
+      await subscribe(username, url);
+    } catch (e) {
+      if (isAuthError(e)) { subscribing = null; sessionExpired(username); return; }
+      ok = false;
+    }
     subscribing = null;
     subscribeMsg = ok ? `Subscribed to ${title}` : 'Failed';
     setTimeout(() => { subscribeMsg = ''; }, 3000);

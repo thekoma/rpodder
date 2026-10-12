@@ -1,16 +1,24 @@
 <script lang="ts">
-  import { getPodcastEpisodes, uploadSubscriptionChanges, getDevices, getAllSubscriptions, forceUpdateSingleFeed, type PodcastEpisodesResponse } from '$lib/api';
-  import { auth } from '$lib/auth.svelte';
+  import { getPodcastEpisodes, getAllSubscriptions, forceUpdateSingleFeed, type PodcastEpisodesResponse } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
+  import PlayButton from '$lib/components/PlayButton.svelte';
+  import { podcastPositions } from '$lib/positions';
+  import { isPlayable, normalizeUrl, type KnownPosition } from '$lib/playerLogic';
+  import { devicesWith, getWebSettingsCached, subscribe, unsubscribe } from '$lib/webDevice';
 
   let data = $state<PodcastEpisodesResponse | null>(null);
+  // The ?url= value `data` was loaded for (podcastUrl changes before the new data arrives).
+  let dataUrl = $state('');
   let loading = $state(true);
   let isSubscribed = $state(false);
   let subscribing = $state(false);
   let refreshing = $state(false);
   let podcastUrl = $state('');
   let currentPage = $state(0);
+  let subError = $state('');
+  let positions = $state.raw(new Map<string, KnownPosition>());
   let lastUrl = '';
 
   // React to URL changes
@@ -21,47 +29,92 @@
     if (url === lastUrl) return;
     lastUrl = url;
     podcastUrl = url;
+    data = null;
+    dataUrl = '';
+    positions = new Map();
+    subError = '';
     if (!url) { loading = false; return; }
     currentPage = 0;
-    loadData(0);
-    if (auth.username) {
-      getAllSubscriptions(auth.username).then(subs => {
-        isSubscribed = subs.includes(podcastUrl);
-      });
-    }
+    loadData(0).then(() => { if (data && dataUrl === url) loadPositions(url); });
+    refreshSubscribed().catch(() => {});
   });
 
-  function loadData(pg: number) {
+  function loadData(pg: number): Promise<void> {
+    const url = podcastUrl;
     loading = true;
     currentPage = pg;
-    getPodcastEpisodes(podcastUrl, pg).then(d => {
+    return getPodcastEpisodes(url, pg).then(d => {
+      if (url !== podcastUrl) return;
       data = d;
+      dataUrl = url;
       loading = false;
-    }).catch(() => { loading = false; });
+    }).catch(() => { if (url === podcastUrl) loading = false; });
+  }
+
+  async function loadPositions(url: string) {
+    const username = auth.username;
+    if (!username) return;
+    let sync = false;
+    try {
+      sync = (await getWebSettingsCached(username)).syncPositions;
+    } catch (e) {
+      if (isAuthError(e)) { sessionExpired(username); return; }
+    }
+    try {
+      const result = await podcastPositions(username, url, sync);
+      if (url === podcastUrl) positions = result.positions;
+    } catch {
+      // auth errors already handled by podcastPositions
+    }
+  }
+
+  async function refreshSubscribed() {
+    const username = auth.username;
+    if (!username) return;
+    const url = podcastUrl;
+    const subs = await getAllSubscriptions(username);
+    if (url === podcastUrl) isSubscribed = subs.some(s => normalizeUrl(s) === normalizeUrl(url));
   }
 
   async function toggleSubscribe() {
-    if (!auth.username) return;
+    const username = auth.username;
+    if (!username) return;
     subscribing = true;
-    const devices = await getDevices(auth.username);
-    const deviceId = devices.length > 0 ? devices[0].id : 'web';
-    if (isSubscribed) {
-      await uploadSubscriptionChanges(auth.username, deviceId, [], [podcastUrl]);
-      isSubscribed = false;
-    } else {
-      await uploadSubscriptionChanges(auth.username, deviceId, [podcastUrl], []);
-      isSubscribed = true;
+    subError = '';
+    const wasSubscribed = isSubscribed;
+    try {
+      if (wasSubscribed) {
+        const owners = (await devicesWith(username, [podcastUrl])).get(normalizeUrl(podcastUrl)) ?? [];
+        if (owners.length === 0) {
+          subError = 'Not subscribed on any device.';
+        } else {
+          const title = data?.podcast.title || podcastUrl;
+          const names = owners.map(d => d.caption || d.id).join(', ');
+          if (confirm(`Unsubscribe from ${title} on: ${names}?`)) {
+            await unsubscribe(username, owners, podcastUrl);
+          }
+        }
+      } else {
+        await subscribe(username, podcastUrl);
+      }
+      await refreshSubscribed();
+    } catch (e) {
+      if (isAuthError(e)) { sessionExpired(username); return; }
+      subError = wasSubscribed ? "Couldn't unsubscribe, try again." : "Couldn't subscribe, try again.";
+      await refreshSubscribed().catch(() => {});
+    } finally {
+      subscribing = false;
     }
-    subscribing = false;
   }
 
   async function refreshFeed() {
+    const url = podcastUrl;
     refreshing = true;
-    await forceUpdateSingleFeed(podcastUrl);
+    await forceUpdateSingleFeed(url);
     await new Promise(r => setTimeout(r, 3000));
     refreshing = false;
-    getPodcastEpisodes(podcastUrl, currentPage).then(d => {
-      if (d) data = d;
+    getPodcastEpisodes(url, currentPage).then(d => {
+      if (d && url === podcastUrl) { data = d; dataUrl = url; }
     });
   }
 
@@ -112,6 +165,7 @@
                   : 'bg-brand text-bg hover:opacity-90'}">
                 {#if subscribing}...{:else if isSubscribed}Subscribed{:else}+ Subscribe{/if}
               </button>
+              {#if subError}<span class="text-xs text-danger">{subError}</span>{/if}
               <button onclick={refreshFeed} disabled={refreshing}
                 class="px-4 py-1.5 bg-surface border border-border text-text-dim text-xs rounded-lg hover:bg-surface-hover disabled:opacity-50 cursor-pointer">
                 {refreshing ? 'Refreshing...' : 'Refresh Feed'}
@@ -135,6 +189,10 @@
           {#each data.episodes as episode, i}
             <div class="px-5 py-4 hover:bg-surface-hover transition-colors">
               <div class="flex items-start justify-between gap-4">
+                <PlayButton
+                  episode={{ url: episode.url ?? '', title: episode.title, podcastUrl: dataUrl, podcastTitle: data.podcast.title, imageUrl: data.podcast.logo_url, duration: episode.duration }}
+                  playable={isPlayable(episode)}
+                  progress={episode.url ? positions.get(normalizeUrl(episode.url)) : null} />
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
                     <span class="text-xs text-text-dim shrink-0">{currentPage * data.per_page + i + 1}</span>

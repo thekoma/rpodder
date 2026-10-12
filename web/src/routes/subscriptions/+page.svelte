@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { auth } from '$lib/auth.svelte';
-  import { getAllSubscriptions, getPodcastInfo, getDevices, uploadSubscriptionChanges, getSubscriptionUpgrades, type PodcastInfo, type UpgradeableSub } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
+  import { getAllSubscriptions, getPodcastInfo, getSubscriptionUpgrades, type PodcastInfo, type UpgradeableSub } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
+  import ContinueListening from '$lib/components/ContinueListening.svelte';
+  import { normalizeUrl } from '$lib/playerLogic';
+  import { devicesWith, replaceSubscriptions, unsubscribe as unsubscribeFrom } from '$lib/webDevice';
 
   interface SubInfo {
     url: string;
@@ -13,8 +16,9 @@
   let upgrades = $state<UpgradeableSub[]>([]);
   let loading = $state(true);
   let loaded = $state(false);
-  let deviceId = $state('');
+  let busy = $state(false);
   let upgradeMsg = $state('');
+  let errorMsg = $state('');
 
   $effect(() => {
     if (!browser || loaded) return;
@@ -23,55 +27,96 @@
     const username = auth.username;
     if (!username) { goto('/login'); return; }
 
-    Promise.all([getAllSubscriptions(username), getDevices(username), getSubscriptionUpgrades()]).then(([urls, devs, upg]) => {
-      subs = urls.map(url => ({ url, info: null }));
-      deviceId = devs.length > 0 ? devs[0].id : 'web';
-      upgrades = upg;
-      loading = false;
-
-      // Enrich with metadata in background
-      for (let i = 0; i < subs.length; i++) {
-        getPodcastInfo(subs[i].url).then(info => {
-          if (info) subs[i] = { ...subs[i], info };
-        });
-      }
-    }).catch(() => { loading = false; });
+    reload(username).catch(() => {}).finally(() => { loading = false; });
   });
 
-  async function unsubscribe(url: string) {
-    if (!auth.username) return;
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [], [url]);
-    if (ok) {
-      subs = subs.filter(s => s.url !== url);
+  // Re-read subscriptions and upgrades, keeping already fetched metadata.
+  async function reload(username: string) {
+    const known = new Map(subs.map(s => [s.url, s.info]));
+    const [urls, upg] = await Promise.all([getAllSubscriptions(username), getSubscriptionUpgrades()]);
+    subs = urls.map(url => ({ url, info: known.get(url) ?? null }));
+    upgrades = upg;
+
+    // Enrich with metadata in background
+    for (const sub of subs) {
+      if (sub.info) continue;
+      const url = sub.url;
+      getPodcastInfo(url).then(info => {
+        if (!info) return;
+        const i = subs.findIndex(s => s.url === url);
+        if (i >= 0) subs[i] = { ...subs[i], info };
+      });
+    }
+  }
+
+  function flash(msg: string) {
+    upgradeMsg = msg;
+    setTimeout(() => { upgradeMsg = ''; }, 3000);
+  }
+
+  function fail(e: unknown, username: string, msg: string): boolean {
+    if (isAuthError(e)) { sessionExpired(username); return true; }
+    errorMsg = msg;
+    return false;
+  }
+
+  async function unsubscribe(sub: SubInfo) {
+    const username = auth.username;
+    if (!username || busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      const owners = (await devicesWith(username, [sub.url])).get(normalizeUrl(sub.url)) ?? [];
+      if (owners.length === 0) {
+        errorMsg = 'Not subscribed on any device.';
+      } else {
+        const title = sub.info?.title || sub.url;
+        const names = owners.map(d => d.caption || d.id).join(', ');
+        if (confirm(`Unsubscribe from ${title} on: ${names}?`)) {
+          await unsubscribeFrom(username, owners, sub.url);
+        }
+      }
+      await reload(username);
+    } catch (e) {
+      if (fail(e, username, "Couldn't unsubscribe, try again.")) return;
+      await reload(username).catch(() => {});
+    } finally {
+      busy = false;
     }
   }
 
   async function upgradeToHttps(upgrade: UpgradeableSub) {
-    if (!auth.username) return;
-    // Unsubscribe from HTTP, subscribe to HTTPS
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, [upgrade.https_url], [upgrade.http_url]);
-    if (ok) {
-      subs = subs.map(s => s.url === upgrade.http_url ? { ...s, url: upgrade.https_url } : s);
-      upgrades = upgrades.filter(u => u.http_url !== upgrade.http_url);
-      upgradeMsg = `Upgraded "${upgrade.title}" to HTTPS`;
-      setTimeout(() => { upgradeMsg = ''; }, 3000);
+    const username = auth.username;
+    if (!username || busy) return;
+    busy = true;
+    errorMsg = '';
+    try {
+      await replaceSubscriptions(username, [{ from: upgrade.http_url, to: upgrade.https_url }]);
+      flash(`Upgraded "${upgrade.title}" to HTTPS`);
+      await reload(username);
+    } catch (e) {
+      if (fail(e, username, "Couldn't upgrade, try again.")) return;
+      await reload(username).catch(() => {});
+    } finally {
+      busy = false;
     }
   }
 
   async function upgradeAll() {
-    if (!auth.username) return;
-    const add = upgrades.map(u => u.https_url);
-    const remove = upgrades.map(u => u.http_url);
-    const ok = await uploadSubscriptionChanges(auth.username, deviceId, add, remove);
-    if (ok) {
-      subs = subs.map(s => {
-        const upg = upgrades.find(u => u.http_url === s.url);
-        return upg ? { ...s, url: upg.https_url } : s;
-      });
-      const count = upgrades.length;
-      upgrades = [];
-      upgradeMsg = `Upgraded ${count} subscription${count > 1 ? 's' : ''} to HTTPS`;
-      setTimeout(() => { upgradeMsg = ''; }, 3000);
+    const username = auth.username;
+    if (!username || busy || upgrades.length === 0) return;
+    busy = true;
+    errorMsg = '';
+    const count = upgrades.length;
+    try {
+      await replaceSubscriptions(username, upgrades.map(u => ({ from: u.http_url, to: u.https_url })));
+      flash(`Upgraded ${count} subscription${count > 1 ? 's' : ''} to HTTPS`);
+      await reload(username);
+    } catch (e) {
+      if (fail(e, username, "Couldn't upgrade, try again.")) return;
+      await reload(username).catch(() => {});
+    } finally {
+      busy = false;
     }
   }
 </script>
@@ -82,8 +127,13 @@
     <a href="/discover" class="px-4 py-2 bg-brand text-bg text-sm font-medium rounded-lg hover:opacity-90 transition-opacity no-underline">+ Discover</a>
   </div>
 
+  <ContinueListening />
+
   {#if upgradeMsg}
     <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{upgradeMsg}</div>
+  {/if}
+  {#if errorMsg}
+    <div class="bg-surface border border-danger/40 text-danger px-4 py-2 rounded-lg text-sm text-center">{errorMsg}</div>
   {/if}
 
   <!-- HTTPS upgrade banner -->
@@ -94,8 +144,8 @@
           <span class="text-yellow-500">🔒</span>
           <h3 class="text-sm font-semibold">HTTPS upgrades available</h3>
         </div>
-        <button onclick={upgradeAll}
-          class="px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 cursor-pointer">
+        <button onclick={upgradeAll} disabled={busy}
+          class="px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer">
           Upgrade all ({upgrades.length})
         </button>
       </div>
@@ -106,8 +156,8 @@
         {#each upgrades as upgrade}
           <div class="flex items-center justify-between py-1">
             <span class="text-sm truncate flex-1">{upgrade.title || upgrade.http_url}</span>
-            <button onclick={() => upgradeToHttps(upgrade)}
-              class="text-xs text-brand hover:text-blue-400 cursor-pointer ml-2 shrink-0">
+            <button onclick={() => upgradeToHttps(upgrade)} disabled={busy}
+              class="disabled:opacity-50 text-xs text-brand hover:text-blue-400 cursor-pointer ml-2 shrink-0">
               Upgrade
             </button>
           </div>
@@ -143,7 +193,8 @@
             </div>
           </a>
           <button
-            onclick={(e) => { e.preventDefault(); e.stopPropagation(); unsubscribe(sub.url); }}
+            onclick={(e) => { e.preventDefault(); e.stopPropagation(); unsubscribe(sub); }}
+            disabled={busy}
             class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-danger hover:text-red-400 bg-bg/80 px-2 py-1 rounded cursor-pointer"
           >
             Unsubscribe

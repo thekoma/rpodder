@@ -104,6 +104,8 @@ export interface EpisodeListItem {
   released?: string;
   duration?: number;
   mimetype?: string;
+  url?: string;
+  media?: boolean;
 }
 
 export interface PodcastEpisodesResponse {
@@ -458,4 +460,131 @@ export async function uploadSubscriptionChanges(
     body: JSON.stringify({ add, remove }),
   });
   return resp.ok;
+}
+
+// --- Strict helpers (throw ApiError on any non-2xx; status 0 for network errors) ---
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message?: string) {
+    super(message ?? `HTTP ${status}`);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+const enc = encodeURIComponent;
+
+async function strictRequest(path: string, options: RequestInit = {}): Promise<Response> {
+  let resp: Response;
+  try {
+    resp = await request(path, options);
+  } catch (e) {
+    throw new ApiError(0, e instanceof Error ? e.message : 'Network error');
+  }
+  if (!resp.ok) throw new ApiError(resp.status);
+  return resp;
+}
+
+async function strictJson<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const resp = await strictRequest(path, options);
+  try {
+    return (await resp.json()) as T;
+  } catch {
+    throw new ApiError(resp.status, 'Invalid JSON response');
+  }
+}
+
+export async function fetchDevices(username: string): Promise<Device[]> {
+  return strictJson<Device[]>(`/api/2/devices/${enc(username)}.json`);
+}
+
+export async function fetchSubscriptions(username: string, device: string): Promise<string[]> {
+  return strictJson<string[]>(`/subscriptions/${enc(username)}/${enc(device)}.json`);
+}
+
+export async function fetchSyncStatus(username: string): Promise<SyncStatus> {
+  return strictJson<SyncStatus>(`/api/2/sync-devices/${enc(username)}.json`);
+}
+
+export async function fetchAccountSettings(username: string): Promise<Record<string, unknown>> {
+  return strictJson<Record<string, unknown>>(`/api/2/settings/${enc(username)}/account.json`);
+}
+
+export async function postAccountSettings(username: string, set: Record<string, unknown>): Promise<void> {
+  await strictRequest(`/api/2/settings/${enc(username)}/account.json`, {
+    method: 'POST',
+    body: JSON.stringify({ set }),
+  });
+}
+
+export async function postSubscriptionChanges(username: string, device: string, add: string[], remove: string[]): Promise<void> {
+  await strictRequest(`/api/2/subscriptions/${enc(username)}/${enc(device)}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ add, remove }),
+  });
+}
+
+export async function postSyncStatus(
+  username: string,
+  synchronize: (string[] | { devices: string[]; name?: string })[],
+  stopSynchronize?: string[]
+): Promise<void> {
+  const body: Record<string, unknown> = { synchronize };
+  if (stopSynchronize && stopSynchronize.length > 0) body['stop-synchronize'] = stopSynchronize;
+  await strictRequest(`/api/2/sync-devices/${enc(username)}.json`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function postDevice(username: string, deviceId: string, caption: string, type: string): Promise<void> {
+  await strictRequest(`/api/2/devices/${enc(username)}/${enc(deviceId)}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ caption, type }),
+  });
+}
+
+export interface EpisodeActionOut {
+  podcast: string;
+  episode: string;
+  device?: string;
+  action: string;
+  timestamp: string;
+  started?: number;
+  position?: number;
+  total?: number;
+}
+
+export async function uploadEpisodeActions(
+  username: string,
+  actions: EpisodeActionOut[],
+  opts?: { keepalive?: boolean }
+): Promise<void> {
+  await strictRequest(`/api/2/episodes/${enc(username)}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ actions }),
+    keepalive: opts?.keepalive ?? false,
+  });
+}
+
+export interface PlayItem {
+  podcast_url: string;
+  podcast_title: string | null;
+  podcast_logo_url: string | null;
+  episode_url: string;
+  episode_title: string | null;
+  mimetype: string | null;
+  position: number;
+  total: number | null;
+  timestamp: string;
+  device: string | null;
+}
+
+export async function getInProgress(limit: number): Promise<PlayItem[]> {
+  return strictJson<PlayItem[]>(`/api/2/me/in-progress?limit=${enc(String(limit))}`);
+}
+
+export async function getPositions(podcastUrl: string): Promise<PlayItem[]> {
+  return strictJson<PlayItem[]>(`/api/2/me/positions?podcast=${enc(podcastUrl)}`);
 }

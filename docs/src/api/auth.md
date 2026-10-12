@@ -87,6 +87,43 @@ Returns info about the authenticated user.
 }
 ```
 
+## Listening progress (rpodder extension)
+
+Used by the web player. Both endpoints require authentication and only ever return the caller's own data.
+
+```
+GET /api/2/me/in-progress?limit=20
+```
+
+Episodes you started and have not finished ("continue listening"), newest first. For each episode it takes your latest `play` action from any device and keeps it when the position is past 0, more than 30 seconds remain (using the action's `total`, else the episode duration), and the episode was not marked unplayed (`new`) afterwards. `limit` defaults to 20 and is clamped to 1–50.
+
+```
+GET /api/2/me/positions?podcast={feed_url}
+```
+
+Your latest `play` position for every episode of one podcast, finished or not. An unknown podcast returns `[]`.
+
+**Response** (both):
+
+```json
+[
+  {
+    "podcast_url": "https://example.com/feed.xml",
+    "podcast_title": "Example",
+    "podcast_logo_url": "https://example.com/logo.png",
+    "episode_url": "https://example.com/ep1.mp3",
+    "episode_title": "Episode 1",
+    "mimetype": "audio/mpeg",
+    "position": 1234,
+    "total": 3600,
+    "timestamp": "2026-10-12T10:00:00",
+    "device": "phone"
+  }
+]
+```
+
+Titles are `null` when rpodder only knows the URL (the episode or podcast was first seen in an action upload).
+
 ## Change password
 
 ```

@@ -119,6 +119,13 @@ GET /api/2/data/podcast/episodes.json?url={feed_url}&page=0&per_page=30
 
 Paginated episode list for a podcast.
 
+Each episode carries, besides `title`, `description`, `released`, `duration` and `mimetype`:
+
+| Field | Description |
+|-------|-------------|
+| `url` | The episode's primary URL: its enclosure (media file), or its `<link>` page when the feed item has no enclosure. This is the URL clients use as `episode` in episode actions. |
+| `media` | `true` when `url` is a media file, `false` when it is a web page. |
+
 ## Tags
 
 ```
