@@ -11,6 +11,18 @@ use rpodder_core::types::User;
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
+/// Prefixes of the one-time tokens (account activation, password reset) that
+/// share the `sessions` table with login sessions. They never authenticate a
+/// request: the activation and reset endpoints look them up themselves.
+pub const ACTIVATE_TOKEN_PREFIX: &str = "activate-";
+pub const RESET_TOKEN_PREFIX: &str = "reset-";
+/// Prefix of login sessions created by the SSO callback.
+pub const SSO_SESSION_PREFIX: &str = "sso-";
+
+fn is_one_time_token(token: &str) -> bool {
+    token.starts_with(ACTIVATE_TOKEN_PREFIX) || token.starts_with(RESET_TOKEN_PREFIX)
+}
+
 /// Key used to store the authenticated user in request extensions.
 #[derive(Clone)]
 pub struct AuthUser(pub User);
@@ -52,7 +64,12 @@ async fn require_auth(state: AppState, mut req: Request, next: Next) -> Response
 }
 
 fn extract_session_token(req: &Request) -> Option<String> {
-    let cookie_header = req.headers().get(header::COOKIE)?.to_str().ok()?;
+    session_token(req.headers())
+}
+
+/// The `sessionid` cookie of the request, if any.
+pub fn session_token(headers: &axum::http::HeaderMap) -> Option<String> {
+    let cookie_header = headers.get(header::COOKIE)?.to_str().ok()?;
     cookie_header
         .split(';')
         .filter_map(|c| c.trim().strip_prefix("sessionid="))
@@ -69,6 +86,10 @@ fn extract_basic_auth(req: &Request) -> Option<(String, String)> {
 }
 
 async fn resolve_session(state: &AppState, token: &str) -> Option<User> {
+    if is_one_time_token(token) {
+        return None;
+    }
+
     let session = match &*state.db {
         Db::Postgres(pool) => {
             let repo = PgRepo::new(pool.clone());

@@ -232,6 +232,15 @@ pub trait SessionRepo: Send + Sync {
         token: &str,
     ) -> impl std::future::Future<Output = Result<Option<Session>>> + Send;
     fn delete(&self, token: &str) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Delete every row of the user (login sessions and pending one-time
+    /// tokens) except the `keep` token and tokens starting with
+    /// `keep_prefix`, if given. Returns the number of rows removed.
+    fn delete_for_user(
+        &self,
+        user_id: Uuid,
+        keep: Option<&str>,
+        keep_prefix: Option<&str>,
+    ) -> impl std::future::Future<Output = Result<u64>> + Send;
     fn delete_expired(&self) -> impl std::future::Future<Output = Result<u64>> + Send;
 }
 

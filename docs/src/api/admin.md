@@ -60,6 +60,8 @@ POST /api/admin/users/{username}/activate
 POST /api/admin/users/{username}/deactivate
 ```
 
+Deactivating revokes all of the user's sessions and pending activation or reset links; re-activating does not bring them back.
+
 ## Set role
 
 ```
@@ -75,6 +77,8 @@ POST /api/admin/users/{username}/password
 ```
 
 **Body**: `{"password": "newpassword"}`
+
+Revokes all of the user's sessions (an admin setting their own password keeps the session making the request). A pending activation link stays valid.
 
 ## Send password reset email
 

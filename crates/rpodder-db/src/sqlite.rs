@@ -393,6 +393,13 @@ impl repo::PodcastRepo for SqliteRepo {
         let now = Utc::now();
         let now_s = now.to_rfc3339();
 
+        // Podcast and URL rows commit together; a concurrent caller that
+        // claimed the URL first wins and its podcast is returned instead.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         sqlx::query(
             "INSERT INTO podcasts (id, title, created_at, updated_at)
              VALUES (?, ?, ?, ?)",
@@ -401,20 +408,36 @@ impl repo::PodcastRepo for SqliteRepo {
         .bind(url)
         .bind(&now_s)
         .bind(&now_s)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        sqlx::query(
+        let claimed = sqlx::query(
             "INSERT INTO podcast_urls (id, podcast_id, url, \"order\")
-             VALUES (?, ?, ?, 0)",
+             VALUES (?, ?, ?, 0)
+             ON CONFLICT (url) DO NOTHING",
         )
         .bind(uuid_str(&url_id))
         .bind(uuid_str(&id))
         .bind(url)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            // Roll back first: the lookup needs the pool's only connection.
+            tx.rollback()
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let podcast = self.find_by_url(url).await?.ok_or_else(|| {
+                AppError::Internal(format!("podcast URL {url} claimed but not found"))
+            })?;
+            return Ok((podcast, false));
+        }
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let podcast = Podcast {
             id,
@@ -867,6 +890,24 @@ impl From<SqliteEpisodeRow> for Episode {
     }
 }
 
+impl SqliteRepo {
+    async fn episode_by_url(&self, url: &str) -> Result<Option<Episode>> {
+        let row: Option<SqliteEpisodeRow> = sqlx::query_as(
+            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
+                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
+                    e.created_at, e.updated_at
+             FROM episodes e
+             JOIN episode_urls eu ON eu.episode_id = e.id
+             WHERE eu.url = ?",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(row.map(Into::into))
+    }
+}
+
 impl repo::EpisodeRepo for SqliteRepo {
     async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
         let row: Option<(String,)> = sqlx::query_as(
@@ -880,21 +921,8 @@ impl repo::EpisodeRepo for SqliteRepo {
     }
 
     async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
-        let existing: Option<SqliteEpisodeRow> = sqlx::query_as(
-            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
-                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
-                    e.created_at, e.updated_at
-             FROM episodes e
-             JOIN episode_urls eu ON eu.episode_id = e.id
-             WHERE eu.url = ?",
-        )
-        .bind(url)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-        if let Some(row) = existing {
-            return Ok((row.into(), false));
+        if let Some(episode) = self.episode_by_url(url).await? {
+            return Ok((episode, false));
         }
 
         let id = Uuid::now_v7();
@@ -902,6 +930,13 @@ impl repo::EpisodeRepo for SqliteRepo {
         let now = Utc::now();
         let now_s = now.to_rfc3339();
 
+        // Episode and URL rows commit together; a concurrent caller that
+        // claimed the URL first wins and its episode is returned instead.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         sqlx::query(
             "INSERT INTO episodes (id, podcast_id, title, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?)",
@@ -911,20 +946,36 @@ impl repo::EpisodeRepo for SqliteRepo {
         .bind(url)
         .bind(&now_s)
         .bind(&now_s)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        sqlx::query(
+        let claimed = sqlx::query(
             "INSERT INTO episode_urls (id, episode_id, url, \"order\")
-             VALUES (?, ?, ?, 0)",
+             VALUES (?, ?, ?, 0)
+             ON CONFLICT (url) DO NOTHING",
         )
         .bind(uuid_str(&url_id))
         .bind(uuid_str(&id))
         .bind(url)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            // Roll back first: the lookup needs the pool's only connection.
+            tx.rollback()
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            let episode = self.episode_by_url(url).await?.ok_or_else(|| {
+                AppError::Internal(format!("episode URL {url} claimed but not found"))
+            })?;
+            return Ok((episode, false));
+        }
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
 
         let episode = Episode {
             id,
@@ -1770,6 +1821,26 @@ impl repo::SessionRepo for SqliteRepo {
         Ok(())
     }
 
+    async fn delete_for_user(
+        &self,
+        user_id: Uuid,
+        keep: Option<&str>,
+        keep_prefix: Option<&str>,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "DELETE FROM sessions
+             WHERE user_id = ?1 AND token IS NOT ?2
+               AND (?3 IS NULL OR substr(token, 1, length(?3)) <> ?3)",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(keep)
+        .bind(keep_prefix)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(result.rows_affected())
+    }
+
     async fn delete_expired(&self) -> Result<u64> {
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query("DELETE FROM sessions WHERE expires_at <= ?")
@@ -2164,6 +2235,55 @@ mod tests {
             assert!(found.is_some());
             assert_eq!(found.unwrap().user_id, user.id);
         }
+    }
+
+    #[tokio::test]
+    async fn delete_sessions_for_user_keeps_other_users() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "hash", None)
+            .await
+            .unwrap();
+        let bob = UserRepo::create(&repo, "bob", "hash", None).await.unwrap();
+        for (user, token) in [
+            (&alice, "alice-1"),
+            (&alice, "reset-alice"),
+            (&alice, "activate-alice"),
+            (&bob, "bob-1"),
+        ] {
+            let session = Session {
+                id: Uuid::now_v7(),
+                user_id: user.id,
+                token: token.to_string(),
+                expires_at: Utc::now() + Duration::hours(1),
+                created_at: Utc::now(),
+            };
+            SessionRepo::create(&repo, &session).await.unwrap();
+        }
+
+        assert_eq!(
+            repo.delete_for_user(alice.id, Some("alice-1"), Some("activate-"))
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(repo.find_by_token("alice-1").await.unwrap().is_some());
+        assert!(repo.find_by_token("reset-alice").await.unwrap().is_none());
+        assert!(
+            repo.find_by_token("activate-alice")
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        assert_eq!(repo.delete_for_user(alice.id, None, None).await.unwrap(), 2);
+        assert!(repo.find_by_token("alice-1").await.unwrap().is_none());
+        assert!(
+            repo.find_by_token("activate-alice")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(repo.find_by_token("bob-1").await.unwrap().is_some());
     }
 
     // === DeviceRepo tests ===
@@ -2655,6 +2775,67 @@ mod tests {
             .await
             .unwrap();
         assert!(not_found.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_get_or_create_episode_leaves_no_orphans() {
+        let repo = setup().await;
+        let (podcast, _) = PodcastRepo::get_or_create_for_url(&repo, "http://test.com/feed")
+            .await
+            .unwrap();
+
+        let mut tasks = tokio::task::JoinSet::new();
+        for _ in 0..16 {
+            let repo = repo.clone();
+            tasks.spawn(async move {
+                EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://test.com/race.mp3")
+                    .await
+            });
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut created = 0;
+        while let Some(res) = tasks.join_next().await {
+            let (episode, was_created) = res.unwrap().expect("every caller gets the episode");
+            ids.insert(episode.id);
+            created += usize::from(was_created);
+        }
+        assert_eq!(ids.len(), 1, "all callers see the same episode");
+        assert_eq!(created, 1, "exactly one caller creates it");
+
+        let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM episodes WHERE podcast_id = ?")
+            .bind(uuid_str(&podcast.id))
+            .fetch_one(&repo.pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1, "no orphan episode rows");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_get_or_create_podcast_leaves_no_orphans() {
+        let repo = setup().await;
+
+        let mut tasks = tokio::task::JoinSet::new();
+        for _ in 0..16 {
+            let repo = repo.clone();
+            tasks.spawn(async move {
+                PodcastRepo::get_or_create_for_url(&repo, "http://test.com/race-feed").await
+            });
+        }
+        let mut ids = std::collections::HashSet::new();
+        let mut created = 0;
+        while let Some(res) = tasks.join_next().await {
+            let (podcast, was_created) = res.unwrap().expect("every caller gets the podcast");
+            ids.insert(podcast.id);
+            created += usize::from(was_created);
+        }
+        assert_eq!(ids.len(), 1, "all callers see the same podcast");
+        assert_eq!(created, 1, "exactly one caller creates it");
+
+        let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM podcasts")
+            .fetch_one(&repo.pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 1, "no orphan podcast rows");
     }
 
     #[tokio::test]

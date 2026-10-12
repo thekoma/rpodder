@@ -25,14 +25,31 @@ http_post_status "${RPODDER_URL}/api/admin/feeds/update/single?url=${FEED_ENCODE
 player_episodes() {
   http_body "${RPODDER_URL}/api/2/data/podcast/episodes.json?url=${FEED_ENCODED}" -u "$AUTH_HEADER"
 }
-# Counts only the feed's titled episodes: a concurrent on-demand fetch can leave
-# untitled duplicate rows without a URL (pre-existing get_or_create race).
+# A burst of on-demand fetches (the podcast is still untitled) racing the
+# admin update above: concurrent episode creation must not fail or duplicate.
+BURST_DIR=$(mktemp -d)
+pids=""
+for i in 1 2 3 4 5; do
+  http_status "${RPODDER_URL}/api/2/data/podcast/episodes.json?url=${FEED_ENCODED}" \
+    -u "$AUTH_HEADER" >"${BURST_DIR}/${i}" &
+  pids="$pids $!"
+done
+# shellcheck disable=SC2086
+wait $pids
+for i in 1 2 3 4 5; do
+  assert_status "concurrent on-demand fetch ${i}" "200" "$(cat "${BURST_DIR}/${i}")"
+done
+rm -rf "$BURST_DIR"
+
 episodes_ready() {
   [ "$(player_episodes | jq '[.episodes[] | select((.title | startswith("Player ep")) and .url != null)] | length' 2>/dev/null)" = "3" ]
 }
 wait_until "player feed episodes indexed" episodes_ready
 
 body=$(player_episodes)
+# The concurrent fetches above may not leave an untitled duplicate row
+# without a URL behind.
+assert_json_len "no orphan episodes from concurrent fetches" "$body" '.episodes' "3"
 EP1_URL=$(echo "$body" | jq -r '.episodes[] | select(.title == "Player ep1") | .url')
 assert_json "ep1 url is the WAV enclosure" "$body" \
   '.episodes[] | select(.title == "Player ep1") | .url' "${MOCK_PUBLIC}/media/tone.wav"

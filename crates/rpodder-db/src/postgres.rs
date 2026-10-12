@@ -383,6 +383,9 @@ impl repo::PodcastRepo for PgRepo {
         let url_id = Uuid::now_v7();
         let now = Utc::now();
 
+        // Podcast and URL rows commit together; a concurrent caller that
+        // claimed the URL first wins and its podcast is returned instead.
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
         let row: PodcastRow = sqlx::query_as(
             "INSERT INTO podcasts (id, title, created_at, updated_at)
              VALUES ($1, $2, $3, $3)
@@ -393,26 +396,31 @@ impl repo::PodcastRepo for PgRepo {
         .bind(id)
         .bind(url) // Use URL as initial title
         .bind(now)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(db_err)?;
 
-        sqlx::query(
+        let claimed = sqlx::query(
             "INSERT INTO podcast_urls (id, podcast_id, url, \"order\")
-             VALUES ($1, $2, $3, 0)",
+             VALUES ($1, $2, $3, 0)
+             ON CONFLICT (url) DO NOTHING",
         )
         .bind(url_id)
         .bind(id)
         .bind(url)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(|e| match &e {
-            sqlx::Error::Database(dbe) if dbe.is_unique_violation() => {
-                // Race condition: another request created this URL. Fetch it.
-                AppError::Conflict("podcast URL already exists".into())
-            }
-            _ => db_err(e),
-        })?;
+        .map_err(db_err)?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            tx.rollback().await.map_err(db_err)?;
+            let podcast = self.find_by_url(url).await?.ok_or_else(|| {
+                AppError::Internal(format!("podcast URL {url} claimed but not found"))
+            })?;
+            return Ok((podcast, false));
+        }
+        tx.commit().await.map_err(db_err)?;
 
         Ok((row.into(), true))
     }
@@ -829,6 +837,24 @@ impl From<EpisodeRow> for Episode {
     }
 }
 
+impl PgRepo {
+    async fn episode_by_url(&self, url: &str) -> Result<Option<Episode>> {
+        let row: Option<EpisodeRow> = sqlx::query_as(
+            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
+                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
+                    e.created_at, e.updated_at
+             FROM episodes e
+             JOIN episode_urls eu ON eu.episode_id = e.id
+             WHERE eu.url = $1",
+        )
+        .bind(url)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+}
+
 impl repo::EpisodeRepo for PgRepo {
     async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
         let row: Option<(Uuid,)> = sqlx::query_as(
@@ -842,28 +868,17 @@ impl repo::EpisodeRepo for PgRepo {
     }
 
     async fn get_or_create_for_url(&self, podcast_id: Uuid, url: &str) -> Result<(Episode, bool)> {
-        // Check if episode URL already exists
-        let existing: Option<EpisodeRow> = sqlx::query_as(
-            "SELECT e.id, e.podcast_id, e.guid, e.title, e.description, e.link,
-                    e.released, e.duration, e.filesize, e.mimetype, e.content_hash,
-                    e.created_at, e.updated_at
-             FROM episodes e
-             JOIN episode_urls eu ON eu.episode_id = e.id
-             WHERE eu.url = $1",
-        )
-        .bind(url)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(db_err)?;
-
-        if let Some(row) = existing {
-            return Ok((row.into(), false));
+        if let Some(episode) = self.episode_by_url(url).await? {
+            return Ok((episode, false));
         }
 
         let id = Uuid::now_v7();
         let url_id = Uuid::now_v7();
         let now = Utc::now();
 
+        // Episode and URL rows commit together; a concurrent caller that
+        // claimed the URL first wins and its episode is returned instead.
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
         let row: EpisodeRow = sqlx::query_as(
             "INSERT INTO episodes (id, podcast_id, title, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $4)
@@ -875,20 +890,31 @@ impl repo::EpisodeRepo for PgRepo {
         .bind(podcast_id)
         .bind(url)
         .bind(now)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(db_err)?;
 
-        sqlx::query(
+        let claimed = sqlx::query(
             "INSERT INTO episode_urls (id, episode_id, url, \"order\")
-             VALUES ($1, $2, $3, 0)",
+             VALUES ($1, $2, $3, 0)
+             ON CONFLICT (url) DO NOTHING",
         )
         .bind(url_id)
         .bind(id)
         .bind(url)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
-        .map_err(db_err)?;
+        .map_err(db_err)?
+        .rows_affected()
+            == 1;
+        if !claimed {
+            tx.rollback().await.map_err(db_err)?;
+            let episode = self.episode_by_url(url).await?.ok_or_else(|| {
+                AppError::Internal(format!("episode URL {url} claimed but not found"))
+            })?;
+            return Ok((episode, false));
+        }
+        tx.commit().await.map_err(db_err)?;
 
         Ok((row.into(), true))
     }
@@ -1721,6 +1747,26 @@ impl repo::SessionRepo for PgRepo {
             .await
             .map_err(db_err)?;
         Ok(())
+    }
+
+    async fn delete_for_user(
+        &self,
+        user_id: Uuid,
+        keep: Option<&str>,
+        keep_prefix: Option<&str>,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            "DELETE FROM sessions
+             WHERE user_id = $1 AND token IS DISTINCT FROM $2
+               AND ($3::text IS NULL OR left(token, length($3::text)) <> $3::text)",
+        )
+        .bind(user_id)
+        .bind(keep)
+        .bind(keep_prefix)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(result.rows_affected())
     }
 
     async fn delete_expired(&self) -> Result<u64> {

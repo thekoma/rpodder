@@ -1,6 +1,7 @@
 //! Tests that drive the real `api_router` (handlers + middleware as wired in
 //! `main.rs`) over in-memory SQLite.
 
+mod auth_hardening;
 mod episode_sync;
 mod subscription_sync;
 mod web_player;
@@ -10,7 +11,7 @@ use std::sync::Arc;
 use axum::{
     Router,
     body::Body,
-    http::{Request, StatusCode, header},
+    http::{HeaderMap, Request, StatusCode, header},
 };
 use chrono::{Duration, Utc};
 use serde_json::Value;
@@ -36,10 +37,15 @@ pub struct TestUser {
 
 impl TestApp {
     pub async fn new() -> Self {
+        Self::with_config(serde_json::json!({})).await
+    }
+
+    /// `config` holds `AppConfig` fields; the rest keep their defaults.
+    pub async fn with_config(config: Value) -> Self {
         let db = Db::connect("sqlite::memory:").await.unwrap();
         db.migrate("../../migrations").await.unwrap();
         let db = Arc::new(db);
-        let config: AppConfig = serde_json::from_value(serde_json::json!({})).unwrap();
+        let config: AppConfig = serde_json::from_value(config).unwrap();
         let router = crate::api_router(AppState {
             db: db.clone(),
             config: Arc::new(config),
@@ -100,12 +106,19 @@ impl TestApp {
     }
 
     async fn send(&self, req: Request<Body>) -> (StatusCode, Value) {
+        let (status, _, json) = self.send_full(req).await;
+        (status, json)
+    }
+
+    /// Like `send`, but also returns the response headers.
+    pub async fn send_full(&self, req: Request<Body>) -> (StatusCode, HeaderMap, Value) {
         let resp = self.router.clone().oneshot(req).await.unwrap();
         let status = resp.status();
+        let headers = resp.headers().clone();
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .unwrap();
         let json = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-        (status, json)
+        (status, headers, json)
     }
 }

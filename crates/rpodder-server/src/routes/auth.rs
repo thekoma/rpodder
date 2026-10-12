@@ -90,7 +90,7 @@ pub async fn logout(State(state): State<AppState>, req: Request) -> StatusCode {
     StatusCode::OK
 }
 
-fn generate_token() -> String {
+pub(crate) fn generate_token() -> String {
     use rand::RngExt;
     let mut rng = rand::rng();
     (0..64)

@@ -106,8 +106,10 @@ impl Db {
             // SQLite permits only one writer. A single pooled connection makes
             // all access serialize in the async pool, so contenders queue
             // instead of colliding on the file lock and erroring with
-            // "(code: 5) database is locked". Repo methods never hold a
-            // connection across queries, so this cannot deadlock.
+            // "(code: 5) database is locked". A repo method holding a
+            // transaction must not query `self.pool` until the transaction
+            // ends: the second acquire would wait for the only connection,
+            // which it holds itself (deadlock until the acquire timeout).
             let pool = sqlx::sqlite::SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect_with(connect_opts)

@@ -2,8 +2,8 @@
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
-    response::{IntoResponse, Redirect},
+    http::{HeaderMap, StatusCode, header},
+    response::{AppendHeaders, IntoResponse, Redirect, Response},
 };
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -30,11 +30,73 @@ macro_rules! with_repo {
     };
 }
 
+/// Cookie binding an SSO login to the browser that started it: `sso_login`
+/// stores the `state` it sends to the provider, `sso_callback` requires the
+/// provider to echo the same value back.
+const SSO_STATE_COOKIE: &str = "rpodder_sso_state";
+
+fn sso_state_cookie(value: &str, max_age: u32) -> String {
+    format!("{SSO_STATE_COOKIE}={value}; Path=/auth/sso; HttpOnly; SameSite=Lax; Max-Age={max_age}")
+}
+
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|c| c.trim().strip_prefix(name)?.strip_prefix('='))
+        .map(str::to_string)
+}
+
+/// Whether the request reached the host of `base_url`. Unknown (no Host
+/// header, unparsable URL) counts as yes.
+fn on_base_url_host(headers: &HeaderMap, base_url: &str) -> bool {
+    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+        return true;
+    };
+    let Ok(url) = reqwest::Url::parse(base_url) else {
+        return true;
+    };
+    let Some(base_host) = url.host_str() else {
+        return true;
+    };
+    let base = match url.port() {
+        Some(port) => format!("{base_host}:{port}"),
+        None => base_host.to_string(),
+    };
+    host.eq_ignore_ascii_case(&base)
+}
+
+#[derive(Deserialize)]
+pub struct LoginParams {
+    pub canonical: Option<String>,
+}
+
 /// GET /auth/sso/login — redirect to OIDC provider
-pub async fn sso_login(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+pub async fn sso_login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<LoginParams>,
+) -> Result<Response, StatusCode> {
     let config = &state.config;
     if !config.oauth_configured() {
         return Err(StatusCode::NOT_FOUND);
+    }
+
+    // The state cookie lands on the host serving this request, but the
+    // provider sends the browser back to `{base_url}/auth/sso/callback`.
+    // Start over on that host, or the callback arrives without the cookie.
+    // `canonical` stops a redirect loop behind a proxy that rewrites Host.
+    if !config.base_url.is_empty()
+        && params.canonical.is_none()
+        && !on_base_url_host(&headers, &config.base_url)
+    {
+        let login = format!(
+            "{}/auth/sso/login?canonical=1",
+            config.base_url.trim_end_matches('/')
+        );
+        return Ok(Redirect::temporary(&login).into_response());
     }
 
     let base_url = if config.base_url.is_empty() {
@@ -69,7 +131,7 @@ pub async fn sso_login(State(state): State<AppState>) -> Result<impl IntoRespons
         .as_str()
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let state_param = Uuid::now_v7().to_string();
+    let state_param = crate::routes::auth::generate_token();
 
     // Request groups scope if admin group mapping is configured
     let scope = if config.oauth_admin_group.is_empty() {
@@ -85,25 +147,60 @@ pub async fn sso_login(State(state): State<AppState>) -> Result<impl IntoRespons
         urlencoding::encode(&redirect_uri),
     );
 
-    Ok(Redirect::temporary(&auth_url))
+    Ok((
+        [(header::SET_COOKIE, sso_state_cookie(&state_param, 600))],
+        Redirect::temporary(&auth_url),
+    )
+        .into_response())
 }
 
 #[derive(Deserialize)]
 pub struct CallbackParams {
-    pub code: String,
-    #[allow(dead_code)]
+    /// Absent when the provider reports an `error` (e.g. the user denied access).
+    pub code: Option<String>,
     pub state: Option<String>,
+    pub error: Option<String>,
 }
 
 /// GET /auth/sso/callback — handle OIDC callback, create/login user
 pub async fn sso_callback(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<CallbackParams>,
-) -> Result<impl IntoResponse, StatusCode> {
-    let config = &state.config;
-    if !config.oauth_configured() {
-        return Err(StatusCode::NOT_FOUND);
+) -> Response {
+    if !state.config.oauth_configured() {
+        return StatusCode::NOT_FOUND.into_response();
     }
+
+    // A callback this browser did not start (no or another state cookie) is
+    // refused: otherwise a crafted link logs the victim into the attacker's
+    // account (login CSRF). The state is single-use, so it is cleared on
+    // every outcome.
+    let clear_state = AppendHeaders([(header::SET_COOKIE, sso_state_cookie("", 0))]);
+    let expected = cookie_value(&headers, SSO_STATE_COOKIE);
+    let state_matches = matches!(
+        (&expected, &params.state),
+        (Some(expected), Some(got)) if !expected.is_empty() && expected == got
+    );
+    if !state_matches {
+        tracing::warn!("SSO callback with missing or mismatched state");
+        return (StatusCode::BAD_REQUEST, clear_state).into_response();
+    }
+
+    let Some(code) = params.code.as_deref() else {
+        tracing::warn!(error = ?params.error, "SSO provider returned no code");
+        return (StatusCode::UNAUTHORIZED, clear_state).into_response();
+    };
+
+    match complete_sso_login(&state, code).await {
+        Ok(resp) => (clear_state, resp).into_response(),
+        Err(status) => (status, clear_state).into_response(),
+    }
+}
+
+/// Exchange the authorization code, find or create the user and open a session.
+async fn complete_sso_login(state: &AppState, code: &str) -> Result<Response, StatusCode> {
+    let config = &state.config;
 
     let base_url = if config.base_url.is_empty() {
         format!("http://{}:{}", config.host, config.port)
@@ -138,7 +235,7 @@ pub async fn sso_callback(
         .post(token_endpoint)
         .form(&[
             ("grant_type", "authorization_code"),
-            ("code", &params.code),
+            ("code", code),
             ("redirect_uri", &redirect_uri),
             ("client_id", &config.oauth_client_id),
             ("client_secret", &config.oauth_client_secret),
@@ -229,8 +326,9 @@ pub async fn sso_callback(
         Some(u) => u,
         None => {
             // Auto-create user from SSO
-            let hash = crate::middleware::auth::hash_password(&Uuid::now_v7().to_string())
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let hash =
+                crate::middleware::auth::hash_password(&crate::routes::auth::generate_token())
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             with_repo!(state, |repo| {
                 UserRepo::create(&repo, &username, &hash, email.as_deref()).await
             })
@@ -250,7 +348,11 @@ pub async fn sso_callback(
     }
 
     // Create session
-    let token = format!("sso-{}", Uuid::now_v7());
+    let token = format!(
+        "{}{}",
+        crate::middleware::auth::SSO_SESSION_PREFIX,
+        crate::routes::auth::generate_token()
+    );
     let duration_days = config.session_duration_days;
     let session = Session {
         id: Uuid::now_v7(),
@@ -275,9 +377,10 @@ pub async fn sso_callback(
     };
 
     Ok((
-        [(axum::http::header::SET_COOKIE, cookie)],
+        [(header::SET_COOKIE, cookie)],
         axum::response::Html(sso_redirect_html(&username, is_admin_now)),
-    ))
+    )
+        .into_response())
 }
 
 /// Small HTML page that stores the username in localStorage before going to /.

@@ -7,7 +7,9 @@ rpodder provides multiple ways to manage passwords, designed to work with both l
 Any authenticated user can change their password from **Settings** (`/settings`):
 
 - **Local users**: provide the current password + new password
-- **SSO users**: leave "Current Password" blank, just enter the new password. The active session proves identity
+- **SSO users**: leave "Current Password" blank, just enter the new password. This works only in a session opened through SSO; any other session gets 403 without the current password
+
+Changing the password logs out every other browser and app that uses a session cookie; they have to log in again. Apps that send the password with every request (HTTP Basic Auth) just need the new password. The same happens after a password reset or when an admin sets the password.
 
 API:
 

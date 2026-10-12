@@ -232,12 +232,26 @@ async fn cmd_user(cfg: config::AppConfig, action: UserAction) -> anyhow::Result<
                     .bind(&username)
                     .execute(pool)
                     .await?;
+                    sqlx::query(
+                        "DELETE FROM sessions WHERE user_id IN
+                         (SELECT id FROM users WHERE LOWER(username) = LOWER($1))",
+                    )
+                    .bind(&username)
+                    .execute(pool)
+                    .await?;
                 }
                 Db::Sqlite(pool) => {
                     sqlx::query("UPDATE users SET is_active = 0 WHERE username = ? COLLATE NOCASE")
                         .bind(&username)
                         .execute(pool)
                         .await?;
+                    sqlx::query(
+                        "DELETE FROM sessions WHERE user_id IN
+                         (SELECT id FROM users WHERE username = ? COLLATE NOCASE)",
+                    )
+                    .bind(&username)
+                    .execute(pool)
+                    .await?;
                 }
             }
 

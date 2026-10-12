@@ -24,7 +24,7 @@ RPODDER_OAUTH_PROVIDER_NAME=Authentik
 RPODDER_BASE_URL=https://podcast.example.com
 ```
 
-The `BASE_URL` is critical — it's used to construct the OAuth callback URL: `{BASE_URL}/auth/sso/callback`.
+The `BASE_URL` is critical — it's used to construct the OAuth callback URL: `{BASE_URL}/auth/sso/callback`. An SSO login started on any other address (LAN IP, `.local` name) is first redirected to `BASE_URL`, and finishes there.
 
 ## Provider setup
 

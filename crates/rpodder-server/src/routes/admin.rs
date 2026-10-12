@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use rpodder_core::repo::{DeviceRepo, SubscriptionRepo, UserRepo};
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{
+    ACTIVATE_TOKEN_PREFIX, AuthUser, RESET_TOKEN_PREFIX, SSO_SESSION_PREFIX,
+};
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
@@ -190,7 +192,7 @@ pub async fn create_user(
         });
 
         // Generate activation token and store it
-        let token = uuid::Uuid::now_v7().to_string();
+        let token = crate::routes::auth::generate_token();
         match &*state.db {
             rpodder_db::Db::Postgres(pool) => {
                 let _ = sqlx::query(
@@ -199,7 +201,7 @@ pub async fn create_user(
                 )
                 .bind(uuid::Uuid::now_v7())
                 .bind(user.id)
-                .bind(format!("activate-{token}"))
+                .bind(format!("{ACTIVATE_TOKEN_PREFIX}{token}"))
                 .bind(chrono::Utc::now() + chrono::Duration::hours(48))
                 .bind(chrono::Utc::now())
                 .execute(pool)
@@ -212,7 +214,7 @@ pub async fn create_user(
                 )
                 .bind(uuid::Uuid::now_v7().to_string())
                 .bind(user.id.to_string())
-                .bind(format!("activate-{token}"))
+                .bind(format!("{ACTIVATE_TOKEN_PREFIX}{token}"))
                 .bind((chrono::Utc::now() + chrono::Duration::hours(48)).to_rfc3339())
                 .bind(chrono::Utc::now().to_rfc3339())
                 .execute(pool)
@@ -250,7 +252,7 @@ pub async fn activate_account(
     Query(params): Query<std::collections::HashMap<String, String>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let token = params.get("token").ok_or(StatusCode::BAD_REQUEST)?;
-    let activate_token = format!("activate-{token}");
+    let activate_token = format!("{ACTIVATE_TOKEN_PREFIX}{token}");
 
     use rpodder_core::repo::SessionRepo;
     let session = with_repo!(state, |repo| {
@@ -309,6 +311,7 @@ pub async fn deactivate_user(
         UserRepo::set_active(&repo, user.id, false).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    revoke_sessions(&state, user.id, Revoke::Everything).await?;
 
     Ok(StatusCode::OK)
 }
@@ -374,7 +377,7 @@ pub async fn admin_reset_password(
         return Ok(Json(serde_json::json!({ "error": "SMTP not configured" })).into_response());
     }
 
-    let token = uuid::Uuid::now_v7().to_string();
+    let token = crate::routes::auth::generate_token();
     store_reset_token(&state, user.id, &token).await?;
     let _ = crate::email::send_password_reset_email(&state.config, email, &username, &token);
 
@@ -390,6 +393,8 @@ pub struct SetPasswordRequest {
 /// POST /api/admin/users/{username}/password — set password directly (admin)
 pub async fn admin_set_password(
     State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    headers: axum::http::HeaderMap,
     Path(username): Path<String>,
     Json(body): Json<SetPasswordRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -402,6 +407,11 @@ pub async fn admin_set_password(
     let hash = crate::middleware::auth::hash_password(&body.password)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // An admin setting their own password stays logged in, like
+    // `change_password`.
+    let current = crate::middleware::auth::session_token(&headers);
+    let keep = current.as_deref().filter(|_| user.id == auth_user.0.id);
+    revoke_sessions(&state, user.id, Revoke::Logins { keep }).await?;
     with_repo!(state, |repo| {
         UserRepo::update_password(&repo, user.id, &hash).await
     })
@@ -422,13 +432,15 @@ pub struct ChangePasswordRequest {
 }
 
 /// POST /api/2/me/password — change own password (authenticated)
-/// SSO-only users (who never set a password) can omit old_password.
+/// Only a session opened through SSO (`sso-` cookie) may omit old_password.
 pub async fn change_password(
     State(state): State<AppState>,
     Extension(auth_user): Extension<AuthUser>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let user = &auth_user.0;
+    let current = crate::middleware::auth::session_token(&headers);
 
     // If old_password provided, verify it
     if let Some(old_pw) = &body.old_password {
@@ -439,14 +451,19 @@ pub async fn change_password(
             )
                 .into_response());
         }
-    } else {
-        // Only allow skipping old_password for SSO-only users
-        // SSO users have a random UUID hash that they can't know
-        // We check if the password was ever set by the user by trying to verify
-        // an empty string — if it matches, they set an empty password (unlikely)
-        // This is a heuristic: SSO users have random hashes that won't match anything.
-        // For safety, we only allow no-old-password if user logged in via session (which they did).
-        // The session itself is proof of identity.
+    } else if !current
+        .as_deref()
+        .is_some_and(|t| t.starts_with(SSO_SESSION_PREFIX))
+    {
+        // Only an SSO login may skip it: SSO-created accounts have a random
+        // password nobody knows. Anyone else must prove they know the current
+        // one, or a stolen session cookie could take over the account (the
+        // change below logs out every other session).
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "current password required" })),
+        )
+            .into_response());
     }
 
     if body.new_password.len() < 4 {
@@ -460,6 +477,15 @@ pub async fn change_password(
     let hash = crate::middleware::auth::hash_password(&body.new_password)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Log out every other client; the session making the change stays.
+    revoke_sessions(
+        &state,
+        user.id,
+        Revoke::Logins {
+            keep: current.as_deref(),
+        },
+    )
+    .await?;
     with_repo!(state, |repo| {
         UserRepo::update_password(&repo, user.id, &hash).await
     })
@@ -493,7 +519,7 @@ pub async fn request_password_reset(
     });
 
     if let Ok(Some(user)) = user {
-        let token = uuid::Uuid::now_v7().to_string();
+        let token = crate::routes::auth::generate_token();
         let _ = store_reset_token(&state, user.id, &token).await;
         let _ = crate::email::send_password_reset_email(
             &state.config,
@@ -519,7 +545,7 @@ pub async fn confirm_password_reset(
 ) -> Result<impl IntoResponse, StatusCode> {
     use rpodder_core::repo::SessionRepo;
 
-    let reset_token = format!("reset-{}", body.token);
+    let reset_token = format!("{RESET_TOKEN_PREFIX}{}", body.token);
 
     let session = with_repo!(state, |repo| {
         SessionRepo::find_by_token(&repo, &reset_token).await
@@ -534,19 +560,46 @@ pub async fn confirm_password_reset(
     let hash = crate::middleware::auth::hash_password(&body.new_password)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    // Consumes this reset token too
+    revoke_sessions(&state, session.user_id, Revoke::Logins { keep: None }).await?;
     with_repo!(state, |repo| {
         UserRepo::update_password(&repo, session.user_id, &hash).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Delete the reset token
-    with_repo!(state, |repo| {
-        SessionRepo::delete(&repo, &reset_token).await
-    })
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
     tracing::info!(user_id = %session.user_id, "password reset confirmed");
     Ok(Json(serde_json::json!({ "status": "password reset" })))
+}
+
+/// What `revoke_sessions` deletes.
+enum Revoke<'a> {
+    /// Deactivation: every session and pending link, activation included.
+    Everything,
+    /// Password change: sessions (except `keep`, the caller's own) and
+    /// pending reset links. A pending activation link stays valid.
+    Logins { keep: Option<&'a str> },
+}
+
+/// Delete the user's sessions and pending one-time tokens, so a password
+/// change or deactivation logs out the other clients. Password changes call
+/// it before storing the new hash: a failure then leaves clients logged out,
+/// never the new password stored with the old sessions still valid.
+async fn revoke_sessions(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    scope: Revoke<'_>,
+) -> Result<(), StatusCode> {
+    use rpodder_core::repo::SessionRepo;
+    let (keep, keep_prefix) = match scope {
+        Revoke::Everything => (None, None),
+        Revoke::Logins { keep } => (keep, Some(ACTIVATE_TOKEN_PREFIX)),
+    };
+    let revoked = with_repo!(state, |repo| {
+        SessionRepo::delete_for_user(&repo, user_id, keep, keep_prefix).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::info!(user_id = %user_id, revoked, "sessions revoked");
+    Ok(())
 }
 
 /// Store a password reset token in the sessions table.
@@ -555,7 +608,7 @@ async fn store_reset_token(
     user_id: uuid::Uuid,
     token: &str,
 ) -> Result<(), StatusCode> {
-    let reset_token = format!("reset-{token}");
+    let reset_token = format!("{RESET_TOKEN_PREFIX}{token}");
     match &*state.db {
         rpodder_db::Db::Postgres(pool) => {
             sqlx::query(

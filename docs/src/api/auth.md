@@ -139,7 +139,9 @@ POST /api/2/me/password
 }
 ```
 
-SSO users can omit `old_password`.
+`old_password` may be omitted only by a session opened through SSO (SSO-created accounts have a random password nobody knows); otherwise the request returns 403 `{"error": "current password required"}`.
+
+On success every other session of the user is revoked: other browsers and apps that use cookies must log in again. The session making the change stays logged in (with Basic Auth there is none to keep). A pending activation link stays valid.
 
 ## Password reset (request)
 
@@ -157,7 +159,9 @@ Always returns 200 (anti-enumeration). Sends email if account exists and SMTP is
 POST /api/2/password-reset/confirm
 ```
 
-**Body**: `{"token": "uuid-from-email", "new_password": "newpass123"}`
+**Body**: `{"token": "token-from-email", "new_password": "newpass123"}`
+
+On success every session of the user is revoked, so all web browsers and apps that use cookies must log in again (Basic Auth clients just use the new password). Reset and activation tokens are single-purpose: sending one as the `sessionid` cookie returns 401.
 
 ## HTTPS upgrades
 
@@ -186,3 +190,5 @@ GET /auth/sso/login      → redirects to OIDC provider
 GET /auth/sso/callback   → handles OAuth callback
 GET /auth/sso/info       → returns SSO configuration status
 ```
+
+`/auth/sso/login` sets a short-lived `rpodder_sso_state` cookie (10 minutes, path `/auth/sso`) holding the `state` sent to the provider. The callback returns 400 unless the provider echoes the same `state`, so a login must finish in the browser that started it. With two login tabs open at once, only the most recent one completes. When `RPODDER_BASE_URL` is set and the login starts on another host (for example the LAN IP), `/auth/sso/login` first redirects to `{BASE_URL}/auth/sso/login?canonical=1`, so the cookie lives on the host the provider returns to. If the provider reports an error instead of a code (the user denied access), the callback returns 401.

@@ -73,7 +73,7 @@ Each user shows:
 
 ## Deactivating vs deleting
 
-- **Deactivate**: the user can't log in, but their data (subscriptions, episode actions, devices) is preserved. Useful for temporary suspension
+- **Deactivate**: the user can't log in, but their data (subscriptions, episode actions, devices) is preserved. Useful for temporary suspension. All of the user's sessions are revoked, so after re-activation every app and browser has to log in again
 - **Delete**: the user and all their data is permanently removed. Cannot be undone
 
 ## Registration modes
