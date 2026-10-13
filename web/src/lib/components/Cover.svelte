@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fileLetter } from '$lib/format';
+  import { fileLetter } from '#lib/format.js';
 
   // Covers come in three fixed scales so rows share one baseline.
   let { src = null, title = '', size = 'md', class: extra = '' }: {

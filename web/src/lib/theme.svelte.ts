@@ -1,5 +1,5 @@
 // Light / dark / follow-the-system, remembered per browser.
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 

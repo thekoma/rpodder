@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Monitor, Sun, Moon } from '@lucide/svelte';
-  import { theme, type ThemeChoice } from '$lib/theme.svelte';
+  import { theme, type ThemeChoice } from '#lib/theme.svelte.js';
 
   const options: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
     { value: 'system', label: 'System', icon: Monitor },

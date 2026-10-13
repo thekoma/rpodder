@@ -1,5 +1,5 @@
 // Auth state using Svelte 5 runes
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { goto } from '$app/navigation';
 import { ApiError } from './api';
 import { sameUser } from './playerLogic';

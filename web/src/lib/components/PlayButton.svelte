@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Play, Pause } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { player, type PlayerEpisode } from '$lib/player.svelte';
-  import { normalizeUrl } from '$lib/playerLogic';
+  import { auth } from '#lib/auth.svelte.js';
+  import { player, type PlayerEpisode } from '#lib/player.svelte.js';
+  import { normalizeUrl } from '#lib/playerLogic.js';
 
   let { episode, playable, size = 'md' }: {
     episode: PlayerEpisode;

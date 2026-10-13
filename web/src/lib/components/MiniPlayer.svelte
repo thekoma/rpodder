@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Play, Pause, RotateCcw, RotateCw, X, ChevronDown, Download, CircleAlert } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { player } from '$lib/player.svelte';
-  import { isSafeMediaUrl } from '$lib/playerLogic';
-  import { formatClock } from '$lib/format';
+  import { auth } from '#lib/auth.svelte.js';
+  import { player } from '#lib/player.svelte.js';
+  import { isSafeMediaUrl } from '#lib/playerLogic.js';
+  import { formatClock } from '#lib/format.js';
   import Cover from './Cover.svelte';
 
   const RATES = [1, 1.25, 1.5, 2];

@@ -2,13 +2,13 @@
   import {
     Smartphone, Tablet, Laptop, Monitor, Server, Radio, Globe, FileDown, Pencil, Trash2, X, Plus, Link2, Unlink,
   } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { getDevices, updateDevice, deleteDevice, getSyncStatus, updateSyncStatus, renameSyncGroup, type Device, type SyncStatus } from '$lib/api';
+  import { auth } from '#lib/auth.svelte.js';
+  import { getDevices, updateDevice, deleteDevice, getSyncStatus, updateSyncStatus, renameSyncGroup, type Device, type SyncStatus } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { WEB_DEVICE_ID } from '$lib/webDevice';
-  import { plural } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import { browser } from '$app/env';
+  import { WEB_DEVICE_ID } from '#lib/webDevice.js';
+  import { plural } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
 
   let devices = $state<Device[]>([]);
   let syncStatus = $state<SyncStatus | null>(null);

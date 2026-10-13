@@ -3,17 +3,17 @@
   import {
     LibraryBig, Compass, History, MonitorSmartphone, ShieldCheck, Settings, BookOpen, LogOut, ChevronDown, CircleUserRound,
   } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { logout as apiLogout, getBuildInfo, getMe, type BuildInfo } from '$lib/api';
+  import { auth } from '#lib/auth.svelte.js';
+  import { logout as apiLogout, getBuildInfo, getMe, type BuildInfo } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { page } from '$app/stores';
-  import MiniPlayer from '$lib/components/MiniPlayer.svelte';
-  import Toasts from '$lib/components/Toasts.svelte';
-  import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
-  import { player } from '$lib/player.svelte';
-  import { localClear } from '$lib/positions';
-  import { getWebSettings, peekWebSettings } from '$lib/webDevice';
+  import { browser } from '$app/env';
+  import { page } from '$app/state';
+  import MiniPlayer from '#lib/components/MiniPlayer.svelte';
+  import Toasts from '#lib/components/Toasts.svelte';
+  import ThemeSwitch from '#lib/components/ThemeSwitch.svelte';
+  import { player } from '#lib/player.svelte.js';
+  import { localClear } from '#lib/positions.js';
+  import { getWebSettings, peekWebSettings } from '#lib/webDevice.js';
 
   let { children } = $props();
   let buildInfo = $state<BuildInfo | null>(null);
@@ -28,7 +28,7 @@
     { href: '/devices', label: 'Devices', icon: MonitorSmartphone, match: (p: string) => p.startsWith('/devices') },
   ];
 
-  let path = $derived($page.url.pathname);
+  let path = $derived(page.url.pathname);
   let authPage = $derived(['/login', '/register', '/reset-password'].includes(path));
   let hasPlayer = $derived(auth.loggedIn && !!player.episode);
 

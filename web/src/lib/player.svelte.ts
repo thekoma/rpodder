@@ -1,5 +1,5 @@
 // Persistent web audio player with gpodder position sync.
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { getPositions, uploadEpisodeActions, type PlayItem } from './api';
 import { auth, isAuthError, onSessionEnd, sessionExpired } from './auth.svelte';
 import { localGet, localSet, podcastPositions } from './positions';

@@ -1,3 +1,4 @@
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -5,7 +6,19 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [
     tailwindcss(),
-    sveltekit(),
+    // SvelteKit 3 takes its configuration here (svelte.config.js is gone).
+    sveltekit({
+      adapter: adapter({
+        pages: 'dist',
+        assets: 'dist',
+        fallback: 'index.html', // SPA mode
+      }),
+      paths: {
+        // When embedded in rpodder, the UI is served from /ui/
+        // When standalone, it's served from /
+        base: process.env.RPODDER_UI_BASE || '',
+      },
+    }),
   ],
   server: {
     proxy: {

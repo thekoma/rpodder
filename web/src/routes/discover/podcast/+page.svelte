@@ -2,20 +2,20 @@
   import {
     ArrowLeft, Copy, Check, Plus, BookmarkCheck, RefreshCw, Globe, Download, ExternalLink, ChevronLeft, ChevronRight,
   } from '@lucide/svelte';
-  import { getPodcastEpisodes, forceUpdateSingleFeed, type PodcastEpisodesResponse } from '$lib/api';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { browser } from '$app/environment';
-  import { page } from '$app/stores';
-  import PlayButton from '$lib/components/PlayButton.svelte';
-  import Cover from '$lib/components/Cover.svelte';
-  import { podcastPositions } from '$lib/positions';
-  import { isPlayable, isSafeMediaUrl, normalizeUrl, type KnownPosition } from '$lib/playerLogic';
-  import { shownProgress } from '$lib/progress.svelte';
-  import { formatDate, formatDuration, minutesLeft, plainText, plural } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import { getPodcastEpisodes, forceUpdateSingleFeed, type PodcastEpisodesResponse } from '#lib/api.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { browser } from '$app/env';
+  import { page } from '$app/state';
+  import PlayButton from '#lib/components/PlayButton.svelte';
+  import Cover from '#lib/components/Cover.svelte';
+  import { podcastPositions } from '#lib/positions.js';
+  import { isPlayable, isSafeMediaUrl, normalizeUrl, type KnownPosition } from '#lib/playerLogic.js';
+  import { shownProgress } from '#lib/progress.svelte.js';
+  import { formatDate, formatDuration, minutesLeft, plainText, plural } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
   import {
     fetchHoldings, getWebSettingsCached, groupIndex, subscribe, unsubscribe, type Holdings as HoldingsData,
-  } from '$lib/webDevice';
+  } from '#lib/webDevice.js';
 
   let data = $state<PodcastEpisodesResponse | null>(null);
   // The ?url= value `data` was loaded for (podcastUrl changes before the new data arrives).
@@ -36,7 +36,7 @@
   // React to URL changes
   $effect(() => {
     if (!browser) return;
-    const params = new URLSearchParams($page.url.search);
+    const params = new URLSearchParams(page.url.search);
     const url = params.get('url') || '';
     if (url === lastUrl) return;
     lastUrl = url;

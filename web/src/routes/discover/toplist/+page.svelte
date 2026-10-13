@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getToplist, type PodcastInfo } from '$lib/api';
-  import { browser } from '$app/environment';
-  import Cover from '$lib/components/Cover.svelte';
+  import { getToplist, type PodcastInfo } from '#lib/api.js';
+  import { browser } from '$app/env';
+  import Cover from '#lib/components/Cover.svelte';
 
   let podcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);

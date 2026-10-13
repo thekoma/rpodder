@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { browser } from '$app/environment';
-  import { getInProgress, type PlayItem } from '$lib/api';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { localInProgress } from '$lib/positions';
-  import { isPlayable } from '$lib/playerLogic';
-  import { getWebSettingsCached } from '$lib/webDevice';
-  import { shownProgress } from '$lib/progress.svelte';
-  import { episodeFallbackTitle, feedFallbackTitle, minutesLeft } from '$lib/format';
+  import { browser } from '$app/env';
+  import { getInProgress, type PlayItem } from '#lib/api.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { localInProgress } from '#lib/positions.js';
+  import { isPlayable } from '#lib/playerLogic.js';
+  import { getWebSettingsCached } from '#lib/webDevice.js';
+  import { shownProgress } from '#lib/progress.svelte.js';
+  import { episodeFallbackTitle, feedFallbackTitle, minutesLeft } from '#lib/format.js';
   import PlayButton from './PlayButton.svelte';
   import Cover from './Cover.svelte';
 

@@ -1,10 +1,10 @@
 <script lang="ts">
   import { Rss } from '@lucide/svelte';
   import { goto } from '$app/navigation';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { looksLikeFeedUrl } from '$lib/format';
-  import { notify } from '$lib/toast.svelte';
-  import { subscribe } from '$lib/webDevice';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { looksLikeFeedUrl } from '#lib/format.js';
+  import { notify } from '#lib/toast.svelte.js';
+  import { subscribe } from '#lib/webDevice.js';
 
   // Subscribe to a feed by its address, then open it.
   let { value = $bindable(''), autofocus = false }: { value?: string; autofocus?: boolean } = $props();

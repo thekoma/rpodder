@@ -1,10 +1,10 @@
 <script lang="ts">
   import { ChevronLeft, ChevronRight } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { getHistory, type HistoryItem } from '$lib/api';
+  import { auth } from '#lib/auth.svelte.js';
+  import { getHistory, type HistoryItem } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { dayLabel, feedFallbackTitle, formatClock, formatTime } from '$lib/format';
+  import { browser } from '$app/env';
+  import { dayLabel, feedFallbackTitle, formatClock, formatTime } from '#lib/format.js';
 
   const PAGE_SIZE = 50;
 

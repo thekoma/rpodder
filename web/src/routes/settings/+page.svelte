@@ -1,13 +1,13 @@
 <script lang="ts">
   import { FileDown, FileText, Braces, TriangleAlert } from '@lucide/svelte';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { changeMyPassword, getMe, type MeInfo } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { changeMyPassword, getMe, type MeInfo } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { player } from '$lib/player.svelte';
-  import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
-  import { notify } from '$lib/toast.svelte';
-  import { WEB_DEVICE_ID, getWebSettings, groupLabel, joinSyncGroup, setSyncPositions, type WebSettings } from '$lib/webDevice';
+  import { browser } from '$app/env';
+  import { player } from '#lib/player.svelte.js';
+  import ThemeSwitch from '#lib/components/ThemeSwitch.svelte';
+  import { notify } from '#lib/toast.svelte.js';
+  import { WEB_DEVICE_ID, getWebSettings, groupLabel, joinSyncGroup, setSyncPositions, type WebSettings } from '#lib/webDevice.js';
 
   let me = $state<MeInfo | null>(null);
   let oldPassword = $state('');

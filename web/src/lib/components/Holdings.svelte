@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Device } from '$lib/api';
+  import type { Device } from '#lib/api.js';
 
   // Which of the user's devices hold a feed: one mark per device, filled when
   // the device is subscribed, in its sync group's colour.

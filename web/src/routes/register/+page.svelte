@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { register } from '$lib/api';
+  import { register } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import AuthFrame from '$lib/components/AuthFrame.svelte';
-  import { notify } from '$lib/toast.svelte';
+  import AuthFrame from '#lib/components/AuthFrame.svelte';
+  import { notify } from '#lib/toast.svelte.js';
 
   let username = $state('');
   let password = $state('');

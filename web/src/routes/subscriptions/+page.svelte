@@ -1,19 +1,19 @@
 <script lang="ts">
   import { Plus, FileDown, Lock, BookmarkMinus, Search, Compass, X } from '@lucide/svelte';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { getAllSubscriptions, getHistory, getPodcastInfo, getSubscriptionUpgrades, type PodcastInfo, type UpgradeableSub } from '$lib/api';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { getAllSubscriptions, getHistory, getPodcastInfo, getSubscriptionUpgrades, type PodcastInfo, type UpgradeableSub } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import ContinueListening from '$lib/components/ContinueListening.svelte';
-  import Cover from '$lib/components/Cover.svelte';
-  import Holdings from '$lib/components/Holdings.svelte';
-  import AddFeed from '$lib/components/AddFeed.svelte';
-  import { normalizeUrl } from '$lib/playerLogic';
-  import { feedFallbackTitle, formatDate, groupByLetter, plural } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import { browser } from '$app/env';
+  import ContinueListening from '#lib/components/ContinueListening.svelte';
+  import Cover from '#lib/components/Cover.svelte';
+  import Holdings from '#lib/components/Holdings.svelte';
+  import AddFeed from '#lib/components/AddFeed.svelte';
+  import { normalizeUrl } from '#lib/playerLogic.js';
+  import { feedFallbackTitle, formatDate, groupByLetter, plural } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
   import {
     fetchHoldings, groupIndex, replaceSubscriptions, unsubscribe as unsubscribeFrom, type Holdings as HoldingsData,
-  } from '$lib/webDevice';
+  } from '#lib/webDevice.js';
 
   interface SubInfo {
     url: string;

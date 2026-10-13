@@ -1,18 +1,18 @@
 <script lang="ts">
   import { KeyRound, Clock } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
-  import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '$lib/api';
+  import { auth } from '#lib/auth.svelte.js';
+  import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { page } from '$app/stores';
-  import AuthFrame from '$lib/components/AuthFrame.svelte';
+  import { browser } from '$app/env';
+  import { page } from '$app/state';
+  import AuthFrame from '#lib/components/AuthFrame.svelte';
 
   let username = $state('');
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
   let ssoInfo = $state<SsoInfo | null>(null);
-  let expired = $derived($page.url.searchParams.get('expired') === '1');
+  let expired = $derived(page.url.searchParams.get('expired') === '1');
 
   $effect(() => {
     if (!browser) return;

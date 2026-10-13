@@ -1,9 +1,9 @@
 <script lang="ts">
   import { MailCheck, CircleCheck } from '@lucide/svelte';
-  import { confirmPasswordReset, requestPasswordReset } from '$lib/api';
+  import { confirmPasswordReset, requestPasswordReset } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import AuthFrame from '$lib/components/AuthFrame.svelte';
+  import { browser } from '$app/env';
+  import AuthFrame from '#lib/components/AuthFrame.svelte';
 
   let token = $state('');
   let email = $state('');

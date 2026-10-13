@@ -1,13 +1,13 @@
 <script lang="ts">
   import { BookOpen, Plus, Check } from '@lucide/svelte';
-  import { getTrending, getSsoInfo, type ExternalPodcast } from '$lib/api';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { subscribe as subscribeEverywhere } from '$lib/webDevice';
-  import { browser } from '$app/environment';
+  import { getTrending, getSsoInfo, type ExternalPodcast } from '#lib/api.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { subscribe as subscribeEverywhere } from '#lib/webDevice.js';
+  import { browser } from '$app/env';
   import { untrack } from 'svelte';
-  import Cover from '$lib/components/Cover.svelte';
-  import { plainText, uniqueByUrl } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import Cover from '#lib/components/Cover.svelte';
+  import { plainText, uniqueByUrl } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
 
   const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
   const LANGS = [

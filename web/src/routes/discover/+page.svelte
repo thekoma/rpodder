@@ -1,14 +1,14 @@
 <script lang="ts">
   import { Search, LoaderCircle, Rss, BookOpen, Plus, Check } from '@lucide/svelte';
-  import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { subscribe } from '$lib/webDevice';
-  import { browser } from '$app/environment';
+  import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, type PodcastInfo, type TagInfo, type ExternalPodcast } from '#lib/api.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { subscribe } from '#lib/webDevice.js';
+  import { browser } from '$app/env';
   import { goto } from '$app/navigation';
-  import Cover from '$lib/components/Cover.svelte';
-  import AddFeed from '$lib/components/AddFeed.svelte';
-  import { looksLikeFeedUrl, plainText, uniqueByUrl } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import Cover from '#lib/components/Cover.svelte';
+  import AddFeed from '#lib/components/AddFeed.svelte';
+  import { looksLikeFeedUrl, plainText, uniqueByUrl } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
 
   let query = $state('');
   let localResults = $state<PodcastInfo[]>([]);

@@ -1,15 +1,15 @@
 <script lang="ts">
   import { RefreshCw, UserPlus, X, KeyRound, Mail, ShieldCheck, ShieldOff, UserX, UserCheck, Trash2 } from '@lucide/svelte';
-  import { auth } from '$lib/auth.svelte';
+  import { auth } from '#lib/auth.svelte.js';
   import {
     getAdminUsers, getAdminStats, createAdminUser, deactivateUser, activateUser,
     setUserRole, deleteUser, forceUpdateFeeds, getBuildInfo,
     adminResetPassword, adminSetPassword,
     type AdminUser, type AdminStats, type BuildInfo
-  } from '$lib/api';
+  } from '#lib/api.js';
   import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import { browser } from '$app/env';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
 
   let users = $state<AdminUser[]>([]);
   let adminStats = $state<AdminStats | null>(null);

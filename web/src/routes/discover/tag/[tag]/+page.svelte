@@ -1,13 +1,13 @@
 <script lang="ts">
   import { ArrowLeft, Plus, Check } from '@lucide/svelte';
-  import { getPodcastsForTag, type PodcastInfo } from '$lib/api';
-  import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
-  import { subscribe as subscribeEverywhere } from '$lib/webDevice';
-  import { browser } from '$app/environment';
-  import { page } from '$app/stores';
-  import Cover from '$lib/components/Cover.svelte';
-  import { plainText } from '$lib/format';
-  import { notify, notifyError } from '$lib/toast.svelte';
+  import { getPodcastsForTag, type PodcastInfo } from '#lib/api.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
+  import { subscribe as subscribeEverywhere } from '#lib/webDevice.js';
+  import { browser } from '$app/env';
+  import { page } from '$app/state';
+  import Cover from '#lib/components/Cover.svelte';
+  import { plainText } from '#lib/format.js';
+  import { notify, notifyError } from '#lib/toast.svelte.js';
 
   let podcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);
@@ -18,7 +18,7 @@
   // React to URL changes (fixes SPA navigation)
   $effect(() => {
     if (!browser) return;
-    const newTag = $page.params.tag || '';
+    const newTag = page.params.tag || '';
     if (newTag === tag) return;
     tag = newTag;
     loading = true;
