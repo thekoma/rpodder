@@ -51,7 +51,7 @@ cargo fmt --all -- --check           # check formatting
 
 # Web UI (Svelte)
 cd web && bun install && bun run build  # build frontend → web/dist/
-cd web && bun run dev                   # dev server on :5173, proxies API to :3005
+cd web && bun run dev                   # dev server on :5173, proxies API to :3006
 ```
 
 **Important**: The CI workflow needs `web/dist/` to exist for rust-embed. The CI creates a placeholder automatically. For local builds, run `bun run build` in `web/` first, or use `--no-default-features`.
@@ -94,7 +94,7 @@ docker compose --profile frontend up -d
 
 - `Dockerfile` — Multi-stage: `oven/bun` (frontend) → `rust:bookworm` (backend) → `debian:bookworm-slim` (runtime)
 - `Dockerfile.dev` — cargo-watch for live reload
-- `docker-compose.yml` — Profiles: default (PG+dev), release (PG+release), sqlite, frontend
+- `docker-compose.yml` — Profiles: dev (PG + cargo-watch), release (PG + release build), sqlite, frontend, test (mock RSS for the E2E suite)
 - `.env.oauth` — OAuth2 config (gitignored), loaded by release profile
 
 **NEVER destroy Docker volumes** (`-v` flag) without asking — the user's podcast data persists there.
