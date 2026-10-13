@@ -37,18 +37,23 @@ pub async fn login(
         created_at: Utc::now(),
     };
 
-    let create_result = match &*state.db {
+    // Only while the credentials checked by the middleware still hold: a
+    // password change or deactivation that lands meanwhile refuses the login.
+    let hash = Some(auth_user.0.password_hash.as_str());
+    let created = match &*state.db {
         Db::Postgres(pool) => {
             let repo = PgRepo::new(pool.clone());
-            SessionRepo::create(&repo, &session).await
+            SessionRepo::create_login(&repo, &session, hash).await
         }
         Db::Sqlite(pool) => {
             let repo = SqliteRepo::new(pool.clone());
-            SessionRepo::create(&repo, &session).await
+            SessionRepo::create_login(&repo, &session, hash).await
         }
     };
 
-    create_result.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !created.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     let max_age = u64::from(duration_days) * 24 * 3600;
     let cookie = format!(

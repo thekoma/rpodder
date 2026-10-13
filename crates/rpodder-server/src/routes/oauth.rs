@@ -362,8 +362,14 @@ async fn complete_sso_login(state: &AppState, code: &str) -> Result<Response, St
         created_at: Utc::now(),
     };
 
-    with_repo!(state, |repo| SessionRepo::create(&repo, &session).await)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Refused if the account was deactivated since it was looked up.
+    let created = with_repo!(state, |repo| {
+        SessionRepo::create_login(&repo, &session, None).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !created {
+        return Err(StatusCode::FORBIDDEN);
+    }
 
     // Set session cookie and also store username in localStorage via a redirect page
     let max_age = u64::from(duration_days) * 24 * 3600;

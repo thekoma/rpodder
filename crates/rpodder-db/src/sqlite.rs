@@ -1822,6 +1822,26 @@ impl repo::SessionRepo for SqliteRepo {
         Ok(())
     }
 
+    async fn create_login(&self, session: &Session, password_hash: Option<&str>) -> Result<bool> {
+        // A single INSERT takes SQLite's write lock before it reads `users`,
+        // so it can't interleave with a password change or deactivation.
+        let result = sqlx::query(
+            "INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+             SELECT ?1, id, ?2, ?3, ?4 FROM users
+             WHERE id = ?5 AND is_active = 1 AND (?6 IS NULL OR password_hash = ?6)",
+        )
+        .bind(uuid_str(&session.id))
+        .bind(&session.token)
+        .bind(session.expires_at.to_rfc3339())
+        .bind(session.created_at.to_rfc3339())
+        .bind(uuid_str(&session.user_id))
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(result.rows_affected() == 1)
+    }
+
     async fn find_by_token(&self, token: &str) -> Result<Option<Session>> {
         let now = Utc::now().to_rfc3339();
         let row: Option<SqliteSessionRow> = sqlx::query_as(
@@ -2260,6 +2280,61 @@ mod tests {
             assert!(found.is_some());
             assert_eq!(found.unwrap().user_id, user.id);
         }
+    }
+
+    #[tokio::test]
+    async fn create_login_requires_current_credentials() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "old-hash", None)
+            .await
+            .unwrap();
+        let login = |token: &str| Session {
+            id: Uuid::now_v7(),
+            user_id: alice.id,
+            token: token.to_string(),
+            expires_at: Utc::now() + Duration::hours(1),
+            created_at: Utc::now(),
+        };
+
+        assert!(
+            repo.create_login(&login("ok"), Some("old-hash"))
+                .await
+                .unwrap()
+        );
+        assert!(repo.create_login(&login("sso"), None).await.unwrap());
+
+        // A login verified against the old password, landing after the change.
+        UserRepo::update_password(&repo, alice.id, "new-hash")
+            .await
+            .unwrap();
+        assert!(
+            !repo
+                .create_login(&login("stale"), Some("old-hash"))
+                .await
+                .unwrap()
+        );
+        assert!(repo.find_by_token("stale").await.unwrap().is_none());
+
+        UserRepo::set_active(&repo, alice.id, false).await.unwrap();
+        assert!(
+            !repo
+                .create_login(&login("inactive"), Some("new-hash"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !repo
+                .create_login(&login("inactive-sso"), None)
+                .await
+                .unwrap()
+        );
+        assert!(repo.find_by_token("inactive").await.unwrap().is_none());
+        assert!(repo.find_by_token("inactive-sso").await.unwrap().is_none());
+
+        // Unknown user.
+        let mut ghost = login("ghost");
+        ghost.user_id = Uuid::now_v7();
+        assert!(!repo.create_login(&ghost, None).await.unwrap());
     }
 
     #[tokio::test]

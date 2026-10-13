@@ -307,6 +307,9 @@ pub async fn deactivate_user(
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     .ok_or(StatusCode::NOT_FOUND)?;
 
+    // Revoke first, so a failed deactivation leaves no sessions to bring back
+    // on reactivation, and again after, for a login that landed in between.
+    revoke_sessions(&state, user.id, Revoke::Everything).await?;
     with_repo!(state, |repo| {
         UserRepo::set_active(&repo, user.id, false).await
     })
@@ -416,6 +419,7 @@ pub async fn admin_set_password(
         UserRepo::update_password(&repo, user.id, &hash).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    revoke_sessions(&state, user.id, Revoke::Logins { keep }).await?;
 
     tracing::info!(username = %username, "admin set password");
     Ok(StatusCode::OK)
@@ -490,6 +494,14 @@ pub async fn change_password(
         UserRepo::update_password(&repo, user.id, &hash).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    revoke_sessions(
+        &state,
+        user.id,
+        Revoke::Logins {
+            keep: current.as_deref(),
+        },
+    )
+    .await?;
 
     tracing::info!(username = %user.username, "password changed");
     Ok(Json(serde_json::json!({ "status": "password changed" })).into_response())
@@ -566,6 +578,7 @@ pub async fn confirm_password_reset(
         UserRepo::update_password(&repo, session.user_id, &hash).await
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    revoke_sessions(&state, session.user_id, Revoke::Logins { keep: None }).await?;
 
     tracing::info!(user_id = %session.user_id, "password reset confirmed");
     Ok(Json(serde_json::json!({ "status": "password reset" })))
@@ -581,9 +594,11 @@ enum Revoke<'a> {
 }
 
 /// Delete the user's sessions and pending one-time tokens, so a password
-/// change or deactivation logs out the other clients. Password changes call
-/// it before storing the new hash: a failure then leaves clients logged out,
-/// never the new password stored with the old sessions still valid.
+/// change or deactivation logs out the other clients. Callers run it before
+/// the change, so a failure leaves clients logged out rather than the new
+/// credentials stored with the old sessions still valid, and again after it,
+/// for a login verified against the old credentials that inserted its session
+/// in between (`SessionRepo::create_login` refuses any later one).
 async fn revoke_sessions(
     state: &AppState,
     user_id: uuid::Uuid,

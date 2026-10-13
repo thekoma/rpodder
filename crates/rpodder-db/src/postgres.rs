@@ -1741,6 +1741,33 @@ impl repo::SessionRepo for PgRepo {
         Ok(())
     }
 
+    async fn create_login(&self, session: &Session, password_hash: Option<&str>) -> Result<bool> {
+        // FOR SHARE conflicts with the row lock of a concurrent password or
+        // is_active UPDATE: the insert either commits first (and the revoke
+        // that follows the UPDATE deletes it) or waits and re-checks the
+        // committed row, which then no longer matches.
+        let result = sqlx::query(
+            "WITH u AS (
+                 SELECT id FROM users
+                 WHERE id = $5 AND is_active
+                   AND ($6::text IS NULL OR password_hash = $6::text)
+                 FOR SHARE
+             )
+             INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+             SELECT $1, u.id, $2, $3, $4 FROM u",
+        )
+        .bind(session.id)
+        .bind(&session.token)
+        .bind(session.expires_at)
+        .bind(session.created_at)
+        .bind(session.user_id)
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(result.rows_affected() == 1)
+    }
+
     async fn find_by_token(&self, token: &str) -> Result<Option<Session>> {
         let row: Option<SessionRow> = sqlx::query_as(
             "SELECT id, user_id, token, expires_at, created_at

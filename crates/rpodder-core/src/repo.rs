@@ -232,6 +232,15 @@ pub trait EpisodeRepo: Send + Sync {
 
 pub trait SessionRepo: Send + Sync {
     fn create(&self, session: &Session) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Insert a login session only while its user is still active and, when
+    /// `password_hash` is given, still has the hash the login was verified
+    /// against. Returns `false` (nothing inserted) otherwise, so a login racing
+    /// a password change or deactivation can't outlive the revocation.
+    fn create_login(
+        &self,
+        session: &Session,
+        password_hash: Option<&str>,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
     fn find_by_token(
         &self,
         token: &str,

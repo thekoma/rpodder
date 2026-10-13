@@ -442,3 +442,48 @@ async fn sso_callback_provider_error_clears_state() {
     );
     assert!(!sso_user_exists(&app).await);
 }
+
+#[tokio::test]
+async fn basic_login_opens_a_session_while_the_credentials_hold() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let login = || {
+        Request::builder()
+            .method("POST")
+            .uri("/api/2/auth/alice/login.json")
+            // alice:pass
+            .header(header::AUTHORIZATION, "Basic YWxpY2U6cGFzcw==")
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    let (status, headers, _) = app.send_full(login()).await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+    let (status, _) = app.get(&cookie, &devices_uri(&alice)).await;
+    assert_eq!(status, StatusCode::OK, "the new session works");
+
+    // The middleware verified the old password, then the password changed
+    // before the handler stored the session: the login is refused.
+    let verified = crate::middleware::auth::AuthUser(alice.user.clone());
+    UserRepo::update_password(&app.repo(), alice.user.id, "other-hash")
+        .await
+        .unwrap();
+    let state = crate::state::AppState {
+        db: app.db.clone(),
+        config: std::sync::Arc::new(serde_json::from_value(json!({})).unwrap()),
+    };
+    let refused = crate::routes::auth::login(
+        axum::extract::State(state),
+        axum::extract::Path("alice".to_string()),
+        axum::Extension(verified),
+    )
+    .await;
+    assert_eq!(refused.unwrap_err(), StatusCode::UNAUTHORIZED);
+}
