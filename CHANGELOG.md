@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.1 — 2026-10-13
+
+### Changed
+- **Dependency updates** — argon2 0.6 (existing password hashes keep working), feed-rs 3, tower-http 0.7, base64 0.23 and the rest of the Rust tree; the web UI moves to SvelteKit 3 and adapter-static 4; the Helm chart's `common` library goes to 5.3.0. TypeScript stays on 6 until SvelteKit supports TypeScript 7.
+
 ## 2026.10.0 — 2026-10-13
 
 ### Added
