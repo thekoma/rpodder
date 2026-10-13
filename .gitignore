@@ -30,3 +30,10 @@ deploy/**/Chart.lock
 
 # macOS
 .DS_Store
+
+# Impeccable working captures (brief, config and design.json are tracked)
+/.impeccable/review/
+/.impeccable/mocks/
+/.impeccable/build/
+/.impeccable/config.local.json
+/.impeccable/hook.cache.json

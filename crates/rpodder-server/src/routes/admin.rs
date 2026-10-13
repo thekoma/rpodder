@@ -828,7 +828,7 @@ pub async fn episode_history(
                         COALESCE(ea.podcast_ref_url, '') as podcast_url,
                         COALESCE(e.title, ea.episode_ref_url, '') as episode_title,
                         ea.action,
-                        ea.timestamp::text,
+                        to_char(ea.timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),
                         ea.position,
                         ea.total
                      FROM episode_actions ea

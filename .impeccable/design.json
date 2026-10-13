@@ -1,0 +1,825 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T22:30:58+00:00",
+  "title": "Design System: rpodder",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Stock Card Ground",
+        "canonical": "#e8ebe5",
+        "cssVar": "var(--ground)",
+        "night": "#0e1412",
+        "oklch": "oklch(93.6% 0.009 128.6)",
+        "tonalRamp": [
+          "#0a0c08",
+          "#242621",
+          "#41433e",
+          "#60625d",
+          "#81837e",
+          "#a3a6a0",
+          "#c7cac4",
+          "#edf0ea"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Index Card",
+        "canonical": "#fcfcf9",
+        "cssVar": "var(--panel)",
+        "night": "#161d1a",
+        "oklch": "oklch(99.0% 0.004 106.5)",
+        "tonalRamp": [
+          "#0b0b09",
+          "#252523",
+          "#424240",
+          "#61615f",
+          "#828280",
+          "#a5a5a2",
+          "#c9c9c6",
+          "#efefec"
+        ]
+      },
+      "panel-2": {
+        "role": "neutral",
+        "displayName": "Card Shade",
+        "canonical": "#f2f4ef",
+        "cssVar": "var(--panel-2)",
+        "night": "#1d2622",
+        "oklch": "oklch(96.4% 0.007 124.4)",
+        "tonalRamp": [
+          "#0a0c09",
+          "#242622",
+          "#41433f",
+          "#60625e",
+          "#81837f",
+          "#a4a6a1",
+          "#c8cac5",
+          "#edefea"
+        ]
+      },
+      "sunk": {
+        "role": "neutral",
+        "displayName": "Inkwell Sunk",
+        "canonical": "#f6f7f3",
+        "cssVar": "var(--sunk)",
+        "night": "#111815",
+        "oklch": "oklch(97.4% 0.005 117.9)",
+        "tonalRamp": [
+          "#0b0b09",
+          "#252522",
+          "#42423f",
+          "#61625e",
+          "#82837f",
+          "#a4a5a2",
+          "#c9cac6",
+          "#eeefeb"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Typewriter Ink",
+        "canonical": "#1a201d",
+        "cssVar": "var(--ink)",
+        "night": "#e6ebe7",
+        "oklch": "oklch(23.6% 0.010 163.9)",
+        "tonalRamp": [
+          "#070d0a",
+          "#212724",
+          "#3d4440",
+          "#5c6360",
+          "#7d8481",
+          "#9fa7a3",
+          "#c3cbc7",
+          "#e8f1ec"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Faded Ink",
+        "canonical": "#47524c",
+        "cssVar": "var(--ink-2)",
+        "night": "#aab5ae",
+        "oklch": "oklch(42.7% 0.017 161.8)",
+        "tonalRamp": [
+          "#050d09",
+          "#1e2822",
+          "#3a453f",
+          "#59645e",
+          "#7a867f",
+          "#9ca9a2",
+          "#c0cdc6",
+          "#e5f2eb"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Pencil",
+        "canonical": "#5f6b64",
+        "cssVar": "var(--ink-3)",
+        "night": "#8d9992",
+        "oklch": "oklch(51.5% 0.018 160.2)",
+        "tonalRamp": [
+          "#050e09",
+          "#1d2822",
+          "#3a453f",
+          "#59655e",
+          "#79867f",
+          "#9ca9a1",
+          "#c0cdc5",
+          "#e5f2ea"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#d3d9d1",
+        "cssVar": "var(--rule)",
+        "night": "#28322d",
+        "oklch": "oklch(87.8% 0.013 137.8)",
+        "tonalRamp": [
+          "#090c07",
+          "#222721",
+          "#3f443d",
+          "#5e635c",
+          "#7f847d",
+          "#a1a79f",
+          "#c5cbc3",
+          "#eaf1e8"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Drawer Edge",
+        "canonical": "#b3bdb3",
+        "cssVar": "var(--rule-strong)",
+        "night": "#3a4740",
+        "oklch": "oklch(78.8% 0.018 145.4)",
+        "tonalRamp": [
+          "#070d07",
+          "#202720",
+          "#3c453c",
+          "#5b645b",
+          "#7c857c",
+          "#9ea89e",
+          "#c2ccc2",
+          "#e7f2e7"
+        ]
+      },
+      "card-rule": {
+        "role": "neutral",
+        "displayName": "Card Blue Rule",
+        "canonical": "#c6d6e8",
+        "cssVar": "var(--card-rule)",
+        "night": "#263445",
+        "oklch": "oklch(87.0% 0.030 251.3)",
+        "tonalRamp": [
+          "#080b0f",
+          "#1f262d",
+          "#3a434d",
+          "#566371",
+          "#778493",
+          "#9ba6b3",
+          "#c2cad3",
+          "#eaeff5"
+        ]
+      },
+      "shell": {
+        "role": "primary",
+        "displayName": "Shell Green",
+        "canonical": "#1c4436",
+        "cssVar": "var(--shell)",
+        "night": "#11241d",
+        "oklch": "oklch(35.3% 0.052 167.9)",
+        "tonalRamp": [
+          "#050e0a",
+          "#172922",
+          "#2e483e",
+          "#466a5c",
+          "#678c7d",
+          "#8fada1",
+          "#b9cfc6",
+          "#e4f2ec"
+        ]
+      },
+      "shell-2": {
+        "role": "primary",
+        "displayName": "Shell Green Hover",
+        "canonical": "#24533f",
+        "cssVar": "var(--shell-2)",
+        "night": "#183126",
+        "oklch": "oklch(40.3% 0.062 163.5)",
+        "tonalRamp": [
+          "#040e09",
+          "#152a21",
+          "#2b4a3b",
+          "#426c58",
+          "#638d79",
+          "#8cae9d",
+          "#b7d0c3",
+          "#e3f3eb"
+        ]
+      },
+      "shell-ink": {
+        "role": "neutral",
+        "displayName": "Shell Ink",
+        "canonical": "#f0f5f1",
+        "cssVar": "var(--shell-ink)",
+        "night": "#e6eee9",
+        "oklch": "oklch(96.5% 0.007 151.9)",
+        "tonalRamp": [
+          "#090c0a",
+          "#222623",
+          "#3f4340",
+          "#5e625f",
+          "#7f8480",
+          "#a2a6a3",
+          "#c6cbc7",
+          "#ebf0ec"
+        ]
+      },
+      "shell-ink-2": {
+        "role": "neutral",
+        "displayName": "Shell Ink Resting",
+        "canonical": "#b5cbbf",
+        "cssVar": "var(--shell-ink-2)",
+        "night": "#98b6a8",
+        "oklch": "oklch(82.2% 0.029 161.9)",
+        "tonalRamp": [
+          "#080c0a",
+          "#1f2723",
+          "#38463f",
+          "#54665d",
+          "#75887d",
+          "#9aa9a1",
+          "#c1ccc6",
+          "#e9f1ec"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Library Green",
+        "canonical": "#1d6a50",
+        "cssVar": "var(--primary)",
+        "night": "#5bb892",
+        "oklch": "oklch(47.1% 0.085 166.2)",
+        "tonalRamp": [
+          "#010f08",
+          "#0b2c20",
+          "#1c4c3b",
+          "#2f6f57",
+          "#529178",
+          "#80b29c",
+          "#afd3c3",
+          "#def5ea"
+        ]
+      },
+      "primary-hover": {
+        "role": "primary",
+        "displayName": "Stack Green",
+        "canonical": "#175a43",
+        "cssVar": "var(--primary-hover)",
+        "night": "#73c8a4",
+        "oklch": "oklch(42.0% 0.077 165.8)",
+        "tonalRamp": [
+          "#020f09",
+          "#0f2b20",
+          "#224b3b",
+          "#366e58",
+          "#589079",
+          "#85b09d",
+          "#b2d2c3",
+          "#dff4ea"
+        ]
+      },
+      "primary-ink": {
+        "role": "primary",
+        "displayName": "On Library Green",
+        "canonical": "#ffffff",
+        "cssVar": "var(--primary-ink)",
+        "night": "#07120d",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Pale Green Wash",
+        "canonical": "#d9eae1",
+        "cssVar": "var(--primary-soft)",
+        "night": "#1b3a2e",
+        "oklch": "oklch(92.2% 0.022 163.0)",
+        "tonalRamp": [
+          "#090c0a",
+          "#202723",
+          "#3b4540",
+          "#58655e",
+          "#78867f",
+          "#9da8a2",
+          "#c3ccc7",
+          "#eaf0ed"
+        ]
+      },
+      "red": {
+        "role": "secondary",
+        "displayName": "Catalog Red",
+        "canonical": "#bf3a2c",
+        "cssVar": "var(--red)",
+        "night": "#ec6b5d",
+        "oklch": "oklch(54.3% 0.172 29.7)",
+        "tonalRamp": [
+          "#1e0100",
+          "#470c07",
+          "#761e15",
+          "#a73226",
+          "#cf5747",
+          "#e88677",
+          "#feb3a7",
+          "#ffe1d8"
+        ]
+      },
+      "red-soft": {
+        "role": "secondary",
+        "displayName": "Red Wash",
+        "canonical": "#f7e1dc",
+        "cssVar": "var(--red-soft)",
+        "night": "#3a201c",
+        "oklch": "oklch(92.6% 0.025 32.9)",
+        "tonalRamp": [
+          "#0e0a09",
+          "#2b2321",
+          "#4b3f3c",
+          "#6e5d59",
+          "#907e7a",
+          "#b0a19e",
+          "#d2c6c4",
+          "#f4edeb"
+        ]
+      },
+      "brass": {
+        "role": "tertiary",
+        "displayName": "Ledger Brass",
+        "canonical": "#7f611d",
+        "cssVar": "var(--brass)",
+        "night": "#d3b26b",
+        "oklch": "oklch(51.0% 0.092 83.8)",
+        "tonalRamp": [
+          "#110a00",
+          "#302305",
+          "#523f13",
+          "#785d22",
+          "#9a7e45",
+          "#b9a276",
+          "#d8c7a6",
+          "#f8edd8"
+        ]
+      },
+      "brass-soft": {
+        "role": "tertiary",
+        "displayName": "Brass Card",
+        "canonical": "#f0e6cc",
+        "cssVar": "var(--brass-soft)",
+        "night": "#342b17",
+        "oklch": "oklch(92.6% 0.036 89.4)",
+        "tonalRamp": [
+          "#0d0b06",
+          "#29251b",
+          "#474232",
+          "#69614c",
+          "#8a826c",
+          "#aba593",
+          "#cec9bc",
+          "#f2eee6"
+        ]
+      },
+      "danger": {
+        "role": "status",
+        "displayName": "Danger",
+        "canonical": "#b0261d",
+        "cssVar": "var(--danger)",
+        "night": "#f07a6e",
+        "oklch": "oklch(49.6% 0.176 29.0)",
+        "tonalRamp": [
+          "#1e0100",
+          "#480b07",
+          "#771d16",
+          "#a93026",
+          "#d05547",
+          "#e98577",
+          "#ffb3a7",
+          "#ffe1d8"
+        ]
+      },
+      "danger-soft": {
+        "role": "status",
+        "displayName": "Danger Wash",
+        "canonical": "#f8dfdc",
+        "cssVar": "var(--danger-soft)",
+        "night": "#3b1f1c",
+        "oklch": "oklch(92.3% 0.028 25.9)",
+        "tonalRamp": [
+          "#0f0a09",
+          "#2c2221",
+          "#4c3e3c",
+          "#6f5c5a",
+          "#917d7a",
+          "#b1a19f",
+          "#d3c6c4",
+          "#f5eceb"
+        ]
+      },
+      "success": {
+        "role": "status",
+        "displayName": "Success",
+        "canonical": "#24724a",
+        "cssVar": "var(--success)",
+        "night": "#6cc796",
+        "oklch": "oklch(49.4% 0.099 157.0)",
+        "tonalRamp": [
+          "#010f06",
+          "#0a2c1b",
+          "#1b4d32",
+          "#2d704c",
+          "#51936c",
+          "#80b393",
+          "#aed4bc",
+          "#ddf6e6"
+        ]
+      },
+      "warning": {
+        "role": "status",
+        "displayName": "Warning",
+        "canonical": "#8a5a00",
+        "cssVar": "var(--warning)",
+        "night": "#e0b45a",
+        "oklch": "oklch(50.8% 0.108 73.3)",
+        "tonalRamp": [
+          "#140800",
+          "#352000",
+          "#5a3b05",
+          "#825711",
+          "#a6793a",
+          "#c39e6e",
+          "#e0c4a1",
+          "#feebd5"
+        ]
+      },
+      "warning-soft": {
+        "role": "status",
+        "displayName": "Warning Wash",
+        "canonical": "#f6e8c8",
+        "cssVar": "var(--warning-soft)",
+        "night": "#352a14",
+        "oklch": "oklch(93.4% 0.045 87.2)",
+        "tonalRamp": [
+          "#0e0b05",
+          "#2a2418",
+          "#49412e",
+          "#6b6047",
+          "#8d8167",
+          "#aea48f",
+          "#d0c9b8",
+          "#f3eee4"
+        ]
+      },
+      "group-1": {
+        "role": "group",
+        "displayName": "Sync Group Green",
+        "canonical": "#2c7a58",
+        "cssVar": "var(--group-1)",
+        "night": "#5bb892",
+        "oklch": "oklch(52.2% 0.094 161.5)",
+        "tonalRamp": [
+          "#010f07",
+          "#092c1d",
+          "#1a4d36",
+          "#2c7052",
+          "#509272",
+          "#7fb398",
+          "#aed4bf",
+          "#ddf5e8"
+        ]
+      },
+      "group-2": {
+        "role": "group",
+        "displayName": "Sync Group Blue",
+        "canonical": "#2d5c9a",
+        "cssVar": "var(--group-2)",
+        "night": "#6d9be0",
+        "oklch": "oklch(47.4% 0.113 256.2)",
+        "tonalRamp": [
+          "#020b1b",
+          "#102541",
+          "#23426c",
+          "#38629a",
+          "#5884bf",
+          "#84a7d8",
+          "#b1cbf0",
+          "#dff0ff"
+        ]
+      },
+      "group-3": {
+        "role": "group",
+        "displayName": "Sync Group Plum",
+        "canonical": "#7c3a6c",
+        "cssVar": "var(--group-3)",
+        "night": "#c57bb5",
+        "oklch": "oklch(45.2% 0.112 337.4)",
+        "tonalRamp": [
+          "#150511",
+          "#37192f",
+          "#5d3051",
+          "#854976",
+          "#a96a98",
+          "#c692b7",
+          "#e3bbd7",
+          "#ffe5f8"
+        ]
+      },
+      "group-4": {
+        "role": "group",
+        "displayName": "Sync Group Ochre",
+        "canonical": "#9a6210",
+        "cssVar": "var(--group-4)",
+        "night": "#d9a24a",
+        "oklch": "oklch(54.5% 0.113 69.1)",
+        "tonalRamp": [
+          "#150800",
+          "#371f00",
+          "#5d3902",
+          "#86550c",
+          "#aa7637",
+          "#c79c6d",
+          "#e3c3a0",
+          "#ffebd4"
+        ]
+      }
+    },
+    "themes": {
+      "light": "default :root",
+      "dark": "prefers-color-scheme: dark unless data-theme='light'; data-theme='dark' pins it. 'night' in colorMeta is the dark value."
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Signed-out landing headline only; 2.25rem rising to 2.75rem at sm."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "One page title per route; podcast card title 1.625-1.875rem."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Section headings inside a page."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base reading size; long text capped at 70-75ch."
+      },
+      "body-sm": {
+        "displayName": "Body small",
+        "purpose": "Row metadata, buttons, notices, menus."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels and catalog-card field names."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Mono, tabular: URLs, durations, dates, counts, ids."
+      },
+      "stamp": {
+        "displayName": "Stamp",
+        "purpose": "Uppercase mono state stamps only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow",
+        "value": "0 1px 2px rgb(20 30 25 / 0.06), 0 4px 16px rgb(20 30 25 / 0.06)",
+        "night": "0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25)",
+        "purpose": "Rest lift: head catalog card, auth card, docked player, selected segment."
+      },
+      {
+        "name": "shadow-lift",
+        "value": "0 2px 6px rgb(20 30 25 / 0.1), 0 12px 32px rgb(20 30 25 / 0.12)",
+        "night": "0 2px 6px rgb(0 0 0 / 0.35), 0 12px 32px rgb(0 0 0 / 0.4)",
+        "purpose": "Floating: account menu, toasts, now-playing cover."
+      },
+      {
+        "name": "focus-field",
+        "value": "0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent)",
+        "purpose": "Field focus halo."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "150ms ease-out",
+        "purpose": "Background, border and colour transitions on buttons, fields, rows, nav."
+      },
+      {
+        "name": "progress",
+        "value": "200ms ease-out",
+        "purpose": "Mini-player progress rule width."
+      },
+      {
+        "name": "sheet-in",
+        "value": "220ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Phone now-playing sheet entrance: translateY(24px) and opacity 0.6 to rest."
+      },
+      {
+        "name": "skeleton-pulse",
+        "value": "1.4s ease-in-out infinite",
+        "purpose": "Loading skeleton opacity pulse to 0.55."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All animation and transition durations under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px",
+        "purpose": "Shell nav replaces phone tab bar; player docks to bottom."
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "container",
+        "value": "72rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action in a group: Add feed, Subscribe, Sign in.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg> Add feed</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;height:2.25rem;padding:0 .9rem;border-radius:6px;border:1px solid transparent;font-family:var(--font-sans,'Atkinson Hyperlegible Next Variable',system-ui,sans-serif);font-size:.875rem;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 150ms ease-out,border-color 150ms ease-out,color 150ms ease-out}.ds-btn:focus-visible{outline:2px solid var(--primary,#1d6a50);outline-offset:2px}.ds-btn:disabled{opacity:.55;cursor:not-allowed}.ds-btn-primary{background:var(--primary,#1d6a50);color:var(--primary-ink,#fff)}.ds-btn-primary:hover{background:var(--primary-hover,#175a43)}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting actions beside a primary: Export OPML, Subscribed, Browse.",
+      "html": "<button class=\"ds-btn ds-btn-secondary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M12 18v-6\"/><path d=\"m9 15 3 3 3-3\"/></svg> Export OPML</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;height:2.25rem;padding:0 .9rem;border-radius:6px;border:1px solid transparent;font-family:var(--font-sans,'Atkinson Hyperlegible Next Variable',system-ui,sans-serif);font-size:.875rem;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 150ms ease-out,border-color 150ms ease-out,color 150ms ease-out}.ds-btn:focus-visible{outline:2px solid var(--primary,#1d6a50);outline-offset:2px}.ds-btn:disabled{opacity:.55;cursor:not-allowed}.ds-btn-secondary{background:var(--panel,#fcfcf9);border-color:var(--rule-strong,#b3bdb3);color:var(--ink,#1a201d)}.ds-btn-secondary:hover{background:var(--panel-2,#f2f4ef)}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Low-emphasis and icon actions: Refresh feed, Website, copy, dismiss.",
+      "html": "<button class=\"ds-btn ds-btn-quiet\">Refresh feed</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;height:2.25rem;padding:0 .9rem;border-radius:6px;border:1px solid transparent;font-family:var(--font-sans,'Atkinson Hyperlegible Next Variable',system-ui,sans-serif);font-size:.875rem;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 150ms ease-out,border-color 150ms ease-out,color 150ms ease-out}.ds-btn:focus-visible{outline:2px solid var(--primary,#1d6a50);outline-offset:2px}.ds-btn:disabled{opacity:.55;cursor:not-allowed}.ds-btn-quiet{background:transparent;color:var(--ink-2,#47524c)}.ds-btn-quiet:hover{background:var(--panel-2,#f2f4ef);color:var(--ink,#1a201d)}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive actions: delete user, remove device.",
+      "html": "<button class=\"ds-btn ds-btn-danger\">Delete</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;height:2.25rem;padding:0 .9rem;border-radius:6px;border:1px solid transparent;font-family:var(--font-sans,'Atkinson Hyperlegible Next Variable',system-ui,sans-serif);font-size:.875rem;font-weight:600;line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 150ms ease-out,border-color 150ms ease-out,color 150ms ease-out}.ds-btn:focus-visible{outline:2px solid var(--primary,#1d6a50);outline-offset:2px}.ds-btn:disabled{opacity:.55;cursor:not-allowed}.ds-btn-danger{background:var(--panel,#fcfcf9);border-color:color-mix(in srgb,var(--danger,#b0261d) 45%,var(--rule,#d3d9d1));color:var(--danger,#b0261d)}.ds-btn-danger:hover{background:var(--danger-soft,#f8dfdc)}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Text input on the sunk fill with label and hint.",
+      "html": "<label class=\"ds-label\" for=\"ds-f\">Feed address</label><input id=\"ds-f\" class=\"ds-field\" placeholder=\"https://example.com/feed.xml\"><p class=\"ds-hint\">Paste an RSS or Atom address.</p>",
+      "css": ".ds-label{display:block;margin-bottom:.35rem;font-size:.8125rem;font-weight:600;color:var(--ink-2,#47524c)}.ds-hint{font-size:.8125rem;color:var(--ink-3,#5f6b64);margin:.4rem 0 0}.ds-field{display:block;width:100%;height:2.375rem;padding:0 .75rem;background:var(--sunk,#f6f7f3);border:1px solid var(--rule-strong,#b3bdb3);border-radius:6px;color:var(--ink,#1a201d);font-size:.9375rem;transition:border-color 150ms ease-out,box-shadow 150ms ease-out}.ds-field::placeholder{color:var(--ink-3,#5f6b64)}.ds-field:focus{outline:none;border-color:var(--primary,#1d6a50);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary,#1d6a50) 22%,transparent)}"
+    },
+    {
+      "name": "Shell Bar",
+      "kind": "nav",
+      "refersTo": "shell-bar",
+      "description": "Sticky green top bar; navigation only, active link marked by the red index rule.",
+      "html": "<nav class=\"ds-shell\"><span class=\"ds-shell-brand\">rpodder</span><a class=\"ds-shell-link is-active\" href=\"#\">Library</a><a class=\"ds-shell-link\" href=\"#\">Discover</a><a class=\"ds-shell-link\" href=\"#\">History</a><a class=\"ds-shell-link\" href=\"#\">Devices</a></nav>",
+      "css": ".ds-shell{display:flex;align-items:stretch;gap:.25rem;height:3.5rem;padding:0 1rem;background:var(--shell,#1c4436);color:var(--shell-ink,#f0f5f1)}.ds-shell-brand{display:flex;align-items:center;margin-right:1.25rem;font-size:1.0625rem;font-weight:700;letter-spacing:-.01em}.ds-shell-link{position:relative;display:flex;align-items:center;padding:0 .75rem;font-size:.875rem;font-weight:600;color:var(--shell-ink-2,#b5cbbf);text-decoration:none;transition:color 150ms ease-out}.ds-shell-link:hover,.ds-shell-link.is-active{color:var(--shell-ink,#f0f5f1)}.ds-shell-link.is-active::after{content:'';position:absolute;left:.75rem;right:.75rem;bottom:0;height:3px;background:var(--red,#bf3a2c);border-radius:2px 2px 0 0}.ds-shell-link:focus-visible{outline:2px solid var(--shell-ink,#f0f5f1);outline-offset:-2px}"
+    },
+    {
+      "name": "Catalog Card",
+      "kind": "card",
+      "refersTo": "catalog-card",
+      "description": "The head record of a page: red index rule, title, call number, holdings, stamps.",
+      "html": "<article class=\"ds-card\"><h3 class=\"ds-card-title\">99% Invisible</h3><p class=\"ds-card-sub\">Roman Mars</p><dl class=\"ds-card-dl\"><dt>Feed</dt><dd class=\"ds-data\">feeds.99percentinvisible.org/99percentinvisible</dd><dt>On devices</dt><dd><span class=\"ds-devtag\"><i class=\"ds-mark on\"></i>Pixel 8</span> <span class=\"ds-devtag off\"><i class=\"ds-mark\"></i>ThinkPad</span></dd><dt>Last episode</dt><dd><span class=\"ds-stamp\" style=\"color:var(--red,#bf3a2c)\">12 min left</span></dd></dl></article>",
+      "css": ".ds-card{background:var(--panel,#fcfcf9);border:1px solid var(--rule,#d3d9d1);border-top:3px solid var(--red,#bf3a2c);border-radius:0 0 6px 6px;padding:1.5rem;box-shadow:var(--shadow,0 1px 2px rgb(20 30 25/.06),0 4px 16px rgb(20 30 25/.06));color:var(--ink,#1a201d);max-width:34rem}.ds-card-title{margin:0;font-size:1.625rem;font-weight:700;letter-spacing:-.02em;line-height:1.25}.ds-card-sub{margin:.25rem 0 0;color:var(--ink-2,#47524c)}.ds-card-dl{display:grid;grid-template-columns:7rem 1fr;gap:.625rem 1.5rem;margin:1rem 0 0;padding-top:1rem;border-top:1px solid var(--card-rule,#c6d6e8);font-size:.875rem}.ds-card-dl dt{color:var(--ink-3,#5f6b64);font-weight:600}.ds-card-dl dd{margin:0;min-width:0}.ds-data{font-family:'Atkinson Hyperlegible Mono Variable',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:.8125rem;color:var(--ink-2,#47524c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-devtag{display:inline-flex;align-items:center;gap:.3rem;height:1.375rem;padding:0 .5rem;border:1px solid var(--rule-strong,#b3bdb3);border-radius:4px;background:var(--panel,#fcfcf9);font-size:.75rem;font-weight:600}.ds-devtag.off{border-style:dashed;border-color:var(--rule,#d3d9d1);color:var(--ink-3,#5f6b64)}.ds-mark{display:inline-block;width:8px;height:8px;border-radius:2px;border:1px solid var(--group-1,#2c7a58)}.ds-mark.on{background:var(--group-1,#2c7a58)}.ds-stamp{display:inline-flex;align-items:center;height:1.25rem;padding:0 .4rem;border:1px solid currentColor;border-radius:3px;font-family:'Atkinson Hyperlegible Mono Variable',ui-monospace,monospace;font-size:.6875rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}"
+    },
+    {
+      "name": "State Stamp",
+      "kind": "chip",
+      "refersTo": "stamp",
+      "description": "Bordered mono stamp recording what happened to an item; tone is the text colour.",
+      "html": "<span class=\"ds-stamp\" style=\"color:var(--success,#24724a)\">Played</span> <span class=\"ds-stamp\" style=\"color:var(--red,#bf3a2c)\">18 min left</span> <span class=\"ds-stamp\" style=\"color:var(--brass,#7f611d)\">Downloaded</span> <span class=\"ds-stamp\" style=\"color:var(--ink-3,#5f6b64)\">Deleted</span>",
+      "css": ".ds-stamp{display:inline-flex;align-items:center;height:1.25rem;padding:0 .4rem;border:1px solid currentColor;border-radius:3px;font-family:'Atkinson Hyperlegible Mono Variable',ui-monospace,monospace;font-size:.6875rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}"
+    },
+    {
+      "name": "Library Row",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "Dense catalog row: brass drawer letter, 56px cover, title/author, mono last-played, holdings marks.",
+      "html": "<ul class=\"ds-list\"><li class=\"ds-row\"><span class=\"ds-letter\">D</span><span class=\"ds-cover\"></span><span class=\"ds-txt\"><b>The Daily</b><small>The New York Times</small></span><span class=\"ds-when\">Oct 12, 2026</span><span class=\"ds-marks\"><i class=\"g1 on\"></i><i class=\"g1 on\"></i><i class=\"g2\"></i><i class=\"g3\"></i></span></li><li class=\"ds-row ds-row-in\"><span class=\"ds-letter\"></span><span class=\"ds-cover\"></span><span class=\"ds-txt\"><b>Darknet Diaries</b><small>Jack Rhysider</small></span><span class=\"ds-when\">—</span><span class=\"ds-marks\"><i class=\"g1\"></i><i class=\"g1 on\"></i><i class=\"g2 on\"></i><i class=\"g3\"></i></span></li></ul>",
+      "css": ".ds-list{list-style:none;margin:0;padding:0;background:var(--panel,#fcfcf9);border:1px solid var(--rule,#d3d9d1);border-radius:6px;overflow:hidden;color:var(--ink,#1a201d)}.ds-row{display:flex;align-items:center;gap:1rem;padding:.625rem .5rem .625rem 0;transition:background-color 150ms ease-out}.ds-row:hover{background:var(--panel-2,#f2f4ef)}.ds-row-in{border-top:1px solid var(--card-rule,#c6d6e8)}.ds-letter{width:2.75rem;display:flex;justify-content:center;align-self:stretch;padding-top:.25rem}.ds-letter:not(:empty){font-family:'Atkinson Hyperlegible Mono Variable',ui-monospace,monospace;font-size:.75rem;font-weight:600;color:var(--brass,#7f611d)}.ds-letter:not(:empty){height:1.25rem;width:auto;padding:0 .375rem;margin:0 .6rem;background:var(--brass-soft,#f0e6cc);border-radius:4px;align-items:center}.ds-cover{width:56px;height:56px;flex-shrink:0;border-radius:4px;border:1px solid var(--rule,#d3d9d1);background:var(--panel-2,#f2f4ef)}.ds-txt{flex:1;min-width:0;display:flex;flex-direction:column}.ds-txt b{font-weight:600}.ds-txt small{font-size:.875rem;color:var(--ink-2,#47524c)}.ds-when{width:6rem;text-align:right;font-family:'Atkinson Hyperlegible Mono Variable',ui-monospace,monospace;font-size:.75rem;color:var(--ink-3,#5f6b64)}.ds-marks{display:inline-flex;gap:4px}.ds-marks i{display:block;width:10px;height:10px;border-radius:2px;border:1px solid}.ds-marks .g1{border-color:var(--group-1,#2c7a58)}.ds-marks .g2{border-color:var(--group-2,#2d5c9a)}.ds-marks .g3{border-color:var(--group-3,#7c3a6c)}.ds-marks .g1.on{background:var(--group-1,#2c7a58)}.ds-marks .g2.on{background:var(--group-2,#2d5c9a)}.ds-marks .g3.on{background:var(--group-3,#7c3a6c)}"
+    },
+    {
+      "name": "Play Button",
+      "kind": "button",
+      "refersTo": "play-button",
+      "description": "Round play control: green outline idle, green fill when loaded.",
+      "html": "<button class=\"ds-play\" aria-label=\"Play\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg></button> <button class=\"ds-play is-loaded\" aria-label=\"Pause\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg></button>",
+      "css": ".ds-play{width:2.25rem;height:2.25rem;border-radius:9999px;display:inline-flex;align-items:center;justify-content:center;border:1px solid color-mix(in srgb,var(--primary,#1d6a50) 60%,transparent);background:transparent;color:var(--primary,#1d6a50);cursor:pointer;transition:background-color 150ms ease-out,color 150ms ease-out}.ds-play svg{margin-left:2px}.ds-play:hover,.ds-play.is-loaded{background:var(--primary,#1d6a50);color:var(--primary-ink,#fff)}.ds-play.is-loaded:hover{background:var(--primary-hover,#175a43)}.ds-play:focus-visible{outline:2px solid var(--primary,#1d6a50);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Reading Room Catalog",
+    "overview": "**Creative North Star: \"The Reading Room Catalog\"**\n\nThe web UI is a library card catalog for the podcasts you own. Every feed is a catalog card: its feed address is the call number, the devices that carry it are its holdings, and plays are stamped onto it like a circulation slip. The room has two lightings. Day is pale stock-card ground, index-card white panels, typewriter-black ink, faint blue card rules and a library-green shell bar. Night is the same room: green-black ground, panels one step lighter, low-contrast green-grey rules, red and brass brightened. Light and dark are full peers. The page follows the system preference unless `data-theme` pins one.\n\nDensity is that of a working catalog. Rows are compact, covers sit at fixed sizes on a shared baseline, durations are drawn to a common scale, and nothing is labelled twice. Hierarchy comes from scale and weight in one workhorse sans. Colour mostly sits in a few small places: green for action, a red index rule for \"this card\" and \"now playing\", brass for counts and filing letters. The build has no glass, no gradients and no album-art mosaics as decoration.",
+    "keyCharacteristics": [
+      "One sans (Atkinson Hyperlegible Next) for all UI; its mono sibling only for data.",
+      "Hairline borders and 6px square-ish corners; depth from tonal steps, with shadow reserved for lifted objects.",
+      "A red 3px rule marks the card head, the active tab and playback progress.",
+      "Holdings marks: one small square per device, filled when that device holds the feed, coloured by sync group.",
+      "State is stamped and stays visible (Played, 12 min left, Downloaded); it never just disappears."
+    ],
+    "rules": [
+      {
+        "name": "The Red Line Rule",
+        "body": "Catalog Red is a rule, not a fill. It appears as a 3px line (card head, active tab, progress) or as stamp ink. It never colours a button or a large area.",
+        "section": "colors"
+      },
+      {
+        "name": "The Brass Counts Rule",
+        "body": "Numbers that count a collection and the letters that file it are brass mono. Primary actions are never brass.",
+        "section": "colors"
+      },
+      {
+        "name": "The Same Room Rule",
+        "body": "Every token has a night value with the same role. Dark mode is not inverted. Ground goes darkest, panels go one step lighter, and accents get brighter.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Is Data Rule",
+        "body": "Mono is used only for values a machine produced or a person would copy: URLs, times, counts, ids. Headings, labels and prose are never mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The Scale and Weight Rule",
+        "body": "Hierarchy comes from size and weight (400 / 600 / 700) in one family, and from ink-2 / ink-3 for recession. Don't add a second display face or colour headings.",
+        "section": "typography"
+      },
+      {
+        "name": "The Shared Baseline Rule",
+        "body": "Covers in a list are one fixed size, so the titles line up. Never size a cover by its content.",
+        "section": "layout"
+      },
+      {
+        "name": "The True Scale Rule",
+        "body": "When durations are drawn, they share one scale per view (the longest item sets 100%), so a short episode looks short.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Rows Rule",
+        "body": "Rows, slips, list panels and form cards carry no shadow. A shadow means \"this is the record you came to see\" or \"this floats above the page\".",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do take every colour from the CSS variables in `web/src/app.css` so both lightings follow. Never hard-code a hex in markup.",
+      "Do set feed URLs, durations, dates, counts and ids in the mono `data` style with tabular numerals.",
+      "Do head the primary record of a page with the catalog card (3px red top rule, `0 0 6px 6px` radius) and give it rest lift.",
+      "Do show which devices hold a feed with holdings marks in sync-group colours wherever a feed is listed.",
+      "Do stamp state (Played, N min left, Downloaded, Inactive) with the bordered mono stamp, and keep stamped items visible.",
+      "Do show an explicit \"—\" when a value is unknown (for example, partial history), and only state a negative (\"Not played\") when the data is complete.",
+      "Do keep covers at fixed sizes (36 / 48 / 56 / 144–160px) within a list.",
+      "Do use Lucide line icons at 16px in buttons and 20px in nav and player."
+    ],
+    "donts": [
+      "Don't fill buttons or large areas with Catalog Red. It is a 3px rule and stamp ink only.",
+      "Don't use glass, backdrop blur or gradients. Surfaces are flat panels with hairlines.",
+      "Don't use shadows on rows, slips or list panels, and don't use hard offset shadows anywhere.",
+      "Don't introduce a second display typeface or set headings, labels or prose in mono.",
+      "Don't use uppercase letter-spaced labels above headings. Uppercase belongs only to state stamps.",
+      "Don't use a stamp as a decorative or section label. Stamps record state.",
+      "Don't put the theme switch or other settings in the shell bar. The bar carries navigation only.",
+      "Don't show a dark album-art wall with a neon accent, or a grey admin-dashboard look. Covers are fixed-scale catalog thumbnails, not the layout."
+    ]
+  }
+}

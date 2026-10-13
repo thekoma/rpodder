@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { FileDown, FileText, Braces, TriangleAlert } from '@lucide/svelte';
   import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
   import { changeMyPassword, getMe, type MeInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { player } from '$lib/player.svelte';
+  import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
+  import { notify } from '$lib/toast.svelte';
   import { WEB_DEVICE_ID, getWebSettings, groupLabel, joinSyncGroup, setSyncPositions, type WebSettings } from '$lib/webDevice';
 
   let me = $state<MeInfo | null>(null);
@@ -11,7 +14,6 @@
   let newPassword = $state('');
   let confirmPassword = $state('');
   let error = $state('');
-  let success = $state('');
   let loading = $state(false);
   let loaded = $state(false);
 
@@ -50,7 +52,7 @@
       webLoadError = '';
     } catch (e) {
       if (isAuthError(e)) { sessionExpired(username); return; }
-      if (!web) webLoadError = "Couldn't load web player settings.";
+      if (!web) webLoadError = "Couldn't load the web player settings.";
     }
   }
 
@@ -80,6 +82,7 @@
     webError = '';
     try {
       await joinSyncGroup(username, selectedGroup);
+      notify(selectedGroup ? 'Web player joined the sync group' : 'Web player left its sync group');
     } catch (err) {
       if (isAuthError(err)) { savingGroup = false; sessionExpired(username); return; }
       selectedGroupId = currentGroup?.id ?? '';
@@ -91,121 +94,150 @@
 
   async function handleChangePassword(e: Event) {
     e.preventDefault();
-    error = ''; success = '';
-    if (newPassword.length < 4) { error = 'Password must be at least 4 characters'; return; }
-    if (newPassword !== confirmPassword) { error = 'Passwords do not match'; return; }
+    error = '';
+    if (newPassword.length < 4) { error = 'The new password needs at least 4 characters.'; return; }
+    if (newPassword !== confirmPassword) { error = "The two new passwords don't match."; return; }
 
     loading = true;
     const result = await changeMyPassword(oldPassword || null, newPassword);
     loading = false;
 
     if (result.ok) {
-      success = 'Password changed successfully';
+      notify('Password changed. Other browsers and apps using a session were signed out.');
       oldPassword = ''; newPassword = ''; confirmPassword = '';
     } else {
-      error = result.error || 'Failed to change password';
+      error = result.error === 'current password required'
+        ? 'Enter your current password.'
+        : result.error === 'incorrect old password'
+          ? 'The current password is wrong.'
+          : (result.error || "Couldn't change the password.");
     }
   }
+
+  let user = $derived(auth.username ?? '');
+  let exportBase = $derived(`/subscriptions/${encodeURIComponent(user)}`);
 </script>
 
-<div class="max-w-lg mx-auto space-y-6">
-  <h1 class="text-2xl font-bold">Account Settings</h1>
+<svelte:head><title>Settings · rpodder</title></svelte:head>
 
-  {#if me}
-    <div class="bg-surface border border-border rounded-xl p-5">
-      <h2 class="text-lg font-semibold mb-3">Profile</h2>
-      <div class="space-y-2 text-sm">
-        <div><span class="text-text-dim">Username:</span> <span class="font-medium">{me.username}</span></div>
-        <div><span class="text-text-dim">Email:</span> <span class="font-medium">{me.email || 'not set'}</span></div>
-        <div><span class="text-text-dim">Role:</span> <span class="font-medium">{me.is_admin ? 'Admin' : 'User'}</span></div>
-      </div>
-    </div>
-  {/if}
+{#snippet section(title: string, description: string)}
+  <div>
+    <h2 class="text-base font-bold">{title}</h2>
+    <p class="text-sm text-ink-2 mt-1 max-w-[34ch]">{description}</p>
+  </div>
+{/snippet}
 
-  <div class="bg-surface border border-border rounded-xl p-5">
-    <h2 class="text-lg font-semibold mb-3">Web player</h2>
+<div class="space-y-8 max-w-4xl">
+  <header>
+    <h1 class="text-[1.75rem] font-bold tracking-[-0.02em] leading-tight">Settings</h1>
+  </header>
 
-    {#if webLoadError}
-      <p class="text-danger text-sm">{webLoadError}</p>
-    {:else if !web}
-      <p class="text-text-dim text-sm">Loading...</p>
-    {:else}
+  <div class="divide-y divide-rule border-y border-rule">
+    <!-- Profile -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('Account', 'How this server knows you.')}
+      <dl class="panel grid grid-cols-[7rem_1fr] gap-x-4 gap-y-2.5 p-4 text-sm">
+        <dt class="text-ink-3 font-semibold">Username</dt><dd class="font-semibold">{me?.username ?? user}</dd>
+        <dt class="text-ink-3 font-semibold">Email</dt><dd>{me ? (me.email || 'Not set') : '…'}</dd>
+        <dt class="text-ink-3 font-semibold">Role</dt><dd>{me ? (me.is_admin ? 'Administrator' : 'Member') : '…'}</dd>
+      </dl>
+    </section>
+
+    <!-- Appearance -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('Appearance', 'Saved in this browser only.')}
+      <div><ThemeSwitch /></div>
+    </section>
+
+    <!-- Web player -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('Web player', 'The browser player counts as one more device of yours.')}
       <div class="space-y-5">
-        <div>
+        {#if webLoadError}
+          <p class="text-sm text-danger">{webLoadError}</p>
+        {:else if !web}
+          <div class="space-y-3" aria-busy="true"><div class="skeleton h-5 w-2/3"></div><div class="skeleton h-9 w-full max-w-md"></div></div>
+        {:else}
           <label class="flex items-start gap-3 cursor-pointer">
-            <input type="checkbox" bind:checked={syncOn} onchange={onSyncChange} disabled={savingSync}
-              class="mt-0.5 accent-brand cursor-pointer" />
+            <input type="checkbox" bind:checked={syncOn} onchange={onSyncChange} disabled={savingSync} class="mt-1 w-4 h-4 cursor-pointer" />
             <span>
-              <span class="block text-sm">Sync listening positions with my other devices</span>
-              <span class="block text-xs text-text-dim mt-1">When off, positions stay in this browser only.</span>
+              <span class="block font-semibold">Sync listening positions with my other devices</span>
+              <span class="block text-sm text-ink-2 mt-0.5">Resume in the browser where your phone stopped, and the other way round. When off, positions stay in this browser.</span>
             </span>
           </label>
-        </div>
 
-        <div>
-          <label for="web-group" class="block text-sm text-text-dim mb-1">Sync group</label>
-          <div class="flex gap-2">
-            <select id="web-group" bind:value={selectedGroupId} disabled={savingGroup}
-              class="flex-1 min-w-0 px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand transition-colors">
-              <option value="">None</option>
-              {#each web.groups as g (g.id)}
-                <option value={g.id}>{groupLabel(g)}</option>
-              {/each}
-            </select>
-            <button onclick={saveGroup} disabled={!groupChanged || savingGroup}
-              class="px-4 py-2 bg-brand text-bg text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer shrink-0">
-              {savingGroup ? 'Saving...' : 'Save'}
-            </button>
+          <div class="space-y-1.5">
+            <label for="web-group" class="label">Sync group</label>
+            <div class="flex gap-2 max-w-lg">
+              <select id="web-group" bind:value={selectedGroupId} disabled={savingGroup} class="field flex-1 min-w-0">
+                <option value="">None — subscribe on every device</option>
+                {#each web.groups as g (g.id)}
+                  <option value={g.id}>{groupLabel(g)}</option>
+                {/each}
+              </select>
+              <button onclick={saveGroup} disabled={!groupChanged || savingGroup} class="btn btn-primary shrink-0">
+                {savingGroup ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+            <p class="hint">Podcasts you subscribe to here go to the devices of this group. With no group, they go to all your devices.</p>
+            {#if groupChanged && selectedGroup}
+              <p class="notice text-sm mt-2 bg-warning-soft border-warning/40">
+                <TriangleAlert class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <span>The web player's subscriptions will be added to every device in “{groupLabel(selectedGroup)}”, and theirs to the web player. This can't be undone.</span>
+              </p>
+            {/if}
+            {#if currentGroup && dissolvedPeer}
+              <p class="notice text-sm mt-2 bg-warning-soft border-warning/40">
+                <TriangleAlert class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                <span>“{groupLabel(currentGroup)}” will be dissolved: {dissolvedPeer} will no longer sync with anything.</span>
+              </p>
+            {/if}
           </div>
-          <p class="text-xs text-text-dim mt-1">The web player shares subscriptions with the devices in this group.</p>
-          {#if groupChanged && selectedGroup}
-            <p class="text-xs text-yellow-500 mt-2">
-              The web player's current subscriptions will be added to every device in "{groupLabel(selectedGroup)}", and theirs to the web player. This can't be undone.
-            </p>
-          {/if}
-          {#if currentGroup && dissolvedPeer}
-            <p class="text-xs text-yellow-500 mt-2">
-              "{groupLabel(currentGroup)}" will be dissolved: {dissolvedPeer} will no longer sync with anything.
-            </p>
-          {/if}
+
+          {#if webError}<p class="text-sm text-danger">{webError}</p>{/if}
+        {/if}
+      </div>
+    </section>
+
+    <!-- Export -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('Your data', 'Take your subscriptions to any podcast app.')}
+      <div class="flex flex-wrap gap-2 content-start">
+        <a href="{exportBase}.opml" download="rpodder-{user}.opml" rel="external" class="btn btn-secondary">
+          <FileDown class="w-4 h-4" /> OPML
+        </a>
+        <a href="{exportBase}.txt" download="rpodder-{user}.txt" rel="external" class="btn btn-secondary">
+          <FileText class="w-4 h-4" /> Plain list
+        </a>
+        <a href="{exportBase}.json" download="rpodder-{user}.json" rel="external" class="btn btn-secondary">
+          <Braces class="w-4 h-4" /> JSON
+        </a>
+        <p class="hint basis-full mt-1">All subscriptions across your devices. Single devices can be exported from <a href="/devices" class="underline hover:text-ink">Devices</a>.</p>
+      </div>
+    </section>
+
+    <!-- Password -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('Password', 'Changing it signs out every other browser and app that uses a session.')}
+      <form onsubmit={handleChangePassword} class="space-y-4 max-w-sm">
+        <div>
+          <label for="old-password" class="label">Current password</label>
+          <input id="old-password" type="password" bind:value={oldPassword} autocomplete="current-password" class="field" />
+          <p class="hint mt-1">Signed in with single sign-on and never set one? Leave it empty.</p>
         </div>
-
-        {#if webError}<p class="text-danger text-sm">{webError}</p>{/if}
-      </div>
-    {/if}
-  </div>
-
-  <div class="bg-surface border border-border rounded-xl p-5">
-    <h2 class="text-lg font-semibold mb-3">Change Password</h2>
-
-    <form onsubmit={handleChangePassword} class="space-y-4">
-      <div>
-        <label for="old-password" class="block text-sm text-text-dim mb-1">Current Password</label>
-        <input id="old-password" type="password" bind:value={oldPassword} autocomplete="current-password"
-          placeholder="Leave blank if you logged in via SSO"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand transition-colors" />
-        <p class="text-xs text-text-dim mt-1">SSO users who never set a password can leave this blank.</p>
-      </div>
-
-      <div>
-        <label for="new-password" class="block text-sm text-text-dim mb-1">New Password</label>
-        <input id="new-password" type="password" bind:value={newPassword} required autocomplete="new-password"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand transition-colors" />
-      </div>
-
-      <div>
-        <label for="confirm-password" class="block text-sm text-text-dim mb-1">Confirm New Password</label>
-        <input id="confirm-password" type="password" bind:value={confirmPassword} required autocomplete="new-password"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand transition-colors" />
-      </div>
-
-      {#if error}<p class="text-danger text-sm">{error}</p>{/if}
-      {#if success}<p class="text-success text-sm">{success}</p>{/if}
-
-      <button type="submit" disabled={loading}
-        class="px-4 py-2 bg-brand text-bg text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer">
-        {loading ? 'Changing...' : 'Change Password'}
-      </button>
-    </form>
+        <div>
+          <label for="new-password" class="label">New password</label>
+          <input id="new-password" type="password" bind:value={newPassword} required minlength="4" autocomplete="new-password" class="field" />
+        </div>
+        <div>
+          <label for="confirm-password" class="label">Repeat new password</label>
+          <input id="confirm-password" type="password" bind:value={confirmPassword} required minlength="4" autocomplete="new-password" class="field" />
+        </div>
+        {#if error}<p class="text-sm text-danger" role="alert">{error}</p>{/if}
+        <button type="submit" disabled={loading} class="btn btn-primary">
+          {loading ? 'Changing…' : 'Change password'}
+        </button>
+      </form>
+    </section>
   </div>
 </div>

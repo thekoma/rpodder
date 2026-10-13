@@ -48,6 +48,14 @@ _check_toplist_has() {
 wait_until "static podcast in toplist" _check_toplist_has "Static Test Podcast" && pass "static podcast metadata updated"
 wait_until "dynamic podcast in toplist" _check_toplist_has "Dynamic Test Podcast" && pass "dynamic podcast metadata updated"
 
+# OPML export carries the fetched title (exercises the title lookup on both backends)
+opml=$(http_body "${RPODDER_URL}/subscriptions/${RPODDER_USER}.opml" -u "$AUTH_HEADER")
+if echo "$opml" | grep -qF "text=\"Static Test Podcast\" title=\"Static Test Podcast\" xmlUrl=\"${STATIC_FEED}\""; then
+  pass "OPML export uses the fetched podcast title"
+else
+  fail "OPML export uses the fetched podcast title" "$(echo "$opml" | grep -F "$STATIC_FEED")"
+fi
+
 # --- Trigger second feed update ---
 http_post_status "${ADMIN_URL}?url=${STATIC_ENCODED}" -u "$AUTH_HEADER" >/dev/null
 

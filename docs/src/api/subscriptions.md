@@ -16,6 +16,8 @@ Returns the current list of subscriptions for a device.
 ["https://example.com/feed1.xml", "https://example.com/feed2.xml"]
 ```
 
+**OPML response**: one `<outline type="rss">` per feed, whose `text` and `title` carry the podcast title once rpodder has read the feed (the URL until then). OPML responses are sent with `Content-Disposition: attachment; filename="rpodder-{username}-{deviceid}.opml"` (`rpodder-{username}.opml` for the all-devices list), so browsers save them as files.
+
 ### Replace device subscriptions
 
 ```

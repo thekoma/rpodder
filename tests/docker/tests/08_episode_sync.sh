@@ -49,3 +49,11 @@ assert_json_len "unknown podcast filter is empty" "$body" '.actions' "0"
 status=$(http_post_status "$URL" -u "$AUTH_HEADER" \
   -d "[$(play_action "$EP2" "$(printf 'x%.0s' $(seq 1 70))" "2020-01-01T12:00:00" 60)]")
 assert_status "overlong device id does not fail upload" "200" "$status"
+
+# History timestamps are ISO 8601 on both backends (the web UI parses them)
+ts=$(http_body "${RPODDER_URL}/api/2/history/${RPODDER_USER}.json" -u "$AUTH_HEADER" | jq -r '.[0].timestamp')
+if echo "$ts" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'; then
+  pass "history timestamp is ISO 8601"
+else
+  fail "history timestamp is ISO 8601" "got '$ts'"
+fi

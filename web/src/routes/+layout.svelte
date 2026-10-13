@@ -1,23 +1,41 @@
 <script lang="ts">
   import '../app.css';
+  import {
+    LibraryBig, Compass, History, MonitorSmartphone, ShieldCheck, Settings, BookOpen, LogOut, ChevronDown, CircleUserRound,
+  } from '@lucide/svelte';
   import { auth } from '$lib/auth.svelte';
   import { logout as apiLogout, getBuildInfo, getMe, type BuildInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
   import MiniPlayer from '$lib/components/MiniPlayer.svelte';
+  import Toasts from '$lib/components/Toasts.svelte';
+  import ThemeSwitch from '$lib/components/ThemeSwitch.svelte';
   import { player } from '$lib/player.svelte';
   import { localClear } from '$lib/positions';
   import { getWebSettings, peekWebSettings } from '$lib/webDevice';
 
   let { children } = $props();
   let buildInfo = $state<BuildInfo | null>(null);
-  let menuOpen = $state(false);
+  let accountMenu = $state<HTMLElement | null>(null);
 
-  // Close menu on navigation
+  const DOCS_URL = 'https://thekoma.github.io/rpodder/';
+
+  const nav = [
+    { href: '/subscriptions', label: 'Library', icon: LibraryBig, match: (p: string) => p === '/' || p.startsWith('/subscriptions') },
+    { href: '/discover', label: 'Discover', icon: Compass, match: (p: string) => p.startsWith('/discover') },
+    { href: '/history', label: 'History', icon: History, match: (p: string) => p.startsWith('/history') },
+    { href: '/devices', label: 'Devices', icon: MonitorSmartphone, match: (p: string) => p.startsWith('/devices') },
+  ];
+
+  let path = $derived($page.url.pathname);
+  let authPage = $derived(['/login', '/register', '/reset-password'].includes(path));
+  let hasPlayer = $derived(auth.loggedIn && !!player.episode);
+
+  // Close the account menu on navigation.
   $effect(() => {
-    $page.url.pathname;
-    menuOpen = false;
+    path;
+    accountMenu?.hidePopover?.();
   });
 
   $effect(() => {
@@ -47,6 +65,7 @@
   }
 
   async function handleLogout() {
+    accountMenu?.hidePopover?.();
     const username = auth.username;
     if (username) {
       const sync = await syncSetting(username);
@@ -58,108 +77,118 @@
     auth.logout();
     goto('/login');
   }
-
-  function isActive(path: string): boolean {
-    if (path === '/') return $page.url.pathname === '/';
-    return $page.url.pathname.startsWith(path);
-  }
 </script>
 
-<div class="min-h-screen bg-bg text-text {auth.loggedIn && player.episode ? 'pb-24' : ''}">
-  <!-- Nav -->
-  <nav class="border-b border-border bg-surface sticky top-0 z-50">
-    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-      <!-- Left: logo + docs -->
-      <div class="flex items-center gap-3">
-        <a href="/" class="flex items-center gap-2 text-brand font-bold text-lg hover:opacity-80 transition-opacity">
-          <img src="/logo.svg" alt="" class="h-7 w-auto invert" />
-          rpodder
-        </a>
-        <a href="https://thekoma.github.io/rpodder/" target="_blank" rel="noopener noreferrer"
-          class="text-text-dim hover:text-text transition-colors" title="Documentation">
-          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-          </svg>
-        </a>
-      </div>
+<div class="min-h-dvh flex flex-col bg-ground text-ink">
+  <!-- Shell bar -->
+  <header class="sticky top-0 z-50 bg-shell text-shell-ink">
+    <div class="max-w-6xl mx-auto h-14 px-4 flex items-center gap-6">
+      <a href={auth.loggedIn ? '/subscriptions' : '/'} class="flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity">
+        <img src="/logo.svg" alt="" class="h-7 w-auto invert" />
+        <span class="text-[1.0625rem] font-bold tracking-[-0.01em]">rpodder</span>
+      </a>
 
       {#if auth.loggedIn}
-        <!-- Desktop nav -->
-        <div class="hidden md:flex items-center gap-4">
-          <a href="/discover" class="text-sm transition-colors {isActive('/discover') ? 'text-brand' : 'text-text-dim hover:text-text'}">Discover</a>
-          <a href="/subscriptions" class="text-sm transition-colors {isActive('/subscriptions') ? 'text-brand' : 'text-text-dim hover:text-text'}">Subscriptions</a>
-          <a href="/history" class="text-sm transition-colors {isActive('/history') ? 'text-brand' : 'text-text-dim hover:text-text'}">History</a>
-          <a href="/devices" class="text-sm transition-colors {isActive('/devices') ? 'text-brand' : 'text-text-dim hover:text-text'}">Devices</a>
+        <nav aria-label="Main" class="hidden md:flex items-stretch h-full gap-1">
+          {#each nav as item (item.href)}
+            {@const active = item.match(path)}
+            <a href={item.href} aria-current={active ? 'page' : undefined}
+              class="relative flex items-center px-3 text-sm font-semibold transition-colors
+                {active ? 'text-shell-ink' : 'text-shell-ink-2 hover:text-shell-ink'}">
+              {item.label}
+              {#if active}<span class="absolute left-3 right-3 bottom-0 h-[3px] bg-red rounded-t-[2px]"></span>{/if}
+            </a>
+          {/each}
           {#if auth.isAdmin}
-            <a href="/admin" class="text-sm transition-colors {isActive('/admin') ? 'text-brand' : 'text-text-dim hover:text-text'}">Admin</a>
+            {@const active = path.startsWith('/admin')}
+            <a href="/admin" aria-current={active ? 'page' : undefined}
+              class="relative flex items-center px-3 text-sm font-semibold transition-colors
+                {active ? 'text-shell-ink' : 'text-shell-ink-2 hover:text-shell-ink'}">
+              Admin
+              {#if active}<span class="absolute left-3 right-3 bottom-0 h-[3px] bg-red rounded-t-[2px]"></span>{/if}
+            </a>
           {/if}
-          <div class="flex items-center gap-2 ml-2 pl-4 border-l border-border">
-            <a href="/settings" class="text-sm text-text-dim hover:text-text transition-colors">{auth.username}</a>
-            {#if auth.isAdmin}
-              <span class="text-xs px-1.5 py-0.5 rounded-full bg-brand-dim text-brand">admin</span>
-            {/if}
-            <button onclick={handleLogout}
-              class="text-xs text-danger hover:text-red-400 transition-colors cursor-pointer">Logout</button>
-          </div>
-        </div>
+        </nav>
 
-        <!-- Mobile hamburger -->
-        <button onclick={() => { menuOpen = !menuOpen; }}
-          class="md:hidden p-2 text-text-dim hover:text-text transition-colors cursor-pointer"
-          aria-label="Menu">
-          {#if menuOpen}
-            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-          {:else}
-            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
-          {/if}
-        </button>
+        <div class="ml-auto">
+          <button popovertarget="account-menu"
+            class="flex items-center gap-2 h-9 pl-2 pr-2.5 rounded-[6px] text-sm font-semibold text-shell-ink hover:bg-shell-2 transition-colors cursor-pointer">
+            <CircleUserRound class="w-5 h-5 text-shell-ink-2" />
+            <span class="max-w-[10rem] truncate">{auth.username}</span>
+            <ChevronDown class="w-4 h-4 text-shell-ink-2" />
+          </button>
+        </div>
+      {:else if !authPage}
+        <a href="/login" class="ml-auto btn btn-sm bg-shell-ink text-shell hover:opacity-90">Sign in</a>
       {/if}
     </div>
+  </header>
 
-    <!-- Mobile menu dropdown -->
-    {#if menuOpen && auth.loggedIn}
-      <div class="md:hidden border-t border-border bg-surface">
-        <div class="max-w-6xl mx-auto px-4 py-3 space-y-1">
-          <a href="/discover" class="block px-3 py-2 rounded-lg text-sm transition-colors {isActive('/discover') ? 'bg-brand-dim text-brand' : 'text-text-dim hover:bg-surface-hover hover:text-text'}">Discover</a>
-          <a href="/subscriptions" class="block px-3 py-2 rounded-lg text-sm transition-colors {isActive('/subscriptions') ? 'bg-brand-dim text-brand' : 'text-text-dim hover:bg-surface-hover hover:text-text'}">Subscriptions</a>
-          <a href="/history" class="block px-3 py-2 rounded-lg text-sm transition-colors {isActive('/history') ? 'bg-brand-dim text-brand' : 'text-text-dim hover:bg-surface-hover hover:text-text'}">History</a>
-          <a href="/devices" class="block px-3 py-2 rounded-lg text-sm transition-colors {isActive('/devices') ? 'bg-brand-dim text-brand' : 'text-text-dim hover:bg-surface-hover hover:text-text'}">Devices</a>
-          {#if auth.isAdmin}
-            <a href="/admin" class="block px-3 py-2 rounded-lg text-sm transition-colors {isActive('/admin') ? 'bg-brand-dim text-brand' : 'text-text-dim hover:bg-surface-hover hover:text-text'}">Admin</a>
-          {/if}
-          <div class="border-t border-border mt-2 pt-2 flex items-center justify-between px-3 py-2">
-            <div class="flex items-center gap-2">
-              <a href="/settings" class="text-sm text-text-dim hover:text-text transition-colors">{auth.username}</a>
-              {#if auth.isAdmin}
-                <span class="text-xs px-1.5 py-0.5 rounded-full bg-brand-dim text-brand">admin</span>
-              {/if}
-            </div>
-            <button onclick={handleLogout}
-              class="text-xs text-danger hover:text-red-400 transition-colors cursor-pointer">Logout</button>
-          </div>
-        </div>
+  {#if auth.loggedIn}
+    <div id="account-menu" popover bind:this={accountMenu}
+      class="m-0 fixed inset-auto top-14 right-3 sm:right-[max(0.75rem,calc((100vw-72rem)/2+0.75rem))] w-72 p-0 rounded-[6px] border border-rule bg-panel text-ink shadow-[var(--shadow-lift)]">
+      <div class="px-4 pt-3 pb-3 border-b border-rule">
+        <p class="font-bold truncate">{auth.username}</p>
+        <p class="text-xs text-ink-3">{auth.isAdmin ? 'Administrator' : 'Member'}</p>
       </div>
-    {/if}
-  </nav>
-
-  <!-- Content -->
-  <main class="max-w-6xl mx-auto px-4 py-6">
-    {@render children()}
-  </main>
-
-  <!-- Footer with build info -->
-  {#if buildInfo}
-    <footer class="border-t border-border mt-8 py-4 text-center text-xs text-text-dim">
-      rpodder v{buildInfo.version}
-      {#if buildInfo.build_tag !== 'dev'}
-        · <span class="text-brand">{buildInfo.build_tag}</span>
-      {/if}
-      {#if buildInfo.build_sha !== 'local' && buildInfo.build_sha !== 'unknown'}
-        · <code class="text-text-dim/60">{buildInfo.build_sha.substring(0, 7)}</code>
-      {/if}
-      · {buildInfo.database}
-    </footer>
+      <div class="p-1.5">
+        <a href="/settings" class="flex items-center gap-2.5 px-2.5 h-9 rounded-[4px] text-sm hover:bg-panel-2">
+          <Settings class="w-4 h-4 text-ink-2" /> Settings
+        </a>
+        {#if auth.isAdmin}
+          <a href="/admin" class="md:hidden flex items-center gap-2.5 px-2.5 h-9 rounded-[4px] text-sm hover:bg-panel-2">
+            <ShieldCheck class="w-4 h-4 text-ink-2" /> Admin
+          </a>
+        {/if}
+        <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" class="flex items-center gap-2.5 px-2.5 h-9 rounded-[4px] text-sm hover:bg-panel-2">
+          <BookOpen class="w-4 h-4 text-ink-2" /> Documentation
+        </a>
+      </div>
+      <div class="px-3 py-3 border-t border-rule">
+        <ThemeSwitch />
+      </div>
+      <div class="p-1.5 border-t border-rule">
+        <button onclick={handleLogout} class="w-full flex items-center gap-2.5 px-2.5 h-9 rounded-[4px] text-sm text-danger hover:bg-danger-soft cursor-pointer">
+          <LogOut class="w-4 h-4" /> Log out
+        </button>
+      </div>
+    </div>
   {/if}
 
+  <Toasts />
+
+  <main class="flex-1 w-full max-w-6xl mx-auto px-4 pt-6 sm:pt-8
+    {auth.loggedIn ? (hasPlayer ? 'pb-44 md:pb-28' : 'pb-24 md:pb-10') : 'pb-10'}">
+    {@render children()}
+
+    {#if buildInfo}
+      <footer class="mt-16 pt-4 border-t border-rule text-xs text-ink-3 data flex flex-wrap gap-x-3 gap-y-1">
+        <span>rpodder {buildInfo.version}</span>
+        {#if buildInfo.build_tag !== 'dev'}<span>{buildInfo.build_tag}</span>{/if}
+        {#if buildInfo.build_sha !== 'local' && buildInfo.build_sha !== 'unknown'}<span>{buildInfo.build_sha.substring(0, 7)}</span>{/if}
+        <span>{buildInfo.database}</span>
+      </footer>
+    {/if}
+  </main>
+
   <MiniPlayer />
+
+  <!-- Phone tab bar -->
+  {#if auth.loggedIn}
+    <nav aria-label="Main" class="md:hidden fixed inset-x-0 bottom-0 z-40 bg-panel border-t border-rule pb-[env(safe-area-inset-bottom)]">
+      <div class="grid grid-cols-4 h-14">
+        {#each nav as item (item.href)}
+          {@const active = item.match(path)}
+          {@const Icon = item.icon}
+          <a href={item.href} aria-current={active ? 'page' : undefined}
+            class="relative flex flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-semibold
+              {active ? 'text-ink' : 'text-ink-3'}">
+            {#if active}<span class="absolute top-0 inset-x-6 h-[3px] bg-red rounded-b-[2px]"></span>{/if}
+            <Icon class="w-5 h-5" />
+            {item.label}
+          </a>
+        {/each}
+      </div>
+    </nav>
+  {/if}
 </div>

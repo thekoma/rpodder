@@ -1,6 +1,8 @@
 <script lang="ts">
   import { register } from '$lib/api';
   import { goto } from '$app/navigation';
+  import AuthFrame from '$lib/components/AuthFrame.svelte';
+  import { notify } from '$lib/toast.svelte';
 
   let username = $state('');
   let password = $state('');
@@ -13,77 +15,53 @@
     e.preventDefault();
     error = '';
 
-    if (password !== confirmPassword) {
-      error = 'Passwords do not match';
-      return;
-    }
-    if (username.length < 2) {
-      error = 'Username must be at least 2 characters';
-      return;
-    }
-    if (password.length < 4) {
-      error = 'Password must be at least 4 characters';
-      return;
-    }
+    if (username.trim().length < 2) { error = 'The username needs at least 2 characters.'; return; }
+    if (password.length < 4) { error = 'The password needs at least 4 characters.'; return; }
+    if (password !== confirmPassword) { error = "The two passwords don't match."; return; }
 
     loading = true;
-    const ok = await register(username, password, email || undefined);
+    const ok = await register(username.trim(), password, email.trim() || undefined);
     loading = false;
 
     if (ok) {
+      notify('Account created. Check your email if this server asks you to activate it.');
       goto('/login');
     } else {
-      error = 'Username already exists or registration failed';
+      error = 'That username is taken, or registration is closed on this server.';
     }
   }
 </script>
 
-<div class="max-w-sm mx-auto mt-20">
-  <div class="bg-surface border border-border rounded-xl p-8">
-    <div class="text-center mb-8">
-      <span class="text-4xl">🎧</span>
-      <h1 class="text-2xl font-bold mt-2 text-brand">Create Account</h1>
-      <p class="text-text-dim text-sm mt-1">Register to sync your podcasts</p>
+<svelte:head><title>Create account · rpodder</title></svelte:head>
+
+<AuthFrame title="Create an account" subtitle="One account for all your podcast apps.">
+  <form onsubmit={handleRegister} class="space-y-4">
+    <div>
+      <label for="username" class="label">Username</label>
+      <input id="username" type="text" bind:value={username} required autocomplete="username" autocapitalize="none" spellcheck="false" class="field" />
+      <p class="hint mt-1">You'll type this into your podcast apps too.</p>
+    </div>
+    <div>
+      <label for="email" class="label">Email <span class="font-normal text-ink-3">(optional, for password resets)</span></label>
+      <input id="email" type="email" bind:value={email} autocomplete="email" class="field" />
+    </div>
+    <div>
+      <label for="password" class="label">Password</label>
+      <input id="password" type="password" bind:value={password} required minlength="4" autocomplete="new-password" class="field" />
+    </div>
+    <div>
+      <label for="confirm" class="label">Repeat password</label>
+      <input id="confirm" type="password" bind:value={confirmPassword} required minlength="4" autocomplete="new-password" class="field" />
     </div>
 
-    <form onsubmit={handleRegister} class="space-y-4">
-      <div>
-        <label for="username" class="block text-sm text-text-dim mb-1">Username</label>
-        <input id="username" type="text" bind:value={username} required autocomplete="username"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors" />
-      </div>
+    {#if error}<p class="text-sm text-danger" role="alert">{error}</p>{/if}
 
-      <div>
-        <label for="email" class="block text-sm text-text-dim mb-1">Email (optional)</label>
-        <input id="email" type="email" bind:value={email}
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors" />
-      </div>
+    <button type="submit" disabled={loading} class="btn btn-primary w-full h-11">
+      {loading ? 'Creating…' : 'Create account'}
+    </button>
+  </form>
 
-      <div>
-        <label for="password" class="block text-sm text-text-dim mb-1">Password</label>
-        <input id="password" type="password" bind:value={password} required autocomplete="new-password"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors" />
-      </div>
-
-      <div>
-        <label for="confirm" class="block text-sm text-text-dim mb-1">Confirm Password</label>
-        <input id="confirm" type="password" bind:value={confirmPassword} required autocomplete="new-password"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors" />
-      </div>
-
-      {#if error}
-        <p class="text-danger text-sm text-center">{error}</p>
-      {/if}
-
-      <button type="submit" disabled={loading}
-        class="w-full py-2.5 bg-brand text-bg font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
-      >
-        {loading ? 'Creating...' : 'Create Account'}
-      </button>
-    </form>
-
-    <p class="text-center text-text-dim text-sm mt-4">
-      Already have an account? <a href="/login" class="text-brand hover:underline">Sign in</a>
-    </p>
-  </div>
-</div>
+  {#snippet footer()}
+    <p>Already registered? <a href="/login" class="font-semibold text-primary hover:underline">Sign in</a></p>
+  {/snippet}
+</AuthFrame>

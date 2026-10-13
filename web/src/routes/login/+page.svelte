@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { KeyRound, Clock } from '@lucide/svelte';
   import { auth } from '$lib/auth.svelte';
   import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { page } from '$app/stores';
+  import AuthFrame from '$lib/components/AuthFrame.svelte';
 
   let username = $state('');
   let password = $state('');
@@ -28,86 +30,53 @@
       auth.login(username);
       const me = await getMe();
       if (me) auth.setAdmin(me.is_admin);
-      goto('/');
+      goto('/subscriptions');
     } else {
-      error = 'Invalid username or password';
+      error = "That username and password don't match an account.";
     }
     loading = false;
   }
 </script>
 
-<div class="max-w-sm mx-auto mt-20">
-  <div class="bg-surface border border-border rounded-xl p-8">
-    <div class="text-center mb-8">
-      <span class="text-4xl">🎧</span>
-      <h1 class="text-2xl font-bold mt-2 text-brand">rpodder</h1>
-      <p class="text-text-dim text-sm mt-1">Sign in to sync your podcasts</p>
+<svelte:head><title>Sign in · rpodder</title></svelte:head>
+
+<AuthFrame title="Sign in" subtitle="Manage the podcasts your apps sync.">
+  {#if expired}
+    <p class="notice mb-5 bg-warning-soft border-warning/40"><Clock class="w-4 h-4 text-warning shrink-0 mt-0.5" /> Your session expired. Sign in again to continue.</p>
+  {/if}
+
+  {#if ssoInfo?.enabled}
+    <a href="/auth/sso/login" rel="external" class="btn btn-secondary w-full h-11">
+      <KeyRound class="w-4 h-4" /> Continue with {ssoInfo.provider_name}
+    </a>
+    <div class="flex items-center gap-3 my-5" aria-hidden="true">
+      <span class="flex-1 h-px bg-rule"></span><span class="text-xs text-ink-3">or with a password</span><span class="flex-1 h-px bg-rule"></span>
+    </div>
+  {/if}
+
+  <form onsubmit={handleLogin} class="space-y-4">
+    <div>
+      <label for="username" class="label">Username</label>
+      <input id="username" type="text" bind:value={username} required autocomplete="username" autocapitalize="none" spellcheck="false" class="field" />
+    </div>
+    <div>
+      <div class="flex items-baseline justify-between">
+        <label for="password" class="label">Password</label>
+        <a href="/reset-password" class="text-xs font-semibold text-primary hover:underline">Forgot it?</a>
+      </div>
+      <input id="password" type="password" bind:value={password} required autocomplete="current-password" class="field" />
     </div>
 
-    {#if expired}
-      <p class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center mb-4">Your session expired, please log in again.</p>
+    {#if error}<p class="text-sm text-danger" role="alert">{error}</p>{/if}
+
+    <button type="submit" disabled={loading} class="btn btn-primary w-full h-11">
+      {loading ? 'Signing in…' : 'Sign in'}
+    </button>
+  </form>
+
+  {#snippet footer()}
+    {#if ssoInfo && ssoInfo.registration !== 'closed'}
+      <p>New here? <a href="/register" class="font-semibold text-primary hover:underline">Create an account</a></p>
     {/if}
-
-    {#if ssoInfo?.enabled}
-      <a
-        href="/auth/sso/login"
-        class="w-full flex items-center justify-center gap-2 py-2.5 bg-surface border border-border text-text font-medium rounded-lg hover:bg-surface-hover transition-colors no-underline mb-4"
-      >
-        🔐 Sign in with {ssoInfo.provider_name}
-      </a>
-      <div class="flex items-center gap-3 mb-4">
-        <div class="flex-1 border-t border-border"></div>
-        <span class="text-xs text-text-dim">or</span>
-        <div class="flex-1 border-t border-border"></div>
-      </div>
-    {/if}
-
-    <form onsubmit={handleLogin} class="space-y-4">
-      <div>
-        <label for="username" class="block text-sm text-text-dim mb-1">Username</label>
-        <input
-          id="username"
-          type="text"
-          bind:value={username}
-          required
-          autocomplete="username"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors"
-        />
-      </div>
-
-      <div>
-        <label for="password" class="block text-sm text-text-dim mb-1">Password</label>
-        <input
-          id="password"
-          type="password"
-          bind:value={password}
-          required
-          autocomplete="current-password"
-          class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text focus:outline-none focus:border-brand transition-colors"
-        />
-      </div>
-
-      {#if error}
-        <p class="text-danger text-sm text-center">{error}</p>
-      {/if}
-
-      <button
-        type="submit"
-        disabled={loading}
-        class="w-full py-2.5 bg-brand text-bg font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
-      >
-        {loading ? 'Signing in...' : 'Sign in'}
-      </button>
-    </form>
-
-    <p class="text-center text-text-dim text-sm mt-3">
-      <a href="/reset-password" class="text-brand hover:underline">Forgot password?</a>
-    </p>
-
-    {#if ssoInfo?.registration !== 'closed'}
-      <p class="text-center text-text-dim text-sm mt-2">
-        Don't have an account? <a href="/register" class="text-brand hover:underline">Register</a>
-      </p>
-    {/if}
-  </div>
-</div>
+  {/snippet}
+</AuthFrame>

@@ -31,3 +31,18 @@ body=$(http_body "${RPODDER_URL}/api/2/subscriptions/${RPODDER_USER}/${DEVICE}.j
   -u "$AUTH_HEADER")
 # The add list should contain only FEED1 (net result after sub+unsub)
 assert_json "after unsubscribe, FEED1 still in add" "$body" '.add[0]' "$FEED1"
+
+# OPML export: download file name and an outline per feed (both backends)
+HDRS=$(mktemp)
+opml=$(curl -s -D "$HDRS" -u "$AUTH_HEADER" "${RPODDER_URL}/subscriptions/${RPODDER_USER}.opml")
+if grep -qi "^content-disposition: attachment; filename=\"rpodder-${RPODDER_USER}.opml\"" "$HDRS"; then
+  pass "OPML export names the download"
+else
+  fail "OPML export names the download" "$(grep -i content-disposition "$HDRS")"
+fi
+if echo "$opml" | grep -q "<outline type=\"rss\" text=\"[^\"]*\" title=\"[^\"]*\" xmlUrl=\"${FEED1}\""; then
+  pass "OPML outline carries text and title"
+else
+  fail "OPML outline carries text and title" "$(echo "$opml" | grep outline | head -2)"
+fi
+rm -f "$HDRS"

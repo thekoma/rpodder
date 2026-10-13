@@ -1,137 +1,122 @@
 <script lang="ts">
+  import { BookOpen, Plus, Check } from '@lucide/svelte';
   import { getTrending, getSsoInfo, type ExternalPodcast } from '$lib/api';
   import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
   import { subscribe as subscribeEverywhere } from '$lib/webDevice';
   import { browser } from '$app/environment';
+  import { untrack } from 'svelte';
+  import Cover from '$lib/components/Cover.svelte';
+  import { plainText, uniqueByUrl } from '$lib/format';
+  import { notify, notifyError } from '$lib/toast.svelte';
 
   const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
+  const LANGS = [
+    { code: '', label: 'All' },
+    { code: 'en', label: 'English' },
+    { code: 'it', label: 'Italiano' },
+    { code: 'de', label: 'Deutsch' },
+    { code: 'es', label: 'Español' },
+    { code: 'fr', label: 'Français' },
+  ];
 
   let podcasts = $state<ExternalPodcast[]>([]);
   let loading = $state(true);
   let subscribing = $state<string | null>(null);
-  let subscribeMsg = $state('');
+  let added = $state<Set<string>>(new Set());
   let lang = $state('');
   let podcastindexConfigured = $state(true);
 
   $effect(() => {
     if (!browser) return;
     getSsoInfo().then(info => { podcastindexConfigured = info.podcastindex; });
-    loadTrending();
+    // Language changes reload through setLang; the effect only runs once.
+    untrack(loadTrending);
   });
 
   function loadTrending() {
     loading = true;
-    getTrending(lang || undefined, 30).then(p => {
-      podcasts = p;
-      loading = false;
-    }).catch(() => { loading = false; });
+    const wanted = lang;
+    getTrending(wanted || undefined, 30).then(p => {
+      if (wanted === lang) podcasts = uniqueByUrl(p);
+    }).catch(() => {}).finally(() => { if (wanted === lang) loading = false; });
   }
 
   async function subscribe(podcast: ExternalPodcast) {
     const username = auth.username;
     if (!username) return;
-    subscribing = podcast.title;
-    let ok = true;
+    subscribing = podcast.url;
     try {
       await subscribeEverywhere(username, podcast.url);
+      added = new Set([...added, podcast.url]);
+      notify(`Subscribed to ${podcast.title}`);
     } catch (e) {
       if (isAuthError(e)) { subscribing = null; sessionExpired(username); return; }
-      ok = false;
+      notifyError(`Couldn't subscribe to ${podcast.title}, try again.`);
     }
     subscribing = null;
-    subscribeMsg = ok ? `Subscribed to ${podcast.title}` : 'Failed';
-    setTimeout(() => { subscribeMsg = ''; }, 3000);
   }
 
-  function setLang(newLang: string) {
-    lang = newLang;
+  function setLang(code: string) {
+    if (code === lang) return;
+    lang = code;
     loadTrending();
   }
 </script>
 
-<div class="space-y-6">
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold">Trending Podcasts</h1>
-      <p class="text-xs text-text-dim mt-1">Powered by Podcast Index</p>
-    </div>
-    <div class="flex gap-1">
-      <button onclick={() => setLang('')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === '' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        All
-      </button>
-      <button onclick={() => setLang('en')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === 'en' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        English
-      </button>
-      <button onclick={() => setLang('it')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === 'it' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        Italiano
-      </button>
-      <button onclick={() => setLang('de')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === 'de' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        Deutsch
-      </button>
-      <button onclick={() => setLang('es')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === 'es' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        Español
-      </button>
-      <button onclick={() => setLang('fr')}
-        class="px-3 py-1 text-xs rounded-full cursor-pointer transition-colors {lang === 'fr' ? 'bg-brand text-bg' : 'bg-surface border border-border text-text-dim hover:text-text'}">
-        Français
-      </button>
+<svelte:head><title>Trending · rpodder</title></svelte:head>
+
+<div class="space-y-4">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm text-ink-2">What listeners everywhere are picking up, from Podcast Index.</p>
+    <div role="radiogroup" aria-label="Language" class="inline-flex flex-wrap p-0.5 rounded-[6px] bg-panel-2 border border-rule">
+      {#each LANGS as l (l.code)}
+        <button role="radio" aria-checked={lang === l.code} onclick={() => setLang(l.code)}
+          class="h-8 px-3 rounded-[4px] text-sm font-semibold cursor-pointer transition-colors
+            {lang === l.code ? 'bg-panel text-ink shadow-[var(--shadow)]' : 'text-ink-2 hover:text-ink'}">{l.label}</button>
+      {/each}
     </div>
   </div>
 
-  {#if subscribeMsg}
-    <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{subscribeMsg}</div>
-  {/if}
-
   {#if loading}
-    <div class="text-center text-text-dim py-12">Loading...</div>
-  {:else if podcasts.length === 0}
-    {#if !podcastindexConfigured}
-      <div class="text-center py-12 space-y-3">
-        <p class="text-text-dim">Trending podcasts require an external search provider.</p>
-        <a href={DOCS_URL} target="_blank" rel="noopener noreferrer"
-          class="inline-flex items-center gap-1.5 text-sm text-brand hover:underline">
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-          Learn how to configure Podcast Index
-        </a>
-      </div>
-    {:else}
-      <p class="text-text-dim text-center py-8">No trending podcasts available.</p>
-    {/if}
-  {:else}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {#each podcasts as podcast}
-        <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3">
-          <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex gap-3 flex-1 min-w-0 no-underline text-text">
-            {#if podcast.logo_url}
-              <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-            {:else}
-              <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙</div>
-            {/if}
-            <div class="flex-1 min-w-0">
-              <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
-              {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
-              {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
-              {#if podcast.language}
-                <span class="text-xs text-text-dim/50 uppercase">{podcast.language}</span>
-              {/if}
-            </div>
-          </a>
-          {#if auth.loggedIn}
-            <button
-              onclick={() => subscribe(podcast)}
-              disabled={subscribing === podcast.title}
-              class="self-center px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer shrink-0"
-            >
-              {subscribing === podcast.title ? '...' : '+ Add'}
-            </button>
-          {/if}
-        </div>
+    <div class="panel divide-y divide-rule" aria-busy="true">
+      {#each [0, 1, 2, 3] as i (i)}
+        <div class="flex items-center gap-4 px-4 py-3"><div class="skeleton w-14 h-14"></div><div class="flex-1 space-y-2"><div class="skeleton h-4 w-1/2"></div><div class="skeleton h-3 w-1/3"></div></div></div>
       {/each}
     </div>
+  {:else if podcasts.length === 0}
+    {#if !podcastindexConfigured}
+      <div class="catalog-card p-6 space-y-3 max-w-2xl">
+        <h2 class="text-lg font-bold">Trending needs Podcast Index</h2>
+        <p class="text-ink-2">An administrator can add a free Podcast Index key to show what's popular beyond this server.</p>
+        <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" class="btn btn-secondary"><BookOpen class="w-4 h-4" /> How to set it up</a>
+      </div>
+    {:else}
+      <p class="panel p-6 text-ink-2">No trending podcasts right now. Try another language.</p>
+    {/if}
+  {:else}
+    <ol class="panel divide-y divide-rule">
+      {#each podcasts as podcast, i (podcast.url)}
+        <li class="flex items-center gap-4 pl-4 pr-3 py-3 hover:bg-panel-2 transition-colors">
+          <span class="hidden sm:block data text-sm text-ink-3 w-6 text-right">{i + 1}</span>
+          <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="group flex gap-4 flex-1 min-w-0">
+            <Cover src={podcast.logo_url} title={podcast.title} size="md" />
+            <span class="min-w-0">
+              <span class="block font-semibold leading-snug line-clamp-1 group-hover:underline">{podcast.title}</span>
+              {#if podcast.author}<span class="block text-sm text-ink-2 truncate">{podcast.author}</span>{/if}
+              {#if podcast.description}<span class="block text-sm text-ink-3 mt-0.5 line-clamp-1">{plainText(podcast.description)}</span>{/if}
+            </span>
+          </a>
+          {#if auth.loggedIn}
+            {#if added.has(podcast.url)}
+              <span class="btn btn-sm text-success shrink-0"><Check class="w-4 h-4" /> Added</span>
+            {:else}
+              <button onclick={() => subscribe(podcast)} disabled={subscribing === podcast.url} class="btn btn-secondary btn-sm shrink-0">
+                <Plus class="w-4 h-4" /> {subscribing === podcast.url ? 'Adding…' : 'Subscribe'}
+              </button>
+            {/if}
+          {/if}
+        </li>
+      {/each}
+    </ol>
   {/if}
 </div>

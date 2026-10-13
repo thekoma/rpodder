@@ -1,8 +1,14 @@
 <script lang="ts">
+  import { Search, LoaderCircle, Rss, BookOpen, Plus, Check } from '@lucide/svelte';
   import { searchAll, getToplist, getTopTags, getPodcastsForTag, getSsoInfo, type PodcastInfo, type TagInfo, type ExternalPodcast } from '$lib/api';
   import { auth, isAuthError, sessionExpired } from '$lib/auth.svelte';
   import { subscribe } from '$lib/webDevice';
   import { browser } from '$app/environment';
+  import { goto } from '$app/navigation';
+  import Cover from '$lib/components/Cover.svelte';
+  import AddFeed from '$lib/components/AddFeed.svelte';
+  import { looksLikeFeedUrl, plainText, uniqueByUrl } from '$lib/format';
+  import { notify, notifyError } from '$lib/toast.svelte';
 
   let query = $state('');
   let localResults = $state<PodcastInfo[]>([]);
@@ -13,11 +19,14 @@
   let searching = $state(false);
   let loading = $state(true);
   let subscribing = $state<string | null>(null);
-  let subscribeMsg = $state('');
+  let added = $state<Set<string>>(new Set());
   let podcastindexConfigured = $state(true);
   let searchTimeout: ReturnType<typeof setTimeout>;
+  let feedUrl = $state('');
 
   const DOCS_URL = 'https://thekoma.github.io/rpodder/admin-guide/external-search/';
+
+  let isUrl = $derived(looksLikeFeedUrl(query));
 
   $effect(() => {
     if (!browser) return;
@@ -27,8 +36,7 @@
       topPodcasts = top;
       tags = t;
       loading = false;
-      const topCats = t.slice(0, 4);
-      for (const cat of topCats) {
+      for (const cat of t.slice(0, 3)) {
         getPodcastsForTag(cat.tag, 6).then(podcasts => {
           categoryPodcasts = new Map([...categoryPodcasts, [cat.tag, podcasts]]);
         });
@@ -38,190 +46,196 @@
 
   function handleSearch() {
     clearTimeout(searchTimeout);
+    if (isUrl) { feedUrl = query.trim(); localResults = []; externalResults = []; searching = false; return; }
     if (!query.trim()) { localResults = []; externalResults = []; searching = false; return; }
     searching = true;
+    const q = query;
     searchTimeout = setTimeout(() => {
-      searchAll(query).then(r => {
+      searchAll(q).then(r => {
+        if (q !== query) return;
         localResults = r.local;
-        externalResults = r.external;
+        externalResults = uniqueByUrl(r.external);
         searching = false;
-      });
+      }).catch(() => { searching = false; });
     }, 300);
   }
 
   async function subscribeUrl(url: string, title: string) {
     const username = auth.username;
-    if (!username) return;
-    subscribing = title;
-    let ok = true;
+    if (!username) { goto('/login'); return; }
+    subscribing = url;
     try {
       await subscribe(username, url);
+      added = new Set([...added, url]);
+      notify(`Subscribed to ${title}`);
     } catch (e) {
       if (isAuthError(e)) { subscribing = null; sessionExpired(username); return; }
-      ok = false;
+      notifyError(`Couldn't subscribe to ${title}, try again.`);
     }
     subscribing = null;
-    subscribeMsg = ok ? `Subscribed to ${title}` : 'Failed';
-    setTimeout(() => { subscribeMsg = ''; }, 3000);
   }
 </script>
 
-<div class="space-y-8">
-  {#if subscribeMsg}
-    <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{subscribeMsg}</div>
-  {/if}
+<svelte:head><title>Discover · rpodder</title></svelte:head>
 
-  <!-- Search bar -->
-  <div class="relative">
-    <input
-      type="search"
-      bind:value={query}
-      oninput={handleSearch}
-      placeholder="Search podcasts..."
-      class="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text placeholder:text-text-dim focus:outline-none focus:border-brand transition-colors"
-    />
-    {#if searching}
-      <div class="absolute right-4 top-1/2 -translate-y-1/2 text-text-dim text-sm">Searching...</div>
-    {/if}
+<div class="space-y-10">
+  <!-- Search -->
+  <div class="space-y-2">
+    <div class="relative">
+      <Search class="w-5 h-5 text-ink-3 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <input type="search" bind:value={query} oninput={handleSearch}
+        placeholder="Search podcasts, or paste a feed address" aria-label="Search podcasts or paste a feed address"
+        class="field h-12 pl-11 text-base" />
+      {#if searching}
+        <LoaderCircle class="w-5 h-5 text-ink-3 absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin" aria-label="Searching" />
+      {/if}
+    </div>
   </div>
 
-  <!-- Search results -->
-  {#if query.trim()}
-    {#if localResults.length > 0}
-      <div>
-        <h2 class="text-sm font-semibold text-text-dim mb-3">Local results</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {#each localResults as podcast}
-            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3 no-underline text-text">
-              {#if podcast.logo_url}
-                <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-              {:else}
-                <div class="w-14 h-14 rounded-lg bg-brand-dim flex items-center justify-center text-xl shrink-0">🎙</div>
-              {/if}
-              <div class="flex-1 min-w-0">
-                <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
-                {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
-                {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
-              </div>
-            </a>
-          {/each}
-        </div>
-      </div>
-    {/if}
+  {#if isUrl}
+    <div class="catalog-card p-4 sm:p-5 space-y-3">
+      <div class="flex items-center gap-2 font-semibold"><Rss class="w-4 h-4 text-primary" /> Add this feed to your library</div>
+      {#if auth.loggedIn}
+        <AddFeed bind:value={feedUrl} />
+      {:else}
+        <p class="text-ink-2 text-sm"><a href="/login" class="underline">Sign in</a> to subscribe by address.</p>
+      {/if}
+    </div>
+  {:else if query.trim()}
+    <div class="space-y-8">
+      {#if localResults.length > 0}
+        <section aria-labelledby="local-heading" class="space-y-3">
+          <h2 id="local-heading" class="text-base font-bold">On this server</h2>
+          <ul class="panel divide-y divide-rule">
+            {#each localResults as podcast (podcast.url)}
+              <li>
+                <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="group flex gap-4 px-4 py-3 hover:bg-panel-2 transition-colors">
+                  <Cover src={podcast.logo_url} title={podcast.title} size="md" />
+                  <span class="min-w-0">
+                    <span class="block font-semibold leading-snug line-clamp-1 group-hover:underline">{podcast.title}</span>
+                    {#if podcast.author}<span class="block text-sm text-ink-2 truncate">{podcast.author}</span>{/if}
+                    {#if podcast.description}<span class="block text-sm text-ink-3 mt-0.5 line-clamp-1">{plainText(podcast.description)}</span>{/if}
+                  </span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
 
-    {#if externalResults.length > 0}
-      <div>
-        <h2 class="text-sm font-semibold text-text-dim mb-3">
-          Podcast Index
-          <span class="font-normal text-xs ml-1 opacity-60">podcastindex.org</span>
-        </h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {#each externalResults as podcast}
-            <div class="bg-surface border border-border rounded-xl p-4 hover:bg-surface-hover transition-colors flex gap-3">
-              <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex gap-3 flex-1 min-w-0 no-underline text-text">
-                {#if podcast.logo_url}
-                  <img src={podcast.logo_url} alt="" class="w-14 h-14 rounded-lg object-cover shrink-0" loading="lazy" />
-                {:else}
-                  <div class="w-14 h-14 rounded-lg bg-purple-900/30 flex items-center justify-center text-xl shrink-0">🔍</div>
+      {#if externalResults.length > 0}
+        <section aria-labelledby="external-heading" class="space-y-3">
+          <h2 id="external-heading" class="text-base font-bold">From Podcast Index</h2>
+          <ul class="panel divide-y divide-rule">
+            {#each externalResults as podcast (podcast.url)}
+              <li class="flex items-center gap-4 pl-4 pr-3 py-3 hover:bg-panel-2 transition-colors">
+                <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="group flex gap-4 flex-1 min-w-0">
+                  <Cover src={podcast.logo_url} title={podcast.title} size="md" />
+                  <span class="min-w-0">
+                    <span class="block font-semibold leading-snug line-clamp-1 group-hover:underline">{podcast.title}</span>
+                    {#if podcast.author}<span class="block text-sm text-ink-2 truncate">{podcast.author}</span>{/if}
+                    {#if podcast.description}<span class="block text-sm text-ink-3 mt-0.5 line-clamp-1">{plainText(podcast.description)}</span>{/if}
+                  </span>
+                </a>
+                {#if auth.loggedIn}
+                  {#if added.has(podcast.url)}
+                    <span class="btn btn-sm text-success shrink-0"><Check class="w-4 h-4" /> Added</span>
+                  {:else}
+                    <button onclick={() => subscribeUrl(podcast.url, podcast.title)} disabled={subscribing === podcast.url}
+                      class="btn btn-secondary btn-sm shrink-0">
+                      <Plus class="w-4 h-4" /> {subscribing === podcast.url ? 'Adding…' : 'Subscribe'}
+                    </button>
+                  {/if}
                 {/if}
-                <div class="flex-1 min-w-0">
-                  <h3 class="font-semibold text-sm line-clamp-1">{podcast.title}</h3>
-                  {#if podcast.author}<p class="text-xs text-text-dim truncate">{podcast.author}</p>{/if}
-                  {#if podcast.description}<p class="text-xs text-text-dim mt-1 line-clamp-2">{podcast.description}</p>{/if}
-                </div>
-              </a>
-              {#if auth.loggedIn}
-                <button
-                  onclick={() => subscribeUrl(podcast.url, podcast.title)}
-                  disabled={subscribing === podcast.title}
-                  class="self-center px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-50 cursor-pointer shrink-0"
-                >
-                  {subscribing === podcast.title ? '...' : '+ Add'}
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/if}
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
 
-    {#if !searching && localResults.length === 0 && externalResults.length === 0}
-      <div class="text-center py-8 space-y-2">
-        <p class="text-text-dim">No podcasts found for "{query}"</p>
-        {#if !podcastindexConfigured}
-          <a href={DOCS_URL} target="_blank" rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 text-xs text-brand hover:underline">
-            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-            Configure an external search provider for more results
-          </a>
-        {/if}
-      </div>
-    {/if}
+      {#if !searching && localResults.length === 0 && externalResults.length === 0}
+        <div class="panel p-6 space-y-2 text-center">
+          <p class="font-semibold">No podcasts match “{query}”</p>
+          <p class="text-sm text-ink-2">Try fewer words, or paste the feed address if you have it.</p>
+          {#if !podcastindexConfigured}
+            <a href={DOCS_URL} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+              <BookOpen class="w-4 h-4" /> Add Podcast Index to search beyond this server
+            </a>
+          {/if}
+        </div>
+      {/if}
+    </div>
   {:else if loading}
-    <div class="text-center text-text-dim py-12">Loading...</div>
+    <div class="grid grid-cols-3 sm:grid-cols-6 gap-4" aria-busy="true">
+      {#each [0, 1, 2, 3, 4, 5] as i (i)}<div class="skeleton aspect-square"></div>{/each}
+    </div>
   {:else}
-    <!-- Popular -->
     {#if topPodcasts.length > 0}
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Popular</h2>
-          <a href="/discover/toplist" class="text-xs text-brand hover:underline">View all</a>
+      <section aria-labelledby="popular-heading" class="space-y-4">
+        <div class="flex items-baseline justify-between gap-3">
+          <h2 id="popular-heading" class="text-base font-bold">Popular on this server</h2>
+          <a href="/discover/toplist" class="text-sm font-semibold text-primary hover:underline">All top podcasts</a>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {#each topPodcasts as podcast}
-            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="bg-surface border border-border rounded-lg p-3 hover:bg-surface-hover transition-colors no-underline text-text block">
-              {#if podcast.logo_url}
-                <img src={podcast.logo_url} alt={podcast.title} class="w-full aspect-square object-cover rounded-md mb-2" loading="lazy" />
-              {:else}
-                <div class="w-full aspect-square rounded-md mb-2 bg-brand-dim flex items-center justify-center text-3xl">🎙</div>
-              {/if}
-              <h3 class="font-medium text-xs line-clamp-2">{podcast.title}</h3>
-              {#if podcast.author}<p class="text-xs text-text-dim truncate mt-0.5">{podcast.author}</p>{/if}
-            </a>
+        <ul class="grid grid-cols-3 sm:grid-cols-6 gap-x-4 gap-y-5">
+          {#each topPodcasts as podcast (podcast.url)}
+            <li>
+              <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="group block space-y-2">
+                <Cover src={podcast.logo_url} title={podcast.title} size="fill" />
+                <span class="block text-sm font-semibold leading-snug line-clamp-2 group-hover:underline">{podcast.title}</span>
+              </a>
+            </li>
           {/each}
-        </div>
+        </ul>
+      </section>
+    {/if}
+
+    {#if categoryPodcasts.size > 0}
+      <div class="grid gap-8 lg:grid-cols-3">
+        {#each [...categoryPodcasts.entries()] as [category, podcasts] (category)}
+          <section aria-label={category} class="space-y-3">
+            <div class="flex items-baseline justify-between gap-3">
+              <h2 class="text-base font-bold capitalize">{category}</h2>
+              <a href="/discover/tag/{encodeURIComponent(category)}" class="text-sm font-semibold text-primary hover:underline">More</a>
+            </div>
+            <ul class="panel divide-y divide-rule">
+              {#each podcasts as podcast (podcast.url)}
+                <li>
+                  <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="group flex items-center gap-3 px-3 py-2.5 hover:bg-panel-2 transition-colors">
+                    <Cover src={podcast.logo_url} title={podcast.title} size="xs" />
+                    <span class="min-w-0">
+                      <span class="block text-sm font-semibold line-clamp-1 group-hover:underline">{podcast.title}</span>
+                      {#if podcast.author}<span class="block text-xs text-ink-2 truncate">{podcast.author}</span>{/if}
+                    </span>
+                  </a>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/each}
       </div>
     {/if}
 
-    <!-- Categories -->
-    {#each [...categoryPodcasts.entries()] as [category, podcasts]}
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold capitalize">{category}</h2>
-          <a href="/discover/tag/{category}" class="text-xs text-brand hover:underline">more</a>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-          {#each podcasts as podcast}
-            <a href="/discover/podcast?url={encodeURIComponent(podcast.url)}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-hover transition-colors no-underline text-text">
-              {#if podcast.logo_url}
-                <img src={podcast.logo_url} alt="" class="w-10 h-10 rounded object-cover shrink-0" loading="lazy" />
-              {:else}
-                <div class="w-10 h-10 rounded bg-brand-dim flex items-center justify-center text-sm shrink-0">🎙</div>
-              {/if}
-              <div class="min-w-0 flex-1">
-                <span class="text-sm font-medium line-clamp-1">{podcast.title}</span>
-                {#if podcast.author}<span class="text-xs text-text-dim block truncate">{podcast.author}</span>{/if}
-              </div>
-            </a>
-          {/each}
-        </div>
-      </div>
-    {/each}
-
-    <!-- Tags -->
     {#if tags.length > 0}
-      <div>
-        <h2 class="text-lg font-semibold mb-3">Categories</h2>
-        <div class="flex flex-wrap gap-2">
-          {#each tags as tag}
-            <a
-              href="/discover/tag/{tag.tag}"
-              class="px-3 py-1.5 bg-surface border border-border rounded-full text-sm text-text-dim hover:text-brand hover:border-brand transition-colors no-underline"
-            >
-              {tag.tag} <span class="text-xs opacity-60">{tag.usage}</span>
-            </a>
+      <section aria-labelledby="tags-heading" class="space-y-3">
+        <h2 id="tags-heading" class="text-base font-bold">Categories</h2>
+        <ul class="flex flex-wrap gap-2">
+          {#each tags as tag (tag.tag)}
+            <li>
+              <a href="/discover/tag/{encodeURIComponent(tag.tag)}"
+                class="inline-flex items-center gap-2 h-8 px-3 rounded-[6px] border border-rule bg-panel text-sm font-semibold capitalize hover:border-primary hover:text-primary transition-colors">
+                {tag.tag} <span class="text-xs text-brass data">{tag.usage}</span>
+              </a>
+            </li>
           {/each}
-        </div>
+        </ul>
+      </section>
+    {/if}
+
+    {#if topPodcasts.length === 0 && tags.length === 0}
+      <div class="catalog-card p-6 space-y-3 max-w-2xl">
+        <h2 class="text-lg font-bold">The directory is still empty</h2>
+        <p class="text-ink-2">It fills up as people on this server subscribe. Search above, or add a feed by its address:</p>
+        {#if auth.loggedIn}<AddFeed />{/if}
       </div>
     {/if}
   {/if}

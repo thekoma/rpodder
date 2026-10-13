@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { RefreshCw, UserPlus, X, KeyRound, Mail, ShieldCheck, ShieldOff, UserX, UserCheck, Trash2 } from '@lucide/svelte';
   import { auth } from '$lib/auth.svelte';
   import {
     getAdminUsers, getAdminStats, createAdminUser, deactivateUser, activateUser,
@@ -8,6 +9,7 @@
   } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
+  import { notify, notifyError } from '$lib/toast.svelte';
 
   let users = $state<AdminUser[]>([]);
   let adminStats = $state<AdminStats | null>(null);
@@ -20,7 +22,6 @@
   let newEmail = $state('');
   let creating = $state(false);
   let feedUpdating = $state(false);
-  let message = $state('');
   let setPasswordUser = $state('');
   let setPasswordValue = $state('');
 
@@ -36,210 +37,199 @@
       users = u;
       adminStats = s;
       health = h;
-      loading = false;
-    }).catch(() => { loading = false; });
+    }).catch(() => {}).finally(() => { loading = false; });
   }
 
-  function showMessage(msg: string, timeout = 3000) {
-    message = msg;
-    setTimeout(() => { message = ''; }, timeout);
-  }
-
-  async function handleCreate() {
+  async function handleCreate(e: Event) {
+    e.preventDefault();
     if (!newUsername.trim() || !newPassword.trim()) return;
     creating = true;
-    const ok = await createAdminUser(newUsername, newPassword, newEmail || undefined);
+    const ok = await createAdminUser(newUsername.trim(), newPassword, newEmail.trim() || undefined);
     creating = false;
     if (ok) {
-      showMessage(`User "${newUsername}" created`);
+      notify(`Created ${newUsername.trim()}`);
       newUsername = ''; newPassword = ''; newEmail = '';
       showCreateForm = false;
       loadData();
     } else {
-      showMessage('Failed to create user (may already exist)');
+      notifyError("Couldn't create the user. The name may already be taken.");
+    }
+  }
+
+  async function run(ok: Promise<boolean>, done: string, failed: string) {
+    try {
+      if (await ok) notify(done); else notifyError(failed);
+    } catch {
+      notifyError(failed);
+    } finally {
+      loadData();
     }
   }
 
   async function handleDeactivate(username: string) {
-    if (!confirm(`Deactivate user "${username}"?`)) return;
-    await deactivateUser(username);
-    loadData();
+    if (!confirm(`Deactivate ${username}? They are signed out everywhere and can't log in until reactivated. Their data stays.`)) return;
+    run(deactivateUser(username), `${username} deactivated`, `Couldn't deactivate ${username}.`);
   }
 
-  async function handleActivate(username: string) {
-    await activateUser(username);
-    loadData();
+  function handleActivate(username: string) {
+    run(activateUser(username), `${username} activated`, `Couldn't activate ${username}.`);
   }
 
   async function handleToggleAdmin(username: string, currentlyAdmin: boolean) {
-    const action = currentlyAdmin ? 'Remove admin from' : 'Make admin';
-    if (!confirm(`${action} "${username}"?`)) return;
-    await setUserRole(username, !currentlyAdmin);
-    loadData();
+    if (!confirm(currentlyAdmin ? `Remove administrator rights from ${username}?` : `Make ${username} an administrator?`)) return;
+    run(setUserRole(username, !currentlyAdmin), currentlyAdmin ? `${username} is now a member` : `${username} is now an administrator`, `Couldn't change the role of ${username}.`);
   }
 
   async function handleDelete(username: string) {
-    if (!confirm(`Permanently delete user "${username}"? This cannot be undone.`)) return;
-    await deleteUser(username);
-    loadData();
+    if (!confirm(`Delete ${username} and all their subscriptions, devices and history? This can't be undone.`)) return;
+    run(deleteUser(username), `${username} deleted`, `Couldn't delete ${username}.`);
   }
 
   async function handleResetPassword(username: string) {
     const result = await adminResetPassword(username);
-    showMessage(result.ok ? `Reset email sent to ${username}` : `Failed: ${result.message || 'no email or SMTP not configured'}`, 5000);
+    if (result.ok && result.message !== 'SMTP not configured') notify(`Reset link sent to ${username}`);
+    else notifyError(`Couldn't send a reset link: ${result.message || 'no email address or SMTP not configured'}.`);
   }
 
-  async function handleSetPassword(username: string) {
-    setPasswordUser = username;
-    setPasswordValue = '';
-  }
-
-  async function confirmSetPassword() {
-    if (!setPasswordValue.trim() || setPasswordValue.length < 4) {
-      showMessage('Password must be at least 4 characters');
+  async function confirmSetPassword(e: Event) {
+    e.preventDefault();
+    if (setPasswordValue.length < 4) {
+      notifyError('The password needs at least 4 characters.');
       return;
     }
     const ok = await adminSetPassword(setPasswordUser, setPasswordValue);
-    showMessage(ok ? `Password set for "${setPasswordUser}"` : 'Failed to set password');
+    if (ok) notify(`Password set for ${setPasswordUser}. Their sessions were signed out.`);
+    else notifyError("Couldn't set the password.");
     setPasswordUser = '';
     setPasswordValue = '';
   }
 
   async function handleForceUpdate() {
     feedUpdating = true;
-    await forceUpdateFeeds();
-    showMessage('Feed update started in background', 5000);
+    const ok = await forceUpdateFeeds();
     feedUpdating = false;
+    if (ok) notify('Refreshing every feed in the background');
+    else notifyError("Couldn't start the feed refresh.");
   }
+
+  let stats = $derived(adminStats ? [
+    { label: 'Users', value: adminStats.users },
+    { label: 'Devices', value: adminStats.devices },
+    { label: 'Subscriptions', value: adminStats.subscriptions },
+    { label: 'Podcasts', value: adminStats.podcasts },
+    { label: 'Episode actions', value: adminStats.episode_actions },
+  ] : []);
 </script>
 
-<div class="space-y-6">
-  <h1 class="text-2xl font-bold">Admin Panel</h1>
+<svelte:head><title>Admin · rpodder</title></svelte:head>
 
-  {#if message}
-    <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{message}</div>
-  {/if}
+<div class="space-y-10">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-[1.75rem] font-bold tracking-[-0.02em] leading-tight">Admin</h1>
+      {#if health}
+        <p class="text-sm text-ink-2 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-success"></span> Running</span>
+          <span class="data">v{health.version}</span>
+          <span class="capitalize">{health.database}</span>
+        </p>
+      {/if}
+    </div>
+    <button onclick={handleForceUpdate} disabled={feedUpdating} class="btn btn-secondary">
+      <RefreshCw class="w-4 h-4 {feedUpdating ? 'animate-spin' : ''}" /> Refresh all feeds
+    </button>
+  </header>
 
   {#if loading}
-    <div class="text-center text-text-dim py-12">Loading...</div>
+    <div class="skeleton h-16 w-full"></div>
   {:else}
-    <!-- Server Status + Stats -->
-    <div class="bg-surface border border-border rounded-xl p-5">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold">Server</h2>
-        {#if health}
-          <div class="flex items-center gap-4 text-sm">
-            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-success"></span> Online</span>
-            <span>v{health.version}</span>
-            <span class="capitalize">{health.database}</span>
+    {#if stats.length > 0}
+      <dl aria-label="Server totals" class="-mt-6 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+        {#each stats as s (s.label)}
+          <div class="flex items-baseline gap-1.5">
+            <dt class="order-2 text-ink-2">{s.label.toLowerCase()}</dt>
+            <dd class="order-1 data font-semibold text-brass">{s.value.toLocaleString()}</dd>
           </div>
-        {/if}
-      </div>
-
-      {#if adminStats}
-        <div class="grid grid-cols-5 gap-3 mb-4">
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="text-xl font-bold text-brand">{adminStats.users}</div>
-            <div class="text-xs text-text-dim">Users</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="text-xl font-bold text-brand">{adminStats.devices}</div>
-            <div class="text-xs text-text-dim">Devices</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="text-xl font-bold text-brand">{adminStats.subscriptions}</div>
-            <div class="text-xs text-text-dim">Subscriptions</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="text-xl font-bold text-brand">{adminStats.podcasts}</div>
-            <div class="text-xs text-text-dim">Podcasts</div>
-          </div>
-          <div class="bg-bg border border-border rounded-lg p-3 text-center">
-            <div class="text-xl font-bold text-brand">{adminStats.episode_actions}</div>
-            <div class="text-xs text-text-dim">Episode Actions</div>
-          </div>
-        </div>
-      {/if}
-
-      <button
-        onclick={handleForceUpdate}
-        disabled={feedUpdating}
-        class="px-4 py-1.5 bg-brand text-bg text-xs font-medium rounded-lg hover:opacity-90 disabled:opacity-50 cursor-pointer"
-      >
-        {feedUpdating ? 'Updating...' : 'Force Feed Update'}
-      </button>
-    </div>
-
-    <!-- Set Password Modal -->
-    {#if setPasswordUser}
-      <div class="bg-surface border border-border rounded-xl p-5">
-        <h3 class="text-sm font-semibold mb-3">Set password for "{setPasswordUser}"</h3>
-        <div class="flex gap-2">
-          <input bind:value={setPasswordValue} type="password" placeholder="New password (min 4 chars)"
-            class="flex-1 px-3 py-2 bg-bg border border-border rounded text-text text-sm" />
-          <button onclick={confirmSetPassword} class="px-4 py-2 bg-brand text-bg text-xs rounded-md cursor-pointer">Set</button>
-          <button onclick={() => { setPasswordUser = ''; }} class="px-4 py-2 bg-surface border border-border text-text-dim text-xs rounded-md cursor-pointer">Cancel</button>
-        </div>
-      </div>
+        {/each}
+      </dl>
     {/if}
 
-    <!-- Users -->
-    <div class="bg-surface border border-border rounded-xl p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Users ({users.length})</h2>
-        <button
-          onclick={() => { showCreateForm = !showCreateForm; }}
-          class="px-3 py-1 bg-brand text-bg text-xs font-medium rounded-md hover:opacity-90 cursor-pointer"
-        >
-          + Create User
+    <section aria-labelledby="users-heading" class="space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <h2 id="users-heading" class="text-base font-bold">Users <span class="text-brass font-semibold data text-sm ml-1">{users.length}</span></h2>
+        <button onclick={() => { showCreateForm = !showCreateForm; }} class="btn {showCreateForm ? 'btn-quiet' : 'btn-primary'} btn-sm" aria-expanded={showCreateForm}>
+          {#if showCreateForm}<X class="w-4 h-4" /> Cancel{:else}<UserPlus class="w-4 h-4" /> New user{/if}
         </button>
       </div>
 
       {#if showCreateForm}
-        <div class="bg-bg border border-border rounded-lg p-4 mb-4 space-y-3">
-          <input bind:value={newUsername} placeholder="Username" class="w-full px-3 py-2 bg-surface border border-border rounded text-text text-sm" />
-          <input bind:value={newPassword} type="password" placeholder="Password" class="w-full px-3 py-2 bg-surface border border-border rounded text-text text-sm" />
-          <input bind:value={newEmail} type="email" placeholder="Email (optional)" class="w-full px-3 py-2 bg-surface border border-border rounded text-text text-sm" />
-          <div class="flex gap-2">
-            <button onclick={handleCreate} disabled={creating} class="px-4 py-1.5 bg-brand text-bg text-xs rounded-md cursor-pointer disabled:opacity-50">{creating ? 'Creating...' : 'Create'}</button>
-            <button onclick={() => { showCreateForm = false; }} class="px-4 py-1.5 bg-surface border border-border text-text-dim text-xs rounded-md cursor-pointer">Cancel</button>
-          </div>
-        </div>
+        <form onsubmit={handleCreate} class="catalog-card p-4 sm:p-5 grid gap-4 sm:grid-cols-3 items-end">
+          <div><label for="nu-name" class="label">Username</label><input id="nu-name" bind:value={newUsername} required autocomplete="off" class="field" /></div>
+          <div><label for="nu-pass" class="label">Password</label><input id="nu-pass" bind:value={newPassword} type="password" required autocomplete="new-password" class="field" /></div>
+          <div><label for="nu-mail" class="label">Email <span class="font-normal text-ink-3">(optional)</span></label><input id="nu-mail" bind:value={newEmail} type="email" class="field" /></div>
+          <div class="sm:col-span-3"><button type="submit" disabled={creating} class="btn btn-primary">{creating ? 'Creating…' : 'Create user'}</button></div>
+        </form>
       {/if}
 
-      <div class="divide-y divide-border">
-        {#each users as user}
-          <div class="flex items-center justify-between py-3">
-            <div>
-              <span class="font-medium text-sm">{user.username}</span>
-              {#if user.email}<span class="text-xs text-text-dim ml-2">{user.email}</span>{/if}
-              <span class="ml-2 text-xs px-1.5 py-0.5 rounded-full {user.active ? 'bg-green-900/30 text-success' : 'bg-red-900/30 text-danger'}">{user.active ? 'active' : 'inactive'}</span>
-              {#if user.is_admin}
-                <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-brand-dim text-brand">admin</span>
-              {/if}
+      {#if setPasswordUser}
+        <form onsubmit={confirmSetPassword} class="catalog-card p-4 sm:p-5 space-y-3">
+          <label for="sp-pass" class="label">New password for {setPasswordUser}</label>
+          <div class="flex gap-2 max-w-md">
+            <!-- svelte-ignore a11y_autofocus -->
+            <input id="sp-pass" bind:value={setPasswordValue} type="password" minlength="4" autocomplete="new-password" autofocus class="field flex-1" />
+            <button type="submit" class="btn btn-primary">Set</button>
+            <button type="button" onclick={() => { setPasswordUser = ''; }} class="btn btn-quiet">Cancel</button>
+          </div>
+          <p class="hint">Signs {setPasswordUser} out of every browser and app that uses a session.</p>
+        </form>
+      {/if}
+
+      <ul class="panel divide-y divide-rule">
+        {#each users as user (user.username)}
+          {@const self = user.username === auth.username}
+          <li class="flex flex-col lg:flex-row lg:items-center gap-3 px-4 py-3.5">
+            <div class="min-w-0 flex-1">
+              <p class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold">{user.username}</span>
+                {#if self}<span class="text-xs text-ink-3">(you)</span>{/if}
+                {#if user.is_admin}<span class="tag bg-brass-soft text-brass">Admin</span>{/if}
+                {#if !user.active}<span class="stamp text-danger">Inactive</span>{/if}
+              </p>
+              <p class="text-xs text-ink-3 mt-0.5 flex flex-wrap gap-x-3">
+                {#if user.email}<span>{user.email}</span>{/if}
+                <span class="data">{user.devices} dev · {user.subscriptions} subs</span>
+              </p>
             </div>
-            <div class="flex items-center gap-3 text-xs text-text-dim">
-              <span>{user.devices} device{user.devices !== 1 ? 's' : ''}</span>
-              <span>{user.subscriptions} sub{user.subscriptions !== 1 ? 's' : ''}</span>
-              {#if user.username !== auth.username}
-                <button onclick={() => handleToggleAdmin(user.username, user.is_admin)} class="text-brand hover:text-blue-400 cursor-pointer">
-                  {user.is_admin ? 'Remove admin' : 'Make admin'}
+            {#if !self}
+              <div class="flex flex-wrap items-center gap-1 -ml-2 lg:ml-0">
+                <button onclick={() => handleToggleAdmin(user.username, user.is_admin)} class="btn btn-quiet btn-sm">
+                  {#if user.is_admin}<ShieldOff class="w-4 h-4" /> Remove admin{:else}<ShieldCheck class="w-4 h-4" /> Make admin{/if}
                 </button>
-                <button onclick={() => handleSetPassword(user.username)} class="text-brand hover:text-blue-400 cursor-pointer">Set password</button>
+                <button onclick={() => { setPasswordUser = user.username; setPasswordValue = ''; }} class="btn btn-quiet btn-sm">
+                  <KeyRound class="w-4 h-4" /> Set password
+                </button>
                 {#if user.email}
-                  <button onclick={() => handleResetPassword(user.username)} class="text-brand hover:text-blue-400 cursor-pointer">Reset password</button>
+                  <button onclick={() => handleResetPassword(user.username)} class="btn btn-quiet btn-sm">
+                    <Mail class="w-4 h-4" /> Send reset link
+                  </button>
                 {/if}
                 {#if user.active}
-                  <button onclick={() => handleDeactivate(user.username)} class="text-warning hover:text-yellow-400 cursor-pointer">Deactivate</button>
+                  <button onclick={() => handleDeactivate(user.username)} class="btn btn-quiet btn-sm hover:!text-warning">
+                    <UserX class="w-4 h-4" /> Deactivate
+                  </button>
                 {:else}
-                  <button onclick={() => handleActivate(user.username)} class="text-success hover:text-green-400 cursor-pointer">Activate</button>
+                  <button onclick={() => handleActivate(user.username)} class="btn btn-quiet btn-sm hover:!text-success">
+                    <UserCheck class="w-4 h-4" /> Activate
+                  </button>
                 {/if}
-                <button onclick={() => handleDelete(user.username)} class="text-danger hover:text-red-400 cursor-pointer">Delete</button>
-              {/if}
-            </div>
-          </div>
+                <button onclick={() => handleDelete(user.username)} class="btn btn-quiet btn-sm text-danger hover:!bg-danger-soft">
+                  <Trash2 class="w-4 h-4" /> Delete
+                </button>
+              </div>
+            {/if}
+          </li>
         {/each}
-      </div>
-    </div>
+      </ul>
+    </section>
   {/if}
 </div>

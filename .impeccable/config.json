@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "web/src/app.css"
+        ],
+        "createdAt": "2026-10-12T22:18:01.151Z",
+        "reason": "Claude (unattended run): catalog-card red index rule is the direction contract's signature move; top corners are square (radius 0 0 6px 6px), so the rule never meets a rounded corner"
+      }
+    ]
+  }
+}

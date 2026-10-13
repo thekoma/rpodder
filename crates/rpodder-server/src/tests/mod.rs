@@ -3,6 +3,7 @@
 
 mod auth_hardening;
 mod episode_sync;
+mod opml_export;
 mod subscription_sync;
 mod web_player;
 
@@ -108,6 +109,26 @@ impl TestApp {
     async fn send(&self, req: Request<Body>) -> (StatusCode, Value) {
         let (status, _, json) = self.send_full(req).await;
         (status, json)
+    }
+
+    /// GET returning the raw body text (for non-JSON formats).
+    pub async fn get_text(&self, cookie: &str, uri: &str) -> (StatusCode, HeaderMap, String) {
+        let req = Request::builder()
+            .uri(uri)
+            .header(header::COOKIE, cookie)
+            .body(Body::empty())
+            .unwrap();
+        let resp = self.router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        (
+            status,
+            headers,
+            String::from_utf8_lossy(&bytes).into_owned(),
+        )
     }
 
     /// Like `send`, but also returns the response headers.

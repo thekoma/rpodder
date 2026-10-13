@@ -1,8 +1,14 @@
 <script lang="ts">
+  import {
+    Smartphone, Tablet, Laptop, Monitor, Server, Radio, Globe, FileDown, Pencil, Trash2, X, Plus, Link2, Unlink,
+  } from '@lucide/svelte';
   import { auth } from '$lib/auth.svelte';
   import { getDevices, updateDevice, deleteDevice, getSyncStatus, updateSyncStatus, renameSyncGroup, type Device, type SyncStatus } from '$lib/api';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
+  import { WEB_DEVICE_ID } from '$lib/webDevice';
+  import { plural } from '$lib/format';
+  import { notify, notifyError } from '$lib/toast.svelte';
 
   let devices = $state<Device[]>([]);
   let syncStatus = $state<SyncStatus | null>(null);
@@ -12,7 +18,6 @@
   let editCaption = $state('');
   let deleting = $state<string | null>(null);
   let savingSync = $state(false);
-  let syncMsg = $state('');
 
   // Sync group creation
   let selectingForGroup = $state(false);
@@ -31,27 +36,35 @@
     Promise.all([getDevices(username), getSyncStatus(username)]).then(([devs, sync]) => {
       devices = devs;
       syncStatus = sync;
-      loading = false;
-    }).catch(() => { loading = false; });
+    }).catch(() => {}).finally(() => { loading = false; });
   });
 
   function startEdit(device: Device) { editing = device.id; editCaption = device.caption; }
 
   async function saveEdit(device: Device) {
     if (!auth.username) return;
-    await updateDevice(auth.username, device.id, editCaption, device.type);
-    devices = devices.map(d => d.id === device.id ? { ...d, caption: editCaption } : d);
+    const caption = editCaption.trim();
+    const ok = await updateDevice(auth.username, device.id, caption, device.type);
+    if (ok) {
+      devices = devices.map(d => d.id === device.id ? { ...d, caption } : d);
+      notify('Device renamed');
+    } else {
+      notifyError("Couldn't rename the device.");
+    }
     editing = null;
   }
 
   async function confirmDelete(device: Device) {
     if (!auth.username) return;
-    if (!confirm(`Delete device "${device.caption || device.id}"? This will also remove its subscriptions.`)) return;
+    if (!confirm(`Remove "${device.caption || device.id}"? Its subscription list on the server is deleted too. The app re-registers the next time it syncs.`)) return;
     deleting = device.id;
     const ok = await deleteDevice(auth.username, device.id);
     if (ok) {
       devices = devices.filter(d => d.id !== device.id);
       syncStatus = await getSyncStatus(auth.username);
+      notify('Device removed');
+    } else {
+      notifyError("Couldn't remove the device.");
     }
     deleting = null;
   }
@@ -62,8 +75,6 @@
     if (!syncStatus) return -1;
     return syncStatus.groups.findIndex(g => g.devices.includes(deviceId));
   }
-
-  function isSynced(deviceId: string): boolean { return getGroupIndex(deviceId) >= 0; }
 
   function getDeviceCaption(deviceId: string): string {
     const d = devices.find(dev => dev.id === deviceId);
@@ -78,9 +89,8 @@
     return g.name || `Group ${i + 1}`;
   }
 
-  async function showMsg(msg: string) {
-    syncMsg = msg;
-    setTimeout(() => { syncMsg = ''; }, 3000);
+  function groupColor(i: number): string {
+    return `var(--group-${(i % 4) + 1})`;
   }
 
   async function removeFromGroup(deviceId: string) {
@@ -90,8 +100,8 @@
       .map(g => ({ devices: g.devices.filter(id => id !== deviceId), name: g.name }))
       .filter(g => g.devices.length > 1);
     const ok = await updateSyncStatus(auth.username, newGroups, [deviceId]);
-    if (ok) { syncStatus = await getSyncStatus(auth.username); showMsg('Device removed from sync group'); }
-    else showMsg('Failed to update');
+    if (ok) { syncStatus = await getSyncStatus(auth.username); notify('Device left the sync group'); }
+    else notifyError("Couldn't update the sync group.");
     savingSync = false;
   }
 
@@ -103,8 +113,8 @@
       name: g.name,
     }));
     const ok = await updateSyncStatus(auth.username, newGroups);
-    if (ok) { syncStatus = await getSyncStatus(auth.username); showMsg('Device added to sync group'); }
-    else showMsg('Failed to update');
+    if (ok) { syncStatus = await getSyncStatus(auth.username); notify('Device joined the sync group'); }
+    else notifyError("Couldn't update the sync group.");
     savingSync = false;
   }
 
@@ -123,8 +133,8 @@
     const existingGroups = syncStatus.groups.map(g => ({ devices: g.devices, name: g.name }));
     const newGroup = { devices: [...selectedDevices], name: newGroupName.trim() || undefined };
     const ok = await updateSyncStatus(auth.username, [...existingGroups, newGroup]);
-    if (ok) { syncStatus = await getSyncStatus(auth.username); showMsg('Sync group created'); }
-    else showMsg('Failed to create group');
+    if (ok) { syncStatus = await getSyncStatus(auth.username); notify('Sync group created'); }
+    else notifyError("Couldn't create the sync group.");
     savingSync = false;
     selectingForGroup = false;
     selectedDevices = new Set();
@@ -134,12 +144,12 @@
   async function dissolveGroup(groupIndex: number) {
     if (!auth.username || !syncStatus) return;
     const group = syncStatus.groups[groupIndex];
-    if (!confirm(`Remove sync group "${groupLabel(group, groupIndex)}"? Devices will keep their subscriptions but stop syncing.`)) return;
+    if (!confirm(`Dissolve "${groupLabel(group, groupIndex)}"? Each device keeps its current subscriptions but stops sharing new ones.`)) return;
     savingSync = true;
     const newGroups = syncStatus.groups.filter((_, i) => i !== groupIndex).map(g => ({ devices: g.devices, name: g.name }));
     const ok = await updateSyncStatus(auth.username, newGroups, group.devices);
-    if (ok) { syncStatus = await getSyncStatus(auth.username); showMsg('Sync group dissolved'); }
-    else showMsg('Failed to update');
+    if (ok) { syncStatus = await getSyncStatus(auth.username); notify('Sync group dissolved'); }
+    else notifyError("Couldn't dissolve the sync group.");
     savingSync = false;
   }
 
@@ -151,195 +161,219 @@
   async function saveRename() {
     if (!renamingGroup || !auth.username) return;
     const ok = await renameSyncGroup(renamingGroup, renameValue.trim());
-    if (ok) { syncStatus = await getSyncStatus(auth.username); showMsg('Group renamed'); }
-    else showMsg('Failed to rename');
+    if (ok) { syncStatus = await getSyncStatus(auth.username); notify('Group renamed'); }
+    else notifyError("Couldn't rename the group.");
     renamingGroup = null;
     renameValue = '';
   }
 
-  const typeIcons: Record<string, string> = {
-    mobile: '📱', tablet: '📱', laptop: '💻', desktop: '🖥️', server: '🖧', other: '📻',
+  const typeIcons: Record<string, typeof Smartphone> = {
+    mobile: Smartphone, tablet: Tablet, laptop: Laptop, desktop: Monitor, server: Server, other: Radio,
   };
 
-  const groupColors = [
-    'border-blue-500/40 bg-blue-500/5',
-    'border-purple-500/40 bg-purple-500/5',
-    'border-emerald-500/40 bg-emerald-500/5',
-    'border-amber-500/40 bg-amber-500/5',
-  ];
+  function iconFor(deviceId: string, type: string) {
+    return deviceId === WEB_DEVICE_ID ? Globe : (typeIcons[type] ?? Radio);
+  }
 
-  const groupDotColors = ['bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500'];
+  let ungrouped = $derived(syncStatus?.['not-synchronized'] ?? []);
 </script>
 
-<div class="space-y-6">
-  <h1 class="text-2xl font-bold">Devices</h1>
+<svelte:head><title>Devices · rpodder</title></svelte:head>
 
-  {#if syncMsg}
-    <div class="bg-brand-dim text-brand px-4 py-2 rounded-lg text-sm text-center">{syncMsg}</div>
-  {/if}
+<div class="space-y-10">
+  <header>
+    <h1 class="text-[1.75rem] font-bold tracking-[-0.02em] leading-tight">Devices</h1>
+    <p class="text-sm text-ink-2 mt-1">Each app registers itself the first time it syncs. Devices in a sync group share their subscriptions.</p>
+  </header>
 
   {#if loading}
-    <div class="text-center text-text-dim py-12">Loading...</div>
-  {:else if devices.length === 0}
-    <div class="text-center py-16 bg-surface border border-border rounded-xl">
-      <span class="text-5xl">📱</span>
-      <h2 class="text-lg font-medium mt-4">No devices registered</h2>
-      <p class="text-text-dim mt-2">Connect a podcast app to register a device.</p>
-    </div>
-  {:else}
-    <!-- Device cards -->
-    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {#each devices as device}
-        {@const gi = getGroupIndex(device.id)}
-        <div class="bg-surface border border-border rounded-xl p-5 hover:bg-surface-hover transition-colors group relative">
-          {#if gi >= 0 && syncStatus}
-            <div class="absolute top-3 right-3 flex items-center gap-1.5" title={groupLabel(syncStatus.groups[gi], gi)}>
-              <span class="w-2.5 h-2.5 rounded-full {groupDotColors[gi % groupDotColors.length]}"></span>
-              <span class="text-xs text-text-dim">{groupLabel(syncStatus.groups[gi], gi)}</span>
-            </div>
-          {/if}
-
-          {#if editing === device.id}
-            <div class="space-y-3">
-              <input bind:value={editCaption}
-                class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand"
-                placeholder="Device name" />
-              <div class="flex gap-2">
-                <button onclick={() => saveEdit(device)} class="px-3 py-1 bg-brand text-bg text-xs rounded-md cursor-pointer">Save</button>
-                <button onclick={() => { editing = null; }} class="px-3 py-1 bg-surface border border-border text-text-dim text-xs rounded-md cursor-pointer">Cancel</button>
-              </div>
-            </div>
-          {:else}
-            <div class="flex items-start gap-3">
-              <span class="text-3xl">{typeIcons[device.type] || '📻'}</span>
-              <div class="min-w-0 flex-1">
-                <h3 class="font-semibold">{device.caption || device.id}</h3>
-                <p class="text-sm text-text-dim mt-0.5"><code class="text-xs bg-bg px-1.5 py-0.5 rounded">{device.id}</code></p>
-                <div class="flex items-center gap-2 mt-2">
-                  <span class="text-xs px-2 py-0.5 bg-brand-dim text-brand rounded-full capitalize">{device.type}</span>
-                  <span class="text-xs text-text-dim">{device.subscriptions} sub{device.subscriptions !== 1 ? 's' : ''}</span>
-                </div>
-                <div class="flex gap-3 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onclick={() => startEdit(device)} class="text-xs text-text-dim hover:text-brand transition-colors cursor-pointer">Rename</button>
-                  <button onclick={() => confirmDelete(device)} disabled={deleting === device.id}
-                    class="text-xs text-danger hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50"
-                  >{deleting === device.id ? 'Deleting...' : 'Delete'}</button>
-                </div>
-              </div>
-            </div>
-          {/if}
-        </div>
+    <div class="panel divide-y divide-rule" aria-busy="true">
+      {#each [0, 1, 2] as i (i)}
+        <div class="flex items-center gap-4 px-4 py-4"><div class="skeleton w-9 h-9"></div><div class="flex-1 space-y-2"><div class="skeleton h-4 w-40"></div><div class="skeleton h-3 w-24"></div></div></div>
       {/each}
     </div>
+  {:else if devices.length === 0}
+    <div class="catalog-card p-6 sm:p-8 max-w-2xl space-y-2">
+      <h2 class="text-lg font-bold">No devices yet</h2>
+      <p class="text-ink-2">Add this server to AntennaPod, gPodder or Kasts with your username and password. The app appears here after its first sync.</p>
+      <a href="https://thekoma.github.io/rpodder/" target="_blank" rel="noopener noreferrer" class="inline-block text-sm font-semibold text-primary hover:underline">How to connect an app</a>
+    </div>
+  {:else}
+    <!-- Devices -->
+    <section aria-labelledby="devices-heading" class="space-y-3">
+      <h2 id="devices-heading" class="text-base font-bold">Your devices <span class="text-brass font-semibold data text-sm ml-1">{devices.length}</span></h2>
+      <ul class="panel divide-y divide-rule">
+        {#each devices as device (device.id)}
+          {@const gi = getGroupIndex(device.id)}
+          {@const Icon = iconFor(device.id, device.type)}
+          <li class="flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-3 px-4 py-3.5">
+            <span class="w-9 h-9 rounded-[6px] bg-panel-2 border border-rule flex items-center justify-center shrink-0">
+              <Icon class="w-[1.125rem] h-[1.125rem] text-ink-2" />
+            </span>
 
-    <!-- Sync Groups -->
-    {#if devices.length > 1}
-      <div class="space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-lg font-semibold flex items-center gap-2">
-              <svg class="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-              </svg>
-              Sync Groups
-            </h2>
-            <p class="text-xs text-text-dim mt-0.5">Devices in the same group share subscriptions automatically.</p>
-          </div>
-          {#if !selectingForGroup}
-            <button onclick={startCreateGroup} disabled={savingSync || (syncStatus?.['not-synchronized']?.length ?? 0) < 2}
-              class="px-3 py-1.5 bg-brand text-bg text-xs font-medium rounded-lg cursor-pointer hover:opacity-90 disabled:opacity-50"
-              title={((syncStatus?.['not-synchronized']?.length ?? 0) < 2) ? 'Need at least 2 ungrouped devices' : 'Create a new sync group'}
-            >New group</button>
-          {/if}
-        </div>
-
-        <!-- Create group -->
-        {#if selectingForGroup && syncStatus}
-          <div class="bg-surface border-2 border-dashed border-brand/40 rounded-xl p-4 space-y-3">
-            <p class="text-sm text-text-dim">Select devices and give the group a name:</p>
-            <input bind:value={newGroupName} placeholder="Group name (optional)"
-              class="w-full px-3 py-2 bg-bg border border-border rounded-lg text-text text-sm focus:outline-none focus:border-brand" />
-            <div class="flex flex-wrap gap-2">
-              {#each syncStatus['not-synchronized'] as deviceId}
-                <button onclick={() => toggleSelect(deviceId)}
-                  class="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-all
-                    {selectedDevices.has(deviceId)
-                      ? 'bg-brand/10 border-brand text-text ring-1 ring-brand'
-                      : 'bg-bg border-border text-text-dim hover:border-brand/50'}">
-                  <span>{typeIcons[getDeviceType(deviceId)] || '📻'}</span>
-                  <span>{getDeviceCaption(deviceId)}</span>
-                  {#if selectedDevices.has(deviceId)}
-                    <svg class="w-4 h-4 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-            <div class="flex items-center gap-2">
-              <button onclick={confirmCreateGroup} disabled={selectedDevices.size < 2 || savingSync}
-                class="px-4 py-1.5 bg-brand text-bg text-xs font-medium rounded-lg cursor-pointer disabled:opacity-50"
-              >{savingSync ? 'Creating...' : `Create group (${selectedDevices.size} devices)`}</button>
-              <button onclick={cancelCreateGroup} class="px-3 py-1.5 text-xs text-text-dim hover:text-text cursor-pointer">Cancel</button>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Existing groups -->
-        {#if syncStatus && syncStatus.groups.length > 0}
-          {#each syncStatus.groups as group, i}
-            <div class="rounded-xl p-4 border {groupColors[i % groupColors.length]}">
-              <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full {groupDotColors[i % groupDotColors.length]}"></span>
-                  {#if renamingGroup === group.id}
-                    <input bind:value={renameValue} placeholder="Group name"
-                      onkeydown={(e) => { if (e.key === 'Enter') saveRename(); if (e.key === 'Escape') { renamingGroup = null; } }}
-                      class="px-2 py-0.5 bg-bg border border-border rounded text-sm text-text focus:outline-none focus:border-brand w-40" />
-                    <button onclick={saveRename} class="text-xs text-brand hover:underline cursor-pointer">Save</button>
-                    <button onclick={() => { renamingGroup = null; }} class="text-xs text-text-dim hover:text-text cursor-pointer">Cancel</button>
-                  {:else}
-                    <span class="text-sm font-medium">{groupLabel(group, i)}</span>
-                    <button onclick={() => startRename(group.id, group.name)}
-                      class="text-text-dim hover:text-brand transition-colors cursor-pointer" title="Rename group">
-                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
-                    </button>
-                    <span class="text-xs text-text-dim">{group.devices.length} devices</span>
-                  {/if}
-                </div>
-                <button onclick={() => dissolveGroup(i)} disabled={savingSync}
-                  class="text-xs text-text-dim hover:text-danger transition-colors cursor-pointer disabled:opacity-50">Dissolve</button>
+            {#if editing === device.id}
+              <form class="flex flex-1 min-w-0 gap-2" onsubmit={(e) => { e.preventDefault(); saveEdit(device); }}>
+                <!-- svelte-ignore a11y_autofocus -->
+                <input bind:value={editCaption} class="field h-9 text-sm flex-1 min-w-0" placeholder="Device name" aria-label="Device name" autofocus
+                  onkeydown={(e) => { if (e.key === 'Escape') editing = null; }} />
+                <button type="submit" class="btn btn-primary btn-sm h-9">Save</button>
+                <button type="button" onclick={() => { editing = null; }} class="btn btn-quiet btn-sm h-9">Cancel</button>
+              </form>
+            {:else}
+              <div class="min-w-0 flex-1 basis-[calc(100%-3.25rem)] sm:basis-auto">
+                <p class="font-semibold leading-snug flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span class="truncate">{device.caption || device.id}</span>
+                  {#if device.id === WEB_DEVICE_ID}<span class="tag bg-primary-soft text-primary">Plays in the browser</span>{/if}
+                </p>
+                <p class="text-xs text-ink-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  <span class="data">{device.id}</span>
+                  <span class="capitalize">{device.type}</span>
+                  <span>{plural(device.subscriptions, 'subscription')}</span>
+                </p>
               </div>
-              <div class="flex flex-wrap gap-2">
-                {#each group.devices as deviceId}
-                  <div class="flex items-center gap-2 bg-bg/80 px-3 py-2 rounded-lg text-sm">
-                    <span>{typeIcons[getDeviceType(deviceId)] || '📻'}</span>
-                    <span class="font-medium">{getDeviceCaption(deviceId)}</span>
-                    {#if group.devices.length > 2}
-                      <button onclick={() => removeFromGroup(deviceId)} disabled={savingSync}
-                        class="text-text-dim hover:text-danger transition-colors cursor-pointer disabled:opacity-50" title="Remove from group">
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
-                    {/if}
-                  </div>
-                {/each}
-                {#if syncStatus['not-synchronized'].length > 0}
-                  <select onchange={(e) => { const t = e.target as HTMLSelectElement; if (t.value) { addToExistingGroup(t.value, i); t.value = ''; } }}
-                    disabled={savingSync}
-                    class="appearance-none bg-bg/50 border border-dashed border-border text-text-dim px-3 py-2 rounded-lg text-sm cursor-pointer hover:border-brand/50 transition-colors disabled:opacity-50">
-                    <option value="">+ Add device</option>
-                    {#each syncStatus['not-synchronized'] as deviceId}
-                      <option value={deviceId}>{getDeviceCaption(deviceId)}</option>
-                    {/each}
-                  </select>
+
+              <div class="flex items-center gap-1 ml-[3.25rem] sm:ml-auto">
+                {#if gi >= 0 && syncStatus}
+                  <span class="tag border border-rule bg-panel mr-2" title="Sync group">
+                    <span class="w-2 h-2 rounded-[2px]" style="background: {groupColor(gi)}"></span>
+                    {groupLabel(syncStatus.groups[gi], gi)}
+                  </span>
                 {/if}
+                {#if auth.username}
+                  <a href="/subscriptions/{encodeURIComponent(auth.username)}/{encodeURIComponent(device.id)}.opml"
+                    download="rpodder-{device.id}.opml" rel="external"
+                    class="btn btn-quiet btn-sm btn-icon" aria-label="Export {device.caption || device.id} subscriptions as OPML" title="Export OPML">
+                    <FileDown class="w-4 h-4" />
+                  </a>
+                {/if}
+                <button onclick={() => startEdit(device)} class="btn btn-quiet btn-sm btn-icon" aria-label="Rename {device.caption || device.id}" title="Rename">
+                  <Pencil class="w-4 h-4" />
+                </button>
+                <button onclick={() => confirmDelete(device)} disabled={deleting === device.id}
+                  class="btn btn-quiet btn-sm btn-icon hover:!text-danger" aria-label="Remove {device.caption || device.id}" title="Remove">
+                  <Trash2 class="w-4 h-4" />
+                </button>
               </div>
-            </div>
-          {/each}
-        {:else if !selectingForGroup}
-          <div class="text-center py-6 bg-surface border border-border rounded-xl">
-            <p class="text-sm text-text-dim">No sync groups configured. Create one to keep subscriptions in sync across devices.</p>
-          </div>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
+
+    <!-- Sync groups -->
+    <section aria-labelledby="groups-heading" class="space-y-3">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 id="groups-heading" class="text-base font-bold">Sync groups</h2>
+          <p class="text-sm text-ink-2 mt-0.5">Subscribe on one device in a group and every other device in it gets the podcast too.</p>
+        </div>
+        {#if !selectingForGroup}
+          <button onclick={startCreateGroup} disabled={savingSync || ungrouped.length < 2} class="btn btn-secondary btn-sm"
+            title={ungrouped.length < 2 ? 'Needs at least two devices that are not in a group' : undefined}>
+            <Plus class="w-4 h-4" /> New group
+          </button>
         {/if}
       </div>
-    {/if}
+
+      {#if selectingForGroup && syncStatus}
+        <form class="catalog-card p-4 sm:p-5 space-y-4" onsubmit={(e) => { e.preventDefault(); confirmCreateGroup(); }}>
+          <div>
+            <label for="group-name" class="label">Group name</label>
+            <input id="group-name" bind:value={newGroupName} placeholder="For example: My phones" class="field max-w-sm" />
+          </div>
+          <fieldset class="space-y-2">
+            <legend class="label">Devices to sync <span class="font-normal text-ink-3">(at least two)</span></legend>
+            <div class="flex flex-wrap gap-2">
+              {#each ungrouped as deviceId (deviceId)}
+                {@const Icon = iconFor(deviceId, getDeviceType(deviceId))}
+                {@const on = selectedDevices.has(deviceId)}
+                <label class="flex items-center gap-2 h-10 px-3 rounded-[6px] border text-sm cursor-pointer transition-colors
+                  {on ? 'border-primary bg-primary-soft text-ink' : 'border-rule-strong bg-panel text-ink-2 hover:border-primary'}">
+                  <input type="checkbox" checked={on} onchange={() => toggleSelect(deviceId)} />
+                  <Icon class="w-4 h-4" />
+                  {getDeviceCaption(deviceId)}
+                </label>
+              {/each}
+            </div>
+          </fieldset>
+          <div class="flex items-center gap-2">
+            <button type="submit" disabled={selectedDevices.size < 2 || savingSync} class="btn btn-primary btn-sm">
+              {savingSync ? 'Creating…' : `Create group${selectedDevices.size ? ` with ${selectedDevices.size}` : ''}`}
+            </button>
+            <button type="button" onclick={cancelCreateGroup} class="btn btn-quiet btn-sm">Cancel</button>
+          </div>
+        </form>
+      {/if}
+
+      {#if syncStatus && syncStatus.groups.length > 0}
+        <div class="grid gap-3 md:grid-cols-2">
+          {#each syncStatus.groups as group, i (group.id)}
+            <div class="panel overflow-hidden rounded-t-none" style="border-top: 3px solid {groupColor(i)}">
+              <div class="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+                {#if renamingGroup === group.id}
+                  <form class="flex items-center gap-2 flex-1 min-w-0" onsubmit={(e) => { e.preventDefault(); saveRename(); }}>
+                    <!-- svelte-ignore a11y_autofocus -->
+                    <input bind:value={renameValue} placeholder="Group name" aria-label="Group name" autofocus
+                      onkeydown={(e) => { if (e.key === 'Escape') renamingGroup = null; }}
+                      class="field h-8 text-sm flex-1 min-w-0" />
+                    <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                    <button type="button" onclick={() => { renamingGroup = null; }} class="btn btn-quiet btn-sm">Cancel</button>
+                  </form>
+                {:else}
+                  <div class="flex items-center gap-2 min-w-0">
+                    <Link2 class="w-4 h-4 shrink-0" style="color: {groupColor(i)}" />
+                    <span class="font-bold truncate">{groupLabel(group, i)}</span>
+                    <button onclick={() => startRename(group.id, group.name)} class="btn btn-quiet btn-sm btn-icon" aria-label="Rename group" title="Rename group">
+                      <Pencil class="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <button onclick={() => dissolveGroup(i)} disabled={savingSync} class="btn btn-quiet btn-sm shrink-0 hover:!text-danger">
+                    <Unlink class="w-4 h-4" /> Dissolve
+                  </button>
+                {/if}
+              </div>
+              <ul class="px-4 pb-3 flex flex-wrap gap-2">
+                {#each group.devices as deviceId (deviceId)}
+                  {@const Icon = iconFor(deviceId, getDeviceType(deviceId))}
+                  <li class="flex items-center gap-2 h-9 pl-2.5 pr-1 rounded-[6px] bg-panel-2 border border-rule text-sm">
+                    <Icon class="w-4 h-4 text-ink-2" />
+                    <span class="font-semibold">{getDeviceCaption(deviceId)}</span>
+                    {#if group.devices.length > 2}
+                      <button onclick={() => removeFromGroup(deviceId)} disabled={savingSync}
+                        class="btn btn-quiet btn-sm btn-icon w-7 h-7" aria-label="Remove {getDeviceCaption(deviceId)} from group" title="Remove from group">
+                        <X class="w-3.5 h-3.5" />
+                      </button>
+                    {:else}
+                      <span class="w-1"></span>
+                    {/if}
+                  </li>
+                {/each}
+                {#if ungrouped.length > 0}
+                  <li>
+                    <select aria-label="Add a device to {groupLabel(group, i)}" disabled={savingSync}
+                      onchange={(e) => { const t = e.target as HTMLSelectElement; if (t.value) { addToExistingGroup(t.value, i); t.value = ''; } }}
+                      class="field h-9 text-sm w-auto border-dashed bg-transparent">
+                      <option value="">Add device…</option>
+                      {#each ungrouped as deviceId (deviceId)}
+                        <option value={deviceId}>{getDeviceCaption(deviceId)}</option>
+                      {/each}
+                    </select>
+                  </li>
+                {/if}
+              </ul>
+            </div>
+          {/each}
+        </div>
+      {:else if !selectingForGroup}
+        <p class="panel px-4 py-5 text-sm text-ink-2">
+          {devices.length < 2
+            ? 'Sync groups need at least two devices. Connect another app to create one.'
+            : 'No sync groups yet. Each device keeps its own subscriptions until you group them.'}
+        </p>
+      {/if}
+      {#if devices.some(d => d.id === WEB_DEVICE_ID)}
+        <p class="hint">The web player's sync group and position sync are set in <a href="/settings" class="underline hover:text-ink">Settings</a>.</p>
+      {/if}
+    </section>
   {/if}
 </div>

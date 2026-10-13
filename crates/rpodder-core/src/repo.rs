@@ -156,6 +156,11 @@ pub trait EpisodeActionRepo: Send + Sync {
 // ---------------------------------------------------------------------------
 
 pub trait PodcastRepo: Send + Sync {
+    /// Titles of the given podcasts, in one query; unknown ids are absent.
+    fn titles_by_ids(
+        &self,
+        ids: &[Uuid],
+    ) -> impl std::future::Future<Output = Result<HashMap<Uuid, String>>> + Send;
     fn get_or_create_for_url(
         &self,
         url: &str,

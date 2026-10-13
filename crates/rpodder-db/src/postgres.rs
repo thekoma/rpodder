@@ -349,6 +349,19 @@ impl From<PodcastRow> for Podcast {
 }
 
 impl repo::PodcastRepo for PgRepo {
+    async fn titles_by_ids(&self, ids: &[Uuid]) -> Result<HashMap<Uuid, String>> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<(Uuid, String)> =
+            sqlx::query_as("SELECT id, title FROM podcasts WHERE id = ANY($1)")
+                .bind(ids)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(db_err)?;
+        Ok(rows.into_iter().collect())
+    }
+
     async fn add_url(&self, podcast_id: Uuid, url: &str) -> Result<()> {
         let max_order: Option<(i32,)> = sqlx::query_as(
             "SELECT COALESCE(MAX(\"order\"), -1) FROM podcast_urls WHERE podcast_id = $1",

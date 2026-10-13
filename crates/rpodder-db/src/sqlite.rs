@@ -360,6 +360,31 @@ impl From<SqlitePodcastRow> for Podcast {
 }
 
 impl repo::PodcastRepo for SqliteRepo {
+    async fn titles_by_ids(&self, ids: &[Uuid]) -> Result<HashMap<Uuid, String>> {
+        if ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        // One bound JSON array instead of a placeholder per id.
+        let ids_json = format!(
+            "[{}]",
+            ids.iter()
+                .map(|id| format!("\"{}\"", uuid_str(id)))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT id, title FROM podcasts WHERE id IN (SELECT value FROM json_each(?))",
+        )
+        .bind(ids_json)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, title)| Some((id.parse().ok()?, title)))
+            .collect())
+    }
+
     async fn add_url(&self, podcast_id: Uuid, url: &str) -> Result<()> {
         let max_order: Option<(i32,)> = sqlx::query_as(
             "SELECT COALESCE(MAX(\"order\"), -1) FROM podcast_urls WHERE podcast_id = ?",
@@ -2808,6 +2833,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rows, 1, "no orphan episode rows");
+    }
+
+    #[tokio::test]
+    async fn titles_by_ids_returns_known_podcasts_only() {
+        let repo = setup().await;
+        let (mut a, _) = PodcastRepo::get_or_create_for_url(&repo, "http://a.example/feed")
+            .await
+            .unwrap();
+        a.title = "Alpha".to_string();
+        PodcastRepo::update(&repo, &a).await.unwrap();
+        let (b, _) = PodcastRepo::get_or_create_for_url(&repo, "http://b.example/feed")
+            .await
+            .unwrap();
+
+        let titles = repo
+            .titles_by_ids(&[a.id, b.id, Uuid::now_v7()])
+            .await
+            .unwrap();
+        assert_eq!(titles.len(), 2);
+        assert_eq!(titles[&a.id], "Alpha");
+        assert_eq!(titles[&b.id], "http://b.example/feed");
+        assert!(repo.titles_by_ids(&[]).await.unwrap().is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

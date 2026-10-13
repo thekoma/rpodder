@@ -174,3 +174,31 @@ export async function joinSyncGroup(username: string, group: SyncGroupInfo | nul
 export function groupLabel(g: SyncGroupInfo): string {
   return `${g.name || 'Unnamed group'} — ${g.devices.filter(d => d !== WEB_DEVICE_ID).join(', ')}`;
 }
+
+export interface Holdings {
+  devices: Device[];
+  groups: SyncGroupInfo[];
+  /** Normalized feed URL → ids of the devices subscribed to it. */
+  held: Map<string, Set<string>>;
+}
+
+/** Every device, its sync group, and which feeds each one holds. */
+export async function fetchHoldings(username: string): Promise<Holdings> {
+  const [devices, status] = await Promise.all([fetchDevices(username), fetchSyncStatus(username)]);
+  const lists = await Promise.all(devices.map(d => fetchSubscriptions(username, d.id)));
+  const held = new Map<string, Set<string>>();
+  devices.forEach((d, i) => {
+    for (const url of lists[i]) {
+      const key = normalizeUrl(url);
+      let set = held.get(key);
+      if (!set) { set = new Set(); held.set(key, set); }
+      set.add(d.id);
+    }
+  });
+  return { devices, groups: status.groups ?? [], held };
+}
+
+/** Index of the device's sync group in `groups`, or -1. */
+export function groupIndex(groups: SyncGroupInfo[], deviceId: string): number {
+  return groups.findIndex(g => g.devices.includes(deviceId));
+}

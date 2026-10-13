@@ -73,7 +73,9 @@ fn parse_format_suffix(s: &str) -> (&str, Format) {
 // OPML generation / parsing
 // ---------------------------------------------------------------------------
 
-fn urls_to_opml(urls: &[String], title: &str) -> String {
+/// One `<outline>` per feed. OPML 2.0 requires `text`; it carries the podcast
+/// title when the feed has been fetched, the URL otherwise.
+fn urls_to_opml(feeds: &[(String, Option<String>)], title: &str) -> String {
     let mut opml = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
@@ -81,14 +83,26 @@ fn urls_to_opml(urls: &[String], title: &str) -> String {
     );
     opml.push_str(&xml_escape(title));
     opml.push_str("</title></head>\n  <body>\n");
-    for url in urls {
+    for (url, feed_title) in feeds {
+        let text = xml_escape(&attribute_text(feed_title.as_deref().unwrap_or(url)));
         opml.push_str(&format!(
-            "    <outline type=\"rss\" xmlUrl=\"{}\" />\n",
+            "    <outline type=\"rss\" text=\"{text}\" title=\"{text}\" xmlUrl=\"{}\" />\n",
             xml_escape(url)
         ));
     }
     opml.push_str("  </body>\n</opml>\n");
     opml
+}
+
+/// One line of attribute text: whitespace runs (newlines, tabs) become one
+/// space and other control characters, which XML 1.0 forbids, are dropped.
+fn attribute_text(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect()
 }
 
 fn opml_to_urls(opml_str: &str) -> Vec<String> {
@@ -156,18 +170,43 @@ fn txt_to_urls(txt: &str) -> Vec<String> {
 // Response helpers
 // ---------------------------------------------------------------------------
 
-fn respond_urls(urls: &[String], format: Format, title: &str) -> Response {
+/// `filename` names the download (no extension); browsers save OPML exports
+/// under it instead of a name derived from the URL.
+fn respond_urls(
+    feeds: &[(String, Option<String>)],
+    format: Format,
+    title: &str,
+    filename: &str,
+) -> Response {
+    let urls: Vec<String> = feeds.iter().map(|(url, _)| url.clone()).collect();
     match format {
-        Format::Json => Json(urls.to_vec()).into_response(),
+        Format::Json => Json(urls).into_response(),
         Format::Opml => Response::builder()
             .header(header::CONTENT_TYPE, "text/x-opml+xml; charset=utf-8")
-            .body(Body::from(urls_to_opml(urls, title)))
+            .header(
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}.opml\"", download_name(filename)),
+            )
+            .body(Body::from(urls_to_opml(feeds, title)))
             .unwrap(),
         Format::Txt => Response::builder()
             .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-            .body(Body::from(urls_to_txt(urls)))
+            .body(Body::from(urls_to_txt(&urls)))
             .unwrap(),
     }
+}
+
+/// A file name safe inside a quoted `Content-Disposition` value.
+fn download_name(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +226,35 @@ macro_rules! with_repo {
             }
         }
     };
+}
+
+/// Pairs each subscription with its podcast title; titles are looked up only
+/// for OPML, the other formats carry URLs alone.
+async fn feeds_with_titles(
+    state: &AppState,
+    subs: Vec<rpodder_core::types::Subscription>,
+    format: Format,
+) -> Vec<(String, Option<String>)> {
+    let titles = if matches!(format, Format::Opml) {
+        let ids: Vec<uuid::Uuid> = subs.iter().map(|s| s.podcast_id).collect();
+        with_repo!(state, |repo| PodcastRepo::titles_by_ids(&repo, &ids).await).unwrap_or_else(
+            |e| {
+                tracing::warn!(error = %e, "OPML export: podcast title lookup failed, exporting URLs only");
+                Default::default()
+            },
+        )
+    } else {
+        Default::default()
+    };
+    subs.into_iter()
+        .map(|sub| {
+            let title = titles
+                .get(&sub.podcast_id)
+                .map(|t| attribute_text(t))
+                .filter(|t| !t.is_empty() && *t != sub.ref_url);
+            (sub.ref_url, title)
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -212,9 +280,14 @@ pub async fn get_device_subscriptions(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let urls: Vec<String> = subs.into_iter().map(|s| s.ref_url).collect();
+    let feeds = feeds_with_titles(&state, subs, format).await;
     let title = format!("{username} — {deviceid} subscriptions");
-    Ok(respond_urls(&urls, format, &title))
+    Ok(respond_urls(
+        &feeds,
+        format,
+        &title,
+        &format!("rpodder-{username}-{deviceid}"),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -304,9 +377,14 @@ pub async fn get_user_subscriptions(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let urls: Vec<String> = subs.into_iter().map(|s| s.ref_url).collect();
+    let feeds = feeds_with_titles(&state, subs, format).await;
     let title = format!("{username} subscriptions");
-    Ok(respond_urls(&urls, format, &title))
+    Ok(respond_urls(
+        &feeds,
+        format,
+        &title,
+        &format!("rpodder-{username}"),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -570,4 +648,58 @@ pub async fn combined_updates(
         updates,
         timestamp,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opml_outlines_carry_titles_and_escape_them() {
+        let feeds = vec![
+            (
+                "http://a.example/feed?x=1&y=2".to_string(),
+                Some("Tom & \"Jerry\" <live>".to_string()),
+            ),
+            ("http://b.example/rss".to_string(), None),
+        ];
+        let opml = urls_to_opml(&feeds, "alice subscriptions");
+        assert!(
+            opml.contains(r#"<outline type="rss" text="Tom &amp; &quot;Jerry&quot; &lt;live&gt;" title="Tom &amp; &quot;Jerry&quot; &lt;live&gt;" xmlUrl="http://a.example/feed?x=1&amp;y=2" />"#),
+            "{opml}"
+        );
+        // No title yet: the URL stands in for the required text attribute.
+        assert!(
+            opml.contains(r#"text="http://b.example/rss" title="http://b.example/rss" xmlUrl="http://b.example/rss""#),
+            "{opml}"
+        );
+        // The parser used for uploads reads the export back.
+        assert_eq!(
+            opml_to_urls(&opml),
+            vec!["http://a.example/feed?x=1&y=2", "http://b.example/rss"]
+        );
+    }
+
+    #[test]
+    fn opml_titles_stay_on_one_line_without_control_characters() {
+        let feeds = vec![(
+            "http://c.example/rss".to_string(),
+            Some("Line one\n\tLine\u{0007} two\r\n".to_string()),
+        )];
+        let opml = urls_to_opml(&feeds, "t");
+        assert!(
+            opml.contains(r#"text="Line one Line two" title="Line one Line two""#),
+            "{opml}"
+        );
+        assert_eq!(opml_to_urls(&opml), vec!["http://c.example/rss"]);
+    }
+
+    #[test]
+    fn download_name_strips_unsafe_characters() {
+        assert_eq!(
+            download_name("rpodder-alice-pixel.7"),
+            "rpodder-alice-pixel.7"
+        );
+        assert_eq!(download_name("rpodder-a\"b c/d"), "rpodder-a_b_c_d");
+    }
 }
