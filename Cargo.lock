@@ -2039,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-core"
-version = "2026.10.1"
+version = "2026.10.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-db"
-version = "2026.10.1"
+version = "2026.10.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2067,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-feed"
-version = "2026.10.1"
+version = "2026.10.2"
 dependencies = [
  "chrono",
  "feed-rs",
@@ -2082,7 +2082,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-server"
-version = "2026.10.1"
+version = "2026.10.2"
 dependencies = [
  "anyhow",
  "argon2",

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026.10.2 — 2026-10-13
+
+### Added
+- **Feeds are checked at their own publishing rhythm** — after each read, rpodder schedules the next check at a quarter of the typical gap between recent episodes, between 1 and 24 hours: a news show with three editions a day is checked hourly, a daily show every 6 hours, a weekly show daily. A show that stops publishing drifts back to daily checks; feeds nobody subscribes to stay weekly. Before, a feed with one subscriber was checked every 12–24 hours, so a morning news edition could show up only in the afternoon.
+- **Opening a podcast re-reads a stale feed** — if a feed hasn't been checked for an hour, opening its page reads it first (up to 4 seconds; slower feeds finish in the background and the page reloads the episode list once). `episodes.json` reports `"refreshing": true` while that happens.
+
+### Fixed
+- A feed update could overwrite a podcast's subscriber count with the value it read before downloading the feed.
+- A podcast whose feed has an empty description was downloaded again on every visit to its page.
+
 ## 2026.10.1 — 2026-10-13
 
 ### Changed
