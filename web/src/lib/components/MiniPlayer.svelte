@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Play, Pause, RotateCcw, RotateCw, X, ChevronDown, Download, CircleAlert } from '@lucide/svelte';
+  import {
+    Play, Pause, RotateCcw, RotateCw, X, ChevronDown, Download, CircleAlert, Volume1, Volume2, VolumeX,
+  } from '@lucide/svelte';
   import { auth } from '#lib/auth.svelte.js';
   import { player } from '#lib/player.svelte.js';
   import { isSafeMediaUrl } from '#lib/playerLogic.js';
@@ -29,6 +31,13 @@
     const v = Number((e.currentTarget as HTMLInputElement).value);
     dragging = false;
     player.seek(v);
+  }
+
+  let silent = $derived(player.muted || player.volume === 0);
+  let volumeLabel = $derived(silent ? 'Unmute' : 'Mute');
+
+  function onVolume(e: Event) {
+    player.setVolume(Number((e.currentTarget as HTMLInputElement).value));
   }
 
   function nextRate() {
@@ -113,6 +122,16 @@
           <span class="text-xs text-ink-2 data w-16">-{formatClock(remaining)}</span>
           <button onclick={nextRate} title="Playback speed" aria-label="Playback speed {player.rate}×"
             class="btn btn-secondary btn-sm data w-14">{player.rate}×</button>
+          <div class="flex items-center gap-1">
+            <button onclick={() => player.toggleMute()} aria-label={volumeLabel} title={volumeLabel}
+              class="btn btn-quiet btn-icon">
+              {#if silent}<VolumeX class="w-5 h-5" />{:else if player.volume < 0.5}<Volume1 class="w-5 h-5" />{:else}<Volume2 class="w-5 h-5" />{/if}
+            </button>
+            {#if player.volumeAdjustable}
+              <input type="range" min="0" max="1" step="0.05" value={silent ? 0 : player.volume} oninput={onVolume}
+                aria-label="Volume" class="w-24 cursor-pointer" />
+            {/if}
+          </div>
         </div>
       {/if}
 
@@ -176,6 +195,16 @@
             <button onclick={() => player.skip(30)} aria-label="Forward 30 seconds" class="btn btn-quiet w-14 h-14 rounded-full relative">
               <RotateCw class="w-7 h-7" /><span class="absolute text-[0.625rem] font-bold data mt-[2px]">30</span>
             </button>
+          </div>
+
+          <div class="flex items-center gap-3 w-full max-w-xs">
+            <button onclick={() => player.toggleMute()} aria-label={volumeLabel} class="btn btn-quiet btn-icon">
+              {#if silent}<VolumeX class="w-6 h-6" />{:else if player.volume < 0.5}<Volume1 class="w-6 h-6" />{:else}<Volume2 class="w-6 h-6" />{/if}
+            </button>
+            {#if player.volumeAdjustable}
+              <input type="range" min="0" max="1" step="0.05" value={silent ? 0 : player.volume} oninput={onVolume}
+                aria-label="Volume" class="flex-1 min-w-0 cursor-pointer" />
+            {/if}
           </div>
 
           <div class="flex items-center gap-2">

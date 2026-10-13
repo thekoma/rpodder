@@ -59,12 +59,33 @@ function reportInterval(): number {
 
 type PlayerError = 'secure-version-failed' | 'load' | null;
 
+const VOLUME_KEY = 'rpodder_player_volume';
+
+// The listener's volume, kept in this browser.
+function savedVolume(): { volume: number; muted: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(VOLUME_KEY) ?? 'null');
+    if (v && typeof v.volume === 'number' && v.volume >= 0 && v.volume <= 1) {
+      return { volume: v.volume, muted: v.muted === true };
+    }
+  } catch {
+    // ignore
+  }
+  return { volume: 1, muted: false };
+}
+
+const initialVolume = savedVolume();
+
 class Player {
   episode = $state<PlayerEpisode | null>(null);
   playing = $state(false);
   position = $state(0);
   duration = $state(0);
   rate = $state(1);
+  volume = $state(initialVolume.volume);
+  muted = $state(initialVolume.muted);
+  // iOS ignores element.volume (only muting works): the UI hides the slider there.
+  volumeAdjustable = $state(true);
   error = $state<PlayerError>(null);
   recent = $state<Record<string, KnownPosition>>({});
 
@@ -88,7 +109,8 @@ class Player {
   // While true the element may already be playing (muted) but the resume position is not applied yet:
   // no segment, no local save, no upload.
   #positioning = false;
-  #savedVolume: { volume: number; muted: boolean } | null = null;
+  // Muted while positioning; the listener's volume comes back afterwards.
+  #positionMuted = false;
   #localTimer: ReturnType<typeof setInterval> | null = null;
   #reportTimer: ReturnType<typeof setInterval> | null = null;
   #seekTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,6 +131,9 @@ class Player {
     a.preload = 'metadata';
     document.body.appendChild(a);
     this.#audio = a;
+    a.volume = 0.5;
+    this.volumeAdjustable = a.volume === 0.5;
+    this.#applyVolume();
 
     const current = () => this.#src !== null && a.src === this.#src;
 
@@ -203,7 +228,7 @@ class Player {
   #mute() {
     const a = this.#audio;
     if (!a) return;
-    if (!this.#savedVolume) this.#savedVolume = { volume: a.volume, muted: a.muted };
+    this.#positionMuted = true;
     // volume is read-only on iOS, muted works everywhere
     a.volume = 0;
     a.muted = true;
@@ -211,10 +236,46 @@ class Player {
 
   #restoreVolume() {
     const a = this.#audio;
-    if (!a || !this.#savedVolume) return;
-    a.volume = this.#savedVolume.volume;
-    a.muted = this.#savedVolume.muted;
-    this.#savedVolume = null;
+    if (!a || !this.#positionMuted) return;
+    this.#positionMuted = false;
+    this.#applyVolume();
+  }
+
+  // Apply the listener's volume, unless positioning holds the element muted.
+  #applyVolume() {
+    const a = this.#audio;
+    if (!a || this.#positionMuted) return;
+    a.volume = this.volume;
+    a.muted = this.muted;
+  }
+
+  #saveVolume() {
+    try {
+      localStorage.setItem(VOLUME_KEY, JSON.stringify({ volume: this.volume, muted: this.muted }));
+    } catch {
+      // ignore
+    }
+  }
+
+  setVolume(v: number): void {
+    if (!Number.isFinite(v)) return;
+    this.volume = Math.min(1, Math.max(0, v));
+    // Moving the slider up un-mutes, like a hardware volume knob.
+    if (this.volume > 0) this.muted = false;
+    this.#saveVolume();
+    this.#applyVolume();
+  }
+
+  toggleMute(): void {
+    // Follow what the UI shows: a volume of 0 counts as muted.
+    if (this.muted || this.volume === 0) {
+      this.muted = false;
+      if (this.volume === 0) this.volume = 0.5;
+    } else {
+      this.muted = true;
+    }
+    this.#saveVolume();
+    this.#applyVolume();
   }
 
   #openSegment() {

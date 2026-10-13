@@ -291,9 +291,21 @@ export async function forceUpdateFeeds(): Promise<boolean> {
   return resp.ok;
 }
 
-export async function forceUpdateSingleFeed(url: string): Promise<boolean> {
+export type FeedRefreshResult =
+  | { status: 'updated'; new_episodes: number }
+  | { status: 'running' | 'skipped' | 'merged' | 'not_modified' }
+  | { status: 'failed'; error?: string };
+
+/** Re-read a feed now (admin). Waits for the server to finish, up to 25 s. */
+export async function forceUpdateSingleFeed(url: string): Promise<FeedRefreshResult> {
   const resp = await request(`/api/admin/feeds/update/single?url=${encodeURIComponent(url)}`, { method: 'POST' });
-  return resp.ok;
+  try {
+    const body = await resp.json();
+    if (body && typeof body.status === 'string') return body as FeedRefreshResult;
+  } catch {
+    // fall through
+  }
+  return { status: 'failed', error: `HTTP ${resp.status}` };
 }
 
 export interface SsoInfo {

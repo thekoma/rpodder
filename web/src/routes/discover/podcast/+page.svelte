@@ -75,17 +75,20 @@
     }).catch(() => { if (url === podcastUrl) loading = false; });
   }
 
-  function recheckFeed(url: string) {
+  // Fetch page 0 again after a while, up to `tries` times while the server
+  // still reports the feed as being read.
+  function recheckFeed(url: string, tries = 1) {
     checkingFeed = true;
     clearTimeout(recheckTimer);
     recheckTimer = setTimeout(() => {
       if (url !== podcastUrl || currentPage !== 0 || !checkingFeed) return;
       getPodcastEpisodes(url, 0).then(d => {
-        if (url !== podcastUrl || currentPage !== 0 || !d) return;
+        if (url !== podcastUrl || currentPage !== 0) return;
+        if (!d) { checkingFeed = false; return; }
         data = d;
-      }).catch(() => {}).finally(() => {
-        if (url === podcastUrl) checkingFeed = false;
-      });
+        if (d.refreshing && tries > 1) recheckFeed(url, tries - 1);
+        else checkingFeed = false;
+      }).catch(() => { if (url === podcastUrl) checkingFeed = false; });
     }, 6000);
   }
 
@@ -160,18 +163,25 @@
     refreshing = true;
     refreshingUrl = url;
     try {
-      if (!(await forceUpdateSingleFeed(url))) {
-        notifyError("Couldn't refresh the feed.");
+      const result = await forceUpdateSingleFeed(url);
+      if (result.status === 'failed') {
+        notifyError(`Couldn't read the feed${result.error ? `: ${result.error}` : '.'}`);
         return;
       }
-      // The update runs in the background on the server; give it a moment.
-      await new Promise(r => setTimeout(r, 3000));
       const d = await getPodcastEpisodes(url, currentPage);
       if (url !== podcastUrl) return;
       if (!d) { notifyError("Feed refreshed, but the episode list couldn't be reloaded."); return; }
       data = d;
       dataUrl = url;
-      notify('Feed refreshed');
+      if (result.status === 'updated') {
+        const n = result.new_episodes;
+        notify(n > 0 ? `${plural(n, 'new episode')}` : 'Feed read: no new episodes');
+      } else if (result.status === 'running') {
+        notify('Still reading the feed; new episodes appear shortly');
+        if (currentPage === 0) recheckFeed(url, 5);
+      } else {
+        notify('Feed refreshed');
+      }
     } catch {
       notifyError("Couldn't refresh the feed.");
     } finally {
