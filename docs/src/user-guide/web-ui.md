@@ -2,7 +2,7 @@
 
 rpodder includes a built-in web interface built with Svelte 5 and Tailwind CSS v4. It's embedded directly in the binary via `rust-embed`, so there's nothing extra to deploy. Fonts and icons are bundled too: the interface makes no requests to outside services except for podcast artwork and episode audio, which come straight from the publishers.
 
-![rpodder login page](../assets/screenshots/login.png)
+![rpodder sign-in page](../assets/screenshots/login.png)
 
 ## Navigation
 
@@ -21,6 +21,8 @@ On a phone the sections move to a tab bar at the bottom of the screen, and **Adm
 
 ### Library
 
+![Library with Continue listening and per-device holdings](../assets/screenshots/library.png)
+
 Your subscriptions in alphabetical order, filed under their first letter (leading "The", "A" and "An" are ignored). Above them, **Continue listening** shows episodes you started and didn't finish, on any device, with how much is left. The bars are drawn to scale, so a longer episode has a longer bar.
 
 Next to each podcast, one small square per device shows where it is subscribed. A filled square means the device holds the podcast; devices in the same sync group share a colour. The legend above the list names the devices and their groups. A filter box appears once your library has more than eight podcasts.
@@ -34,6 +36,8 @@ From the Library you can:
 If any subscription uses HTTP and an HTTPS address exists, a notice offers to switch it (or all of them) to HTTPS.
 
 ### Podcast page
+
+![Podcast page](../assets/screenshots/podcast-detail.png)
 
 The header is the podcast's catalog card:
 
@@ -55,9 +59,16 @@ Three tabs:
 
 ### Listening in the browser
 
+![The player bar](../assets/screenshots/player.png)
+
 On a podcast's page (signed in), each episode with an audio file has a **play** button. Playback continues in the player bar at the bottom while you browse other pages. The bar shows progress as a red line along its top edge, and has skip back 15 s / forward 30 s, a seek bar, playback speed, download and close.
 
 On a phone the bar is compact: tap it to open the full **Now playing** screen with large controls.
+
+<div class="screenshot-pair" markdown>
+![Library on a phone](../assets/screenshots/mobile-library.png)
+![Now playing on a phone](../assets/screenshots/mobile-player.png)
+</div>
 
 If an episode can't play (the file is missing, or it is only available over plain HTTP while rpodder runs on HTTPS), the player shows an **Open file** button to play it in a new tab instead.
 
@@ -77,9 +88,13 @@ The web player is a sync device called **Web player** (`rpodder-web`). In **Sett
 
 ### History
 
+![History](../assets/screenshots/history.png)
+
 Your episode actions grouped by day, newest first: the time, a stamp for the action (Played, Downloaded, Deleted, Marked new), the episode and podcast, and the position reached. Click an entry to open the podcast.
 
 ### Devices
+
+![Devices and sync groups](../assets/screenshots/devices.png)
 
 Every device that synced with rpodder, with its id, type and number of subscriptions. For each device you can:
 
@@ -90,6 +105,8 @@ Every device that synced with rpodder, with its id, type and number of subscript
 **Sync groups** keep the subscriptions of several devices identical. Create a group from two or more devices that aren't in a group yet, rename it, add or remove devices, or dissolve it. Dissolving keeps each device's current subscriptions.
 
 ### Settings
+
+![Settings](../assets/screenshots/settings.png)
 
 - **Account**: username, email and role.
 - **Appearance**: System (follows your operating system), Light or Dark. Saved in this browser only.
@@ -102,6 +119,8 @@ Every device that synced with rpodder, with its id, type and number of subscript
 See the [Admin Guide](../admin-guide/user-management.md) for details.
 
 ## Themes
+
+![Dark theme](../assets/screenshots/library-dark.png)
 
 The interface has a light and a dark theme. By default it follows your operating system; pick one in the account menu or in **Settings → Appearance**.
 

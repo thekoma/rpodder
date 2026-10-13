@@ -7,19 +7,26 @@ edit_uri: edit/main/docs/src/
 
 theme:
   name: material
+  # Same palette and type as the web UI (web/src/app.css): library green
+  # shell, red catalog rule, Atkinson Hyperlegible. Follows the system theme.
   palette:
-    - scheme: slate
-      primary: blue
-      accent: light blue
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-    - scheme: default
-      primary: blue
-      accent: light blue
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Atkinson Hyperlegible Next
+    code: Atkinson Hyperlegible Mono
   features:
     - navigation.tabs
     - navigation.sections
@@ -51,6 +58,9 @@ markdown_extensions:
       permalink: true
 
 docs_dir: docs/src
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md

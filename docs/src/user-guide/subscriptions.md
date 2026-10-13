@@ -4,8 +4,12 @@
 
 ### Via the web UI
 
-- **Subscribe**: search for a podcast in Discover, click it, then click **+ Subscribe**
-- **Unsubscribe**: go to Subscriptions, hover over a podcast card, click **Unsubscribe**
+![Library](../assets/screenshots/library.png)
+
+- **Subscribe**: search for a podcast in Discover, open it, then click **Subscribe**
+- **Add a feed by address**: **Add feed** in the Library (or paste the address into the Discover search box) subscribes to any RSS/Atom URL, including private feeds with a token
+- **Unsubscribe**: the bookmark button on a Library row; rpodder asks for confirmation and names the devices it removes the podcast from
+- **Export OPML**: **Export OPML** in the Library downloads every subscription, with podcast titles; **Devices** exports one device, and **Settings → Your data** also offers TXT and JSON
 
 ### Via a podcast app
 
@@ -26,7 +30,7 @@ curl "http://localhost:3005/subscriptions/myuser.json" -u myuser:mypass
 
 ## HTTPS upgrade suggestions
 
-rpodder monitors your subscriptions for feeds that use `http://` when an `https://` version exists in the database. When upgrades are available, a yellow banner appears at the top of the Subscriptions page:
+rpodder monitors your subscriptions for feeds that use `http://` when an `https://` version exists in the database. When upgrades are available, a notice appears at the top of the Library:
 
 - **Upgrade individual**: click **Upgrade** next to each subscription
 - **Upgrade all**: click **Upgrade all (N)** to switch all at once

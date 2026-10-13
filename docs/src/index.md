@@ -28,7 +28,9 @@ rpodder aims to be the gpodder.net you'd build today: fast, secure, self-hostabl
 ## Features at a glance
 
 - **Full gpodder.net API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists
-- **Built-in web UI** — Svelte 5 + Tailwind, embedded in the binary. Browse, search, manage subscriptions, admin panel
+- **Built-in web UI** — embedded in the binary, light and dark themes, works on phones. Library with what you were listening to and which device holds each podcast, Discover, History, Devices, Settings, admin panel
+- **Web player** — listen in the browser; optionally it syncs listening positions as a gpodder device, so you resume where your phone stopped (and vice versa)
+- **Your data, your way** — add any feed by URL (private feeds included), download episodes, export OPML for the account or a single device
 - **Podcast Index integration** — search millions of podcasts, trending charts with language filters
 - **SSO / OAuth2** — OIDC single sign-on with any provider (Authentik, Keycloak, Google, etc.)
 - **User roles** — admin/user system, first-user auto-admin, group-based admin mapping
@@ -41,23 +43,31 @@ rpodder aims to be the gpodder.net you'd build today: fast, secure, self-hostabl
 
 ## Screenshots
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-  <div>
-    <img src="assets/screenshots/discover-browse.png" alt="Browse podcasts" />
-    <p style="text-align:center; font-size:0.8rem; color:#888;">Browse & Search</p>
-  </div>
-  <div>
-    <img src="assets/screenshots/discover-trending.png" alt="Trending podcasts" />
-    <p style="text-align:center; font-size:0.8rem; color:#888;">Trending (Podcast Index)</p>
-  </div>
-  <div>
-    <img src="assets/screenshots/podcast-detail.png" alt="Podcast detail" />
-    <p style="text-align:center; font-size:0.8rem; color:#888;">Podcast Detail</p>
-  </div>
-  <div>
+<div class="screenshot-grid">
+  <figure>
+    <img src="assets/screenshots/library.png" alt="Library" />
+    <figcaption>Library</figcaption>
+  </figure>
+  <figure>
+    <img src="assets/screenshots/podcast-detail.png" alt="Podcast page" />
+    <figcaption>Podcast page</figcaption>
+  </figure>
+  <figure>
+    <img src="assets/screenshots/discover-browse.png" alt="Discover" />
+    <figcaption>Discover</figcaption>
+  </figure>
+  <figure>
+    <img src="assets/screenshots/library-dark.png" alt="Library in the dark theme" />
+    <figcaption>Dark theme</figcaption>
+  </figure>
+  <figure>
+    <img src="assets/screenshots/player.png" alt="Web player" />
+    <figcaption>Web player</figcaption>
+  </figure>
+  <figure>
     <img src="assets/screenshots/admin-panel.png" alt="Admin panel" />
-    <p style="text-align:center; font-size:0.8rem; color:#888;">Admin Panel</p>
-  </div>
+    <figcaption>Admin panel</figcaption>
+  </figure>
 </div>
 
 ## Quick taste

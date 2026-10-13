@@ -10,13 +10,14 @@ To sync subscriptions across devices, you group them into a **sync group**. When
 
 ## Managing sync groups (Web UI)
 
-1. Go to the **Devices** page
-2. The **Sync Groups** section shows your current groups and unsynced devices
-3. Click the **+** button next to an unsynced device
-4. Select the device (or existing group) to sync with
-5. Click **Sync** to create or extend the group
+![Devices and sync groups](../assets/screenshots/devices.png)
 
-To remove a device from a group, click the **×** button next to its name in the group.
+1. Go to the **Devices** page
+2. The **Sync groups** section shows your groups; every group has its own colour, which the Library uses for the per-device holdings marks
+3. Create a group from two or more devices that aren't in a group yet, or add a device to an existing group
+4. Rename a group, remove a device from it, or dissolve it (each device keeps its current subscriptions)
+
+The browser's **Web player** is a device too: add it to a group from **Settings → Web player** so that subscribing from the web UI reaches the devices in that group. See [Web Interface](web-ui.md#syncing-with-your-other-devices).
 
 ## Managing sync groups (API)
 

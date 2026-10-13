@@ -4,7 +4,8 @@ rpodder helps you find new podcasts through local search, external databases, an
 
 ![Browse podcasts](../assets/screenshots/discover-browse.png)
 
-![Trending podcasts](../assets/screenshots/discover-trending.png)
+!!! tip "Already have the feed address?"
+    Paste it into the search box instead of a search term: Discover offers to add that feed to your library directly. Private feeds with a token in the URL work too, and stay out of the public directory.
 
 ## Local search
 
@@ -39,7 +40,7 @@ That's it. rpodder will start showing external results immediately.
 When you search from the Browse tab, results are split into two sections:
 
 - **Local results** — podcasts already in your database, with subscriber counts and metadata
-- **Podcast Index** — external results from the global database, with a **+ Add** button
+- **From Podcast Index** — external results from the global database, with a **Subscribe** button
 
 Searches run in parallel — local and Podcast Index are queried simultaneously, so there's no added latency. Results that exist in both are deduplicated (the local version takes priority).
 
@@ -64,7 +65,7 @@ The **Trending** tab shows podcasts that are gaining popularity globally, powere
 This is a great way to discover popular podcasts in your language that you might not have heard of.
 
 !!! tip "No API keys needed for basic use"
-    Podcast Index integration is optional. Without it, search works with your local database only and the Trending tab won't appear. The web UI gracefully degrades — everything else works exactly the same.
+    Podcast Index integration is optional. Without it, search works with your local database only and the Trending tab explains how to enable it. Everything else works exactly the same.
 
 !!! info "About Podcast Index"
     [Podcast Index](https://podcastindex.org/) is a 501(c)(3) non-profit that believes podcast data should be open and free. Their API has no rate limits, no paid tiers, and is funded entirely by the community via [Podcasting 2.0 Value4Value](https://podcastindex.org/donate). If you find it useful, consider supporting them.
@@ -73,7 +74,7 @@ This is a great way to discover popular podcasts in your language that you might
 
 rpodder extracts categories (tags) from podcast RSS feeds during indexing. The Browse page shows:
 
-- **Popular** — top podcasts by subscriber count
+- **Popular on this server** — top podcasts by subscriber count
 - **Category sections** — podcasts grouped by their most common tags
 - **Tag cloud** — clickable category pills with usage counts
 
@@ -85,4 +86,4 @@ If the same podcast exists with both `http://` and `https://` URLs, rpodder:
 
 - Shows only the HTTPS version in directory listings
 - Sums the subscriber counts from both versions
-- Suggests HTTPS upgrades in the Subscriptions page (see [Subscriptions](subscriptions.md))
+- Suggests HTTPS upgrades in the Library (see [Subscriptions](subscriptions.md))

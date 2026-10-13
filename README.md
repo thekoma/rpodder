@@ -17,13 +17,13 @@
   <img src="https://img.shields.io/badge/API-gpodder%20compatible-green" alt="API: gpodder compatible">
   <img src="https://img.shields.io/badge/arch-amd64%20%7C%20arm64-blueviolet" alt="Arch: amd64 | arm64">
   <img src="https://img.shields.io/badge/deploy-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white" alt="Deploy: Docker | K8s">
-  <a href="https://thekoma.github.io/rpodder/"><img src="https://img.shields.io/badge/docs-MkDocs-4051B5?logo=materialformkdocs&logoColor=white" alt="Docs"></a>
+  <a href="https://thekoma.github.io/rpodder/"><img src="https://img.shields.io/badge/docs-MkDocs-1D6A50?logo=materialformkdocs&logoColor=white" alt="Docs"></a>
   <img src="https://img.shields.io/badge/self--hosted-Raspberry%20Pi%20ready-C51A4A?logo=raspberrypi&logoColor=white" alt="Self-hosted: Raspberry Pi ready">
   <img src="https://img.shields.io/badge/SSO-OIDC%20%2F%20OAuth2-purple?logo=openid" alt="SSO: OIDC / OAuth2">
 </p>
 
 <p align="center">
-  <img src="docs/src/assets/screenshots/discover-browse.png" alt="rpodder screenshot" width="700" />
+  <img src="docs/src/assets/screenshots/library.png" alt="rpodder Library" width="700" />
 </p>
 
 Sync your podcast subscriptions and episode progress across [AntennaPod](https://antennapod.org), [gPodder](https://gpodder.github.io), [Kasts](https://apps.kde.org/kasts/), and any client that supports the [gpodder.net API](https://gpoddernet.readthedocs.io/).
@@ -31,7 +31,9 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 ## Features
 
 - **Full gpodder API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists
-- **Web UI** — built-in Svelte 5 + Tailwind interface for browsing, searching, and managing podcasts
+- **Web UI** — built-in Svelte interface, light and dark, phone-friendly: Library with Continue listening and per-device holdings, Discover, History, Devices and sync groups, Settings
+- **Web player** — listen in the browser; optional position sync as a gpodder device, so you resume where your phone stopped
+- **Add by URL, download, export** — subscribe to any feed address (private feeds too), download episodes, export OPML for the account or one device
 - **User roles** — admin/user system with first-user auto-admin, full user management panel
 - **SSO/OAuth2** — OIDC single sign-on (Authentik, Keycloak, etc.) with group-based admin mapping
 - **Registration control** — open, closed, or invite-only (email activation)
