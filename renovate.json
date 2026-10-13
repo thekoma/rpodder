@@ -21,6 +21,12 @@
       "automerge": false
     },
     {
+      "description": "TypeScript 7 drops the JS compiler API that SvelteKit's sync uses (ts.sys); hold it until SvelteKit supports it",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
       "matchManagers": ["github-actions"],
       "groupName": "github actions",
       "automerge": true
