@@ -57,13 +57,15 @@ else
 fi
 
 # --- Trigger second feed update ---
-http_post_status "${ADMIN_URL}?url=${STATIC_ENCODED}" -u "$AUTH_HEADER" >/dev/null
-
-# Static: should get 304 (ETag saved from first fetch)
-wait_mock_stat "static feed: 304 (ETag works)" "$MOCK_URL" '.static_304' "1"
-# Verify no additional full fetch happened
+# An admin refresh re-reads the feed in full (no ETag, so no 304) and waits
+# for the result. The ETag / 304 path of scheduled checks is covered by the
+# in-crate tests (feed_refresh.rs).
+refresh=$(http_post_body "${ADMIN_URL}?url=${STATIC_ENCODED}" -u "$AUTH_HEADER")
+assert_json "static feed: admin refresh reports the update" "$refresh" '.status' "updated"
+assert_json "static feed: no new episodes" "$refresh" '.new_episodes' "0"
 mock_stats=$(curl -sf "${MOCK_URL}/stats")
-assert_json "static feed: still 1 full fetch" "$mock_stats" '.static_fetched' "1"
+assert_json "static feed: downloaded again in full" "$mock_stats" '.static_fetched' "2"
+assert_json "static feed: no 304 for an admin refresh" "$mock_stats" '.static_304' "0"
 
 # Dynamic: no ETag, should fetch again (2nd episode added)
 http_post_status "${ADMIN_URL}?url=${DYNAMIC_ENCODED}" -u "$AUTH_HEADER" >/dev/null

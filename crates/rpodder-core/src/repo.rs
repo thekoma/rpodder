@@ -205,6 +205,18 @@ pub trait EpisodeRepo: Send + Sync {
         podcast_id: Uuid,
         url: &str,
     ) -> impl std::future::Future<Output = Result<(Episode, bool)>> + Send;
+    /// Delete copies of items stored under their web page while their
+    /// enclosure went unrecognised (2026.10.1–2026.10.2): episodes of the
+    /// podcast with no media type, one of `guids`, stored under one of `links`
+    /// (the items' normalized `<link>`), and not in `keep` (every episode the
+    /// current read stored). Returns the rows removed.
+    fn delete_superseded(
+        &self,
+        podcast_id: Uuid,
+        guids: &[String],
+        links: &[String],
+        keep: &[Uuid],
+    ) -> impl std::future::Future<Output = Result<u64>> + Send;
     /// Find which podcast owns an episode with the given media URL.
     fn find_podcast_id_by_episode_url(
         &self,

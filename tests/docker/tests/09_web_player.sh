@@ -19,16 +19,15 @@ FEED_ENCODED=$(echo -n "$PLAYER_FEED" | jq -sRr @uri)
 # --- Subscribe and fetch the player feed ---
 http_post_body "${RPODDER_URL}/api/2/subscriptions/${RPODDER_USER}/${DEVICE}.json" \
   -u "$AUTH_HEADER" -d "{\"add\":[\"${PLAYER_FEED}\"],\"remove\":[]}" >/dev/null
-http_post_status "${RPODDER_URL}/api/admin/feeds/update/single?url=${FEED_ENCODED}" \
-  -u "$AUTH_HEADER" >/dev/null
-
 player_episodes() {
   http_body "${RPODDER_URL}/api/2/data/podcast/episodes.json?url=${FEED_ENCODED}" -u "$AUTH_HEADER"
 }
-# A burst of on-demand fetches (the podcast is still untitled) racing the
-# admin update above: concurrent episode creation must not fail or duplicate.
+# A burst of on-demand fetches (the podcast is still untitled) racing an
+# admin update: concurrent episode creation must not fail or duplicate.
 BURST_DIR=$(mktemp -d)
-pids=""
+http_post_status "${RPODDER_URL}/api/admin/feeds/update/single?url=${FEED_ENCODED}" \
+  -u "$AUTH_HEADER" >"${BURST_DIR}/admin" &
+pids="$!"
 for i in 1 2 3 4 5; do
   http_status "${RPODDER_URL}/api/2/data/podcast/episodes.json?url=${FEED_ENCODED}" \
     -u "$AUTH_HEADER" >"${BURST_DIR}/${i}" &
@@ -36,6 +35,7 @@ for i in 1 2 3 4 5; do
 done
 # shellcheck disable=SC2086
 wait $pids
+assert_status "admin update racing the burst" "200" "$(cat "${BURST_DIR}/admin")"
 for i in 1 2 3 4 5; do
   assert_status "concurrent on-demand fetch ${i}" "200" "$(cat "${BURST_DIR}/${i}")"
 done

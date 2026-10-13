@@ -43,6 +43,7 @@ async fn rss(State(feed): State<Feed>, headers: HeaderMap) -> Response {
         .map(|n| {
             format!(
                 "<item><title>Edition {n}</title><guid>ed-{n}</guid>\
+                 <link>http://news.example/ed-{n}</link>\
                  <pubDate>Tue, 13 Oct 2026 0{n}:00:00 +0000</pubDate>\
                  <enclosure url=\"http://media.example/ed-{n}.mp3\" type=\"audio/mpeg\" length=\"1\"/></item>"
             )
@@ -219,4 +220,200 @@ async fn an_unchanged_feed_still_gets_a_new_check_interval() {
         podcast.update_interval_hours
     );
     assert!(podcast.last_update.unwrap() > Utc::now() - Duration::minutes(1));
+}
+
+#[tokio::test]
+async fn admin_refresh_rereads_the_feed_and_reports_new_episodes() {
+    let app = TestApp::new().await;
+    let admin = app.create_user("admin").await;
+    rpodder_core::repo::UserRepo::set_admin(&app.repo(), admin.user.id, true)
+        .await
+        .unwrap();
+    let feed = Feed::default();
+    feed.episodes.store(1, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+    episode_titles(&app, &admin, &url, 0).await;
+
+    let refresh = format!(
+        "/api/admin/feeds/update/single?url={}",
+        urlencoding::encode(&url)
+    );
+    // Unchanged feed: still downloaded in full (no 304), nothing new.
+    let (status, body) = app
+        .post_json(&admin.cookie, &refresh, serde_json::json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "updated");
+    assert_eq!(body["new_episodes"], 0);
+    assert_eq!(feed.not_modified.load(Ordering::SeqCst), 0);
+
+    feed.episodes.store(3, Ordering::SeqCst);
+    let (status, body) = app
+        .post_json(&admin.cookie, &refresh, serde_json::json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["new_episodes"], 2);
+    let (titles, _) = episode_titles(&app, &admin, &url, 0).await;
+    assert_eq!(titles.len(), 3);
+}
+
+#[tokio::test]
+async fn copies_stored_under_the_web_page_are_removed() {
+    use rpodder_core::repo::EpisodeRepo;
+
+    let app = TestApp::new().await;
+    let admin = app.create_user("admin").await;
+    rpodder_core::repo::UserRepo::set_admin(&app.repo(), admin.user.id, true)
+        .await
+        .unwrap();
+    let feed = Feed::default();
+    feed.episodes.store(2, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+    episode_titles(&app, &admin, &url, 0).await;
+
+    // What 2026.10.1-2026.10.2 stored when it missed the enclosure: the same
+    // item (guid ed-1) under its web page, with no media type.
+    let repo = app.repo();
+    let podcast = PodcastRepo::find_by_url(&repo, &url)
+        .await
+        .unwrap()
+        .unwrap();
+    let (mut copy, _) =
+        EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://news.example/ed-1")
+            .await
+            .unwrap();
+    copy.title = "Edition 1".to_string();
+    copy.guid = Some("ed-1".to_string());
+    copy.mimetype = None;
+    EpisodeRepo::update(&repo, &copy).await.unwrap();
+    let (titles, _) = episode_titles(&app, &admin, &url, 0).await;
+    assert_eq!(titles.len(), 3, "the copy is listed before the cleanup");
+
+    let refresh = format!(
+        "/api/admin/feeds/update/single?url={}",
+        urlencoding::encode(&url)
+    );
+    let (status, body) = app
+        .post_json(&admin.cookie, &refresh, serde_json::json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (titles, _) = episode_titles(&app, &admin, &url, 0).await;
+    assert_eq!(titles, ["Edition 2", "Edition 1"]);
+}
+
+#[tokio::test]
+async fn a_moved_enclosure_keeps_its_old_episode() {
+    use rpodder_core::repo::EpisodeRepo;
+
+    let app = TestApp::new().await;
+    let admin = app.create_user("admin").await;
+    rpodder_core::repo::UserRepo::set_admin(&app.repo(), admin.user.id, true)
+        .await
+        .unwrap();
+    let feed = Feed::default();
+    feed.episodes.store(1, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+    episode_titles(&app, &admin, &url, 0).await;
+
+    // Same guid, no media type, but stored under another audio address (say
+    // the feed moved CDN): not a web-page copy, so it must stay with its history.
+    let repo = app.repo();
+    let podcast = PodcastRepo::find_by_url(&repo, &url)
+        .await
+        .unwrap()
+        .unwrap();
+    let (mut old, _) =
+        EpisodeRepo::get_or_create_for_url(&repo, podcast.id, "http://old-cdn.example/ed-1.mp3")
+            .await
+            .unwrap();
+    old.title = "Edition 1 (old address)".to_string();
+    old.guid = Some("ed-1".to_string());
+    old.mimetype = None;
+    EpisodeRepo::update(&repo, &old).await.unwrap();
+
+    let refresh = format!(
+        "/api/admin/feeds/update/single?url={}",
+        urlencoding::encode(&url)
+    );
+    let (status, body) = app
+        .post_json(&admin.cookie, &refresh, serde_json::json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (titles, _) = episode_titles(&app, &admin, &url, 0).await;
+    assert_eq!(titles.len(), 2, "{titles:?}");
+}
+
+async fn serve_xml(xml: String) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let router = Router::new().route(
+        "/feed.xml",
+        get(move || {
+            let xml = xml.clone();
+            async move { xml }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    format!("http://{addr}/feed.xml")
+}
+
+#[tokio::test]
+async fn a_text_item_sharing_a_guid_and_link_is_kept() {
+    let app = TestApp::new().await;
+    let admin = app.create_user("admin").await;
+    rpodder_core::repo::UserRepo::set_admin(&app.repo(), admin.user.id, true)
+        .await
+        .unwrap();
+    // Both items carry the same guid and <link>; only the first has audio.
+    let url = serve_xml(
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>Shared</title>\
+         <description>Same guid twice</description>\
+         <item><title>Audio</title><guid>same</guid><link>http://show.example/</link>\
+         <pubDate>Tue, 13 Oct 2026 08:00:00 +0000</pubDate>\
+         <enclosure url=\"http://show.example/a.mp3\" type=\"audio/mpeg\" length=\"1\"/></item>\
+         <item><title>Notes</title><guid>same</guid><link>http://show.example/</link>\
+         <pubDate>Tue, 13 Oct 2026 07:00:00 +0000</pubDate></item>\
+         </channel></rss>"
+            .to_string(),
+    )
+    .await;
+    episode_titles(&app, &admin, &url, 0).await;
+
+    let refresh = format!(
+        "/api/admin/feeds/update/single?url={}",
+        urlencoding::encode(&url)
+    );
+    for _ in 0..2 {
+        let (status, body) = app
+            .post_json(&admin.cookie, &refresh, serde_json::json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["new_episodes"], 0, "no churn: {body}");
+    }
+    let (titles, _) = episode_titles(&app, &admin, &url, 0).await;
+    assert_eq!(titles, ["Audio", "Notes"]);
+}
+
+#[tokio::test]
+async fn an_admin_reread_shows_as_running_on_a_fresh_podcast() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let feed = Feed::default();
+    feed.episodes.store(1, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+    episode_titles(&app, &alice, &url, 0).await;
+    let podcast = PodcastRepo::find_by_url(&app.repo(), &url)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Checked just now, but an admin re-read is running.
+    let done = crate::feed_updater::track_refresh(podcast.id);
+    let (_, refreshing) = episode_titles(&app, &alice, &url, 0).await;
+    assert!(refreshing);
+    assert_eq!(feed.served.load(Ordering::SeqCst), 1, "no second fetch");
+
+    done.store(true, Ordering::SeqCst);
+    let (_, refreshing) = episode_titles(&app, &alice, &url, 0).await;
+    assert!(!refreshing);
 }

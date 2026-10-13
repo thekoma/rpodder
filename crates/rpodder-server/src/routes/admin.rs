@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{DeviceRepo, SubscriptionRepo, UserRepo};
+use rpodder_core::repo::{DeviceRepo, PodcastRepo, SubscriptionRepo, UserRepo};
 
 use crate::middleware::auth::{
     ACTIVATE_TOKEN_PREFIX, AuthUser, RESET_TOKEN_PREFIX, SSO_SESSION_PREFIX,
@@ -674,20 +674,66 @@ pub struct FeedUpdateQuery {
     pub url: String,
 }
 
-/// POST /api/admin/feeds/update/single?url=X — force update a single feed (admin)
+/// POST /api/admin/feeds/update/single?url=X — re-read one feed now (admin).
+///
+/// Waits for the update (up to 25 s, under common proxy timeouts) and reports
+/// what it did:
+/// `{"status": "updated", "new_episodes": N}`, `"skipped"`, `"merged"`,
+/// `"failed"` (502, with `error`), or
+/// `"running"` (202) when it takes longer and finishes in the background.
 pub async fn force_single_feed_update(
     State(state): State<AppState>,
     Query(params): Query<FeedUpdateQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    use crate::feed_updater::FeedOutcome;
+
     let db = state.db.clone();
     let url = params.url.clone();
-    tokio::spawn(async move {
-        let fetcher = rpodder_feed::FeedFetcher::new();
-        let _ = crate::feed_updater::update_podcast_feed_forced(&db, &fetcher, &url).await;
+    // Page opens during the re-read report it as running (no second fetch).
+    let done = with_repo!(state, |repo| {
+        PodcastRepo::find_by_url(&repo, &params.url).await
+    })
+    .ok()
+    .flatten()
+    .map(|p| crate::feed_updater::track_refresh(p.id));
+    let mut task = tokio::spawn(async move {
+        let fetcher = rpodder_feed::FeedFetcher::with_limits(std::time::Duration::from_secs(20), 1);
+        let result = crate::feed_updater::reread_podcast_feed(&db, &fetcher, &url)
+            .await
+            .map_err(|e| e.to_string());
+        if let Some(done) = done {
+            done.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        result
     });
-    Ok(Json(
-        serde_json::json!({ "status": "feed update started", "url": params.url }),
-    ))
+    let (code, body) =
+        match tokio::time::timeout(std::time::Duration::from_secs(25), &mut task).await {
+            Err(_) => (
+                StatusCode::ACCEPTED,
+                serde_json::json!({ "status": "running" }),
+            ),
+            Ok(Err(join)) => (
+                StatusCode::BAD_GATEWAY,
+                serde_json::json!({ "status": "failed", "error": join.to_string() }),
+            ),
+            Ok(Ok(Err(e))) => (
+                StatusCode::BAD_GATEWAY,
+                serde_json::json!({ "status": "failed", "error": e }),
+            ),
+            Ok(Ok(Ok(outcome))) => (
+                StatusCode::OK,
+                match outcome {
+                    FeedOutcome::Updated { new_episodes } => {
+                        serde_json::json!({ "status": "updated", "new_episodes": new_episodes })
+                    }
+                    // Not expected: a re-read doesn't send ETag / Last-Modified.
+                    FeedOutcome::NotModified => serde_json::json!({ "status": "not_modified" }),
+                    FeedOutcome::Skipped => serde_json::json!({ "status": "skipped" }),
+                    FeedOutcome::Merged => serde_json::json!({ "status": "merged" }),
+                },
+            ),
+        };
+    Ok((code, Json(body)))
 }
 
 /// GET /api/2/me — current user info (authenticated)

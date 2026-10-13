@@ -30,6 +30,19 @@ macro_rules! with_repo {
     };
 }
 
+/// What a feed update did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedOutcome {
+    /// Not fetched: unknown podcast, or a private feed in a background run.
+    Skipped,
+    /// The feed answered 304 Not Modified.
+    NotModified,
+    /// Read and stored; `new_episodes` were not known before.
+    Updated { new_episodes: i64 },
+    /// The URL turned out to be another address of a known podcast.
+    Merged,
+}
+
 /// Update a single podcast feed: fetch, parse, update metadata and episodes.
 /// Errors are logged but do not stop processing — each step is best-effort.
 /// If `force` is true, skips the private URL check (for authenticated user access).
@@ -37,7 +50,7 @@ pub async fn update_podcast_feed(
     db: &Db,
     fetcher: &FeedFetcher,
     podcast_url: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
     update_podcast_feed_inner(db, fetcher, podcast_url, false).await
 }
 
@@ -46,8 +59,18 @@ pub async fn update_podcast_feed_forced(
     db: &Db,
     fetcher: &FeedFetcher,
     podcast_url: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
     update_podcast_feed_inner(db, fetcher, podcast_url, true).await
+}
+
+/// Download the feed in full and store it, without ETag / Last-Modified: an
+/// admin's "Refresh feed" re-reads it even if the server would answer 304.
+pub async fn reread_podcast_feed(
+    db: &Db,
+    fetcher: &FeedFetcher,
+    podcast_url: &str,
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
+    update_podcast_feed_with(db, fetcher, podcast_url, true, false).await
 }
 
 async fn update_podcast_feed_inner(
@@ -55,7 +78,17 @@ async fn update_podcast_feed_inner(
     fetcher: &FeedFetcher,
     podcast_url: &str,
     force: bool,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
+    update_podcast_feed_with(db, fetcher, podcast_url, force, true).await
+}
+
+async fn update_podcast_feed_with(
+    db: &Db,
+    fetcher: &FeedFetcher,
+    podcast_url: &str,
+    force: bool,
+    conditional: bool,
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let podcast = with_repo!(db, |repo| {
         PodcastRepo::find_by_url(&repo, podcast_url).await
     })?;
@@ -72,7 +105,7 @@ async fn update_podcast_feed_inner(
         }
         None => {
             warn!(url = podcast_url, "podcast not found for URL");
-            return Ok(());
+            return Ok(FeedOutcome::Skipped);
         }
     };
 
@@ -82,15 +115,18 @@ async fn update_podcast_feed_inner(
             url = podcast_url,
             "skipping private feed (token detected in URL)"
         );
-        return Ok(());
+        return Ok(FeedOutcome::Skipped);
     }
 
     // Fetch the feed with conditional GET (ETag / Last-Modified)
     let result = fetcher
         .fetch(
             podcast_url,
-            podcast.etag.as_deref(),
-            podcast.http_last_modified.as_deref(),
+            podcast.etag.as_deref().filter(|_| conditional),
+            podcast
+                .http_last_modified
+                .as_deref()
+                .filter(|_| conditional),
         )
         .await?;
 
@@ -123,7 +159,7 @@ async fn update_podcast_feed_inner(
             if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
                 warn!(url = podcast_url, error = %e, "failed to update last_update after 304");
             }
-            return Ok(());
+            return Ok(FeedOutcome::NotModified);
         }
     };
 
@@ -167,7 +203,7 @@ async fn update_podcast_feed_inner(
                 {
                     warn!(error = %e, "failed to delete duplicate podcast");
                 }
-                return Ok(());
+                return Ok(FeedOutcome::Merged);
             }
         }
     }
@@ -213,6 +249,14 @@ async fn update_podcast_feed_inner(
     // Update episodes — only write when content_hash differs
     let mut episode_count = 0i64;
     let mut episodes_updated = 0i64;
+    let mut new_episodes = 0i64;
+    // For the cleanup below: guid and normalized <link> of the items now stored
+    // under their enclosure, and every episode this read stored.
+    let mut enclosure_guids: Vec<String> = Vec::new();
+    let mut enclosure_links: Vec<String> = Vec::new();
+    let mut stored: Vec<Uuid> = Vec::new();
+    // A failed item may be missing from `stored`: then skip the cleanup.
+    let mut incomplete = false;
     for parsed_ep in &parsed.episodes {
         let ep_url = parsed_ep.media_url.as_deref().or(parsed_ep.link.as_deref());
 
@@ -230,9 +274,11 @@ async fn update_podcast_feed_inner(
             Ok(ep) => ep,
             Err(e) => {
                 warn!(url = ep_url, error = %e, "failed to create episode");
+                incomplete = true;
                 continue;
             }
         };
+        stored.push(episode.id);
 
         episode.title = parsed_ep.title.clone();
         episode.description = parsed_ep.description.clone();
@@ -243,6 +289,9 @@ async fn update_podcast_feed_inner(
         episode.filesize = parsed_ep.filesize;
         episode.mimetype = parsed_ep.mimetype.clone();
 
+        if created {
+            new_episodes += 1;
+        }
         let new_hash = episode.compute_content_hash();
         if created || new_hash != episode.content_hash {
             episode.content_hash = new_hash;
@@ -250,12 +299,45 @@ async fn update_podcast_feed_inner(
 
             if let Err(e) = with_repo!(db, |repo| EpisodeRepo::update(&repo, &episode).await) {
                 warn!(url = ep_url, error = %e, "failed to update episode");
+                incomplete = true;
                 continue;
             }
             episodes_updated += 1;
         }
 
+        if parsed_ep.media_url.is_some()
+            && let (Some(guid), Some(link)) = (&parsed_ep.guid, &parsed_ep.link)
+        {
+            enclosure_guids.push(guid.clone());
+            enclosure_links.push(normalize_url(link));
+        }
         episode_count += 1;
+    }
+
+    // 2026.10.1-2026.10.2 missed enclosures that followed iTunes tags and stored
+    // those items under their <link> page: drop those copies now.
+    let cleanup = if incomplete {
+        Ok(0)
+    } else {
+        with_repo!(db, |repo| {
+            EpisodeRepo::delete_superseded(
+                &repo,
+                podcast.id,
+                &enclosure_guids,
+                &enclosure_links,
+                &stored,
+            )
+            .await
+        })
+    };
+    match cleanup {
+        Ok(0) => {}
+        Ok(n) => info!(
+            url = podcast_url,
+            removed = n,
+            "removed episodes stored under their web page"
+        ),
+        Err(e) => warn!(url = podcast_url, error = %e, "failed to remove superseded episodes"),
     }
 
     // Update episode count and the interval to the next check
@@ -272,10 +354,11 @@ async fn update_podcast_feed_inner(
         title = podcast.title,
         episodes = episode_count,
         episodes_updated,
+        new_episodes,
         "feed updated"
     );
 
-    Ok(())
+    Ok(FeedOutcome::Updated { new_episodes })
 }
 
 /// Run a single feed update cycle. Only updates feeds that are due.
@@ -387,6 +470,24 @@ struct PageAttempt {
 static RECENT_PAGE_REFRESH: LazyLock<Mutex<HashMap<Uuid, PageAttempt>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Record a re-read started elsewhere (an admin's "Refresh feed"), so page
+/// opens meanwhile report it as running instead of starting another fetch.
+/// Set the returned flag when it ends.
+pub fn track_refresh(podcast_id: Uuid) -> Arc<std::sync::atomic::AtomicBool> {
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    RECENT_PAGE_REFRESH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            podcast_id,
+            PageAttempt {
+                at: Instant::now(),
+                done: done.clone(),
+            },
+        );
+    done
+}
+
 /// Outcome of [`refresh_if_stale`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageRefresh {
@@ -409,9 +510,6 @@ pub async fn refresh_if_stale(
 ) -> PageRefresh {
     use std::sync::atomic::Ordering;
 
-    if last_update.is_some_and(|t| Utc::now() - t < STALE_AFTER) {
-        return PageRefresh::Fresh;
-    }
     let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let permit = {
         let mut recent = RECENT_PAGE_REFRESH
@@ -420,13 +518,17 @@ pub async fn refresh_if_stale(
         let now = Instant::now();
         recent.retain(|_, a| now.duration_since(a.at) < RETRY_AFTER);
         if let Some(attempt) = recent.get(&podcast_id) {
-            // Another viewer's refresh is still running: this one should
-            // check back too. A finished one isn't retried for a while.
+            // A re-read is still running (another viewer's, or an admin's
+            // even on a fresh feed): check back too. A finished one isn't
+            // retried for a while.
             return if attempt.done.load(Ordering::SeqCst) {
                 PageRefresh::Fresh
             } else {
                 PageRefresh::Pending
             };
+        }
+        if last_update.is_some_and(|t| Utc::now() - t < STALE_AFTER) {
+            return PageRefresh::Fresh;
         }
         let Ok(permit) = PAGE_REFRESH_PERMITS.clone().try_acquire_owned() else {
             return PageRefresh::Fresh;

@@ -69,9 +69,26 @@ pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
 
             let link = entry.links.first().map(|l| l.href.clone());
 
-            // Find enclosure (media URL)
-            let media = entry.media.first();
-            let media_content = media.and_then(|m| m.content.first());
+            // Find the enclosure (media URL). feed-rs 3 gives an item one media
+            // object per source: iTunes tags come first (duration, no URL),
+            // the RSS <enclosure> after, so look through all of them.
+            // Prefer audio/video: a feed may list an image <media:content> first.
+            // (feed-rs drops <enclosure> when an item has <media:content>, so an
+            // image-only MediaRSS item still yields the image.)
+            let with_url = || {
+                entry
+                    .media
+                    .iter()
+                    .flat_map(|m| m.content.iter())
+                    .filter(|mc| mc.url.is_some())
+            };
+            let media_content = with_url()
+                .find(|mc| {
+                    mc.content_type
+                        .as_ref()
+                        .is_some_and(|t| matches!(t.ty().as_str(), "audio" | "video"))
+                })
+                .or_else(|| with_url().next());
 
             let media_url = media_content
                 .and_then(|mc| mc.url.as_ref())
@@ -89,6 +106,7 @@ pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
 
             let duration = media_content
                 .and_then(|mc| mc.duration)
+                .or_else(|| entry.media.iter().find_map(|m| m.duration))
                 .map(|d| d.as_secs() as i64);
 
             let filesize = media_content.and_then(|mc| mc.size).map(|s| s as i64);
@@ -132,6 +150,50 @@ pub enum ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_enclosure_after_itunes_tags() {
+        // Megaphone-style item: iTunes tags before the <enclosure>. feed-rs 3
+        // turns them into a media object of their own, with no URL.
+        let rss = r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel><title>Tg</title><description>News</description>
+        <itunes:author>la7</itunes:author>
+        <item>
+          <title>Edition 7:30</title>
+          <pubDate>Tue, 13 Oct 2026 06:22:46 -0000</pubDate>
+          <itunes:duration>907</itunes:duration>
+          <itunes:summary>Morning news</itunes:summary>
+          <enclosure url="https://traffic.example/ed.mp3" length="0" type="audio/mpeg"/>
+        </item>
+        </channel></rss>"#;
+
+        let feed = parse_feed(rss).unwrap();
+        let ep = &feed.episodes[0];
+        assert_eq!(
+            ep.media_url.as_deref(),
+            Some("https://traffic.example/ed.mp3")
+        );
+        assert_eq!(ep.mimetype.as_deref(), Some("audio/mpeg"));
+        assert_eq!(ep.duration, Some(907));
+    }
+
+    #[test]
+    fn prefers_audio_over_an_image_media_content() {
+        let rss = r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>Blog</title><description>Posts</description>
+        <item>
+          <title>Post with audio</title>
+          <media:content url="https://blog.example/cover.jpg" type="image/jpeg"/>
+          <media:content url="https://blog.example/ep.mp3" type="audio/mpeg"/>
+        </item>
+        </channel></rss>"#;
+
+        let ep = &parse_feed(rss).unwrap().episodes[0];
+        assert_eq!(ep.media_url.as_deref(), Some("https://blog.example/ep.mp3"));
+        assert_eq!(ep.mimetype.as_deref(), Some("audio/mpeg"));
+    }
 
     #[test]
     fn parses_rss_pubdate() {

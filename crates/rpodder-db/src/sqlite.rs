@@ -933,6 +933,37 @@ impl SqliteRepo {
 }
 
 impl repo::EpisodeRepo for SqliteRepo {
+    async fn delete_superseded(
+        &self,
+        podcast_id: Uuid,
+        guids: &[String],
+        links: &[String],
+        keep: &[Uuid],
+    ) -> Result<u64> {
+        if guids.is_empty() || links.is_empty() {
+            return Ok(0);
+        }
+        let to_json =
+            |v: &[String]| serde_json::to_string(v).map_err(|e| AppError::Internal(e.to_string()));
+        let keep: Vec<String> = keep.iter().map(uuid_str).collect();
+        let result = sqlx::query(
+            "DELETE FROM episodes
+             WHERE podcast_id = ? AND mimetype IS NULL
+               AND guid IN (SELECT value FROM json_each(?))
+               AND id IN (SELECT episode_id FROM episode_urls
+                          WHERE url IN (SELECT value FROM json_each(?)))
+               AND id NOT IN (SELECT value FROM json_each(?))",
+        )
+        .bind(uuid_str(&podcast_id))
+        .bind(to_json(guids)?)
+        .bind(to_json(links)?)
+        .bind(to_json(&keep)?)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(result.rows_affected())
+    }
+
     async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT e.podcast_id FROM episodes e JOIN episode_urls eu ON eu.episode_id = e.id WHERE eu.url = ? LIMIT 1",

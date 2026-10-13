@@ -9,6 +9,9 @@ Endpoints:
                    (starts with 1, then 2, then 3...).
   /feed/player   — 3-episode feed for the web player: a playable WAV, a 404
                    enclosure, and an item with only a <link> page.
+  /feed/repaired — item "rep-1" with only a <link> page until /feed/repaired/fix,
+                   then with an <enclosure> too; item "rep-2" only ever has a
+                   <link> (text post). Mimics what 2026.10.1-2026.10.2 stored.
   /media/tone.wav    — 180 s playable WAV (440 Hz tone), supports Range.
   /media/missing.mp3 — 404.
   /stats         — JSON counters: how many times each feed was fetched
@@ -37,6 +40,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # Global state
 state = {
     "dynamic_episode_count": 1,
+    "repaired_fixed": False,
     "stats": {
         "static_fetched": 0,
         "static_304": 0,
@@ -129,6 +133,35 @@ def make_player_feed():
 </rss>"""
 
 
+def make_repaired_feed(fixed):
+    enclosure = (
+        f'<enclosure url="{PUBLIC_URL}/audio/rep1.mp3" type="audio/mpeg" length="100"/>'
+        if fixed
+        else ""
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Repaired Feed</title>
+  <link>{PUBLIC_URL}</link>
+  <description>Enclosure missed, then found</description>
+    <item>
+      <title>Rep ep1</title>
+      <guid>rep-1</guid>
+      <pubDate>Wed, 03 Jun 2026 10:00:00 +0000</pubDate>
+      <link>{PUBLIC_URL}/page/rep1</link>
+      {enclosure}
+    </item>
+    <item>
+      <title>Rep ep2</title>
+      <guid>rep-2</guid>
+      <pubDate>Tue, 02 Jun 2026 10:00:00 +0000</pubDate>
+      <link>{PUBLIC_URL}/page/rep2</link>
+    </item>
+</channel>
+</rss>"""
+
+
 class MockHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Suppress default logging
@@ -146,6 +179,21 @@ class MockHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/feed/repaired":
+            with state_lock:
+                fixed = state["repaired_fixed"]
+            body = make_repaired_feed(fixed).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/rss+xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/feed/repaired/fix":
+            with state_lock:
+                state["repaired_fixed"] = True
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"fixed"}')
         elif self.path == "/media/tone.wav":
             self.handle_tone()
         elif self.path == "/stats":
@@ -236,6 +284,7 @@ class MockHandler(BaseHTTPRequestHandler):
     def handle_reset(self):
         with state_lock:
             state["dynamic_episode_count"] = 1
+            state["repaired_fixed"] = False
             state["stats"] = {"static_fetched": 0, "static_304": 0, "dynamic_fetched": 0}
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

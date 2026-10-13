@@ -868,6 +868,33 @@ impl PgRepo {
 }
 
 impl repo::EpisodeRepo for PgRepo {
+    async fn delete_superseded(
+        &self,
+        podcast_id: Uuid,
+        guids: &[String],
+        links: &[String],
+        keep: &[Uuid],
+    ) -> Result<u64> {
+        if guids.is_empty() || links.is_empty() {
+            return Ok(0);
+        }
+        let result = sqlx::query(
+            "DELETE FROM episodes
+             WHERE podcast_id = $1 AND mimetype IS NULL
+               AND guid = ANY($2)
+               AND id IN (SELECT episode_id FROM episode_urls WHERE url = ANY($3))
+               AND NOT (id = ANY($4))",
+        )
+        .bind(podcast_id)
+        .bind(guids)
+        .bind(links)
+        .bind(keep)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(result.rows_affected())
+    }
+
     async fn find_podcast_id_by_episode_url(&self, url: &str) -> Result<Option<Uuid>> {
         let row: Option<(Uuid,)> = sqlx::query_as(
             "SELECT e.podcast_id FROM episodes e JOIN episode_urls eu ON eu.episode_id = e.id WHERE eu.url = $1 LIMIT 1",
