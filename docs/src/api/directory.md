@@ -126,6 +126,8 @@ Each episode carries, besides `title`, `description`, `released`, `duration` and
 | `url` | The episode's primary URL: its enclosure (media file), or its `<link>` page when the feed item has no enclosure. This is the URL clients use as `episode` in episode actions. |
 | `media` | `true` when `url` is a media file, `false` when it is a web page. |
 
+Requesting the first page (`page=0`) of a podcast whose feed hasn't been checked for an hour re-reads the feed first, waiting up to 4 seconds. If the feed takes longer, the response carries `"refreshing": true` and the update finishes in the background: ask again a few seconds later for the new episodes. The same podcast is re-read this way at most once every 10 minutes.
+
 ## Tags
 
 ```

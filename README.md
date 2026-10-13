@@ -30,21 +30,37 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 
 ## Features
 
-- **Full gpodder API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists
-- **Web UI** — built-in Svelte interface, light and dark, phone-friendly: Library with Continue listening and per-device holdings, Discover, History, Devices and sync groups, Settings
-- **Web player** — listen in the browser; optional position sync as a gpodder device, so you resume where your phone stopped
-- **Add by URL, download, export** — subscribe to any feed address (private feeds too), download episodes, export OPML for the account or one device
-- **User roles** — admin/user system with first-user auto-admin, full user management panel
-- **SSO/OAuth2** — OIDC single sign-on (Authentik, Keycloak, etc.) with group-based admin mapping
+### Sync
+- **Full gpodder API** — subscriptions, episode actions, devices, sync groups, settings, favorites, chapters, podcast lists. Works with AntennaPod, gPodder, Kasts and other gpodder clients
+- **Reliable episode sync** — positions uploaded late still reach your other devices (`since` follows when the server received an action, not the phone's clock), updated positions are re-delivered, `aggregated=true` returns the latest action per episode, no 1000-action cap
+- **Sync groups** — keep the subscriptions of several devices identical; the browser can join one too
+
+### Web interface
+- **Built in** — embedded in the binary, fonts and icons included: no outside requests except podcast artwork and audio
+- **Library** — Continue listening across all your devices, subscriptions filed by letter, which device holds each podcast, last played, filter
+- **Web player** — listen in the browser with a player bar that survives navigation and a full-screen view on phones; optional position sync as a gpodder device, so you resume where your phone stopped (and the phone where the browser stopped)
+- **Your data** — add any feed by URL (private feeds too), download episodes, export OPML/TXT/JSON for the account or a single device
+- **Fresh episodes** — feeds are checked at their own publishing rhythm (hourly for a news show, daily for a weekly one), and opening a podcast re-reads a feed that hasn't been checked for an hour
+- **Light and dark themes**, phone layout with a bottom tab bar, History by day, Devices and sync-group editor, admin panel
+
+### Accounts and security
+- **User roles** — admin/user, first user becomes admin, full user management panel
+- **SSO / OAuth2** — OIDC single sign-on (Authentik, Keycloak, …), group-based admin mapping, login bound to the browser that started it (OAuth `state`)
 - **Registration control** — open, closed, or invite-only (email activation)
-- **Password management** — self-service change/reset via email, admin set/reset, SSO-friendly
-- **HTTPS upgrade suggestions** — detects HTTP subscriptions with HTTPS alternatives, proposes upgrade
-- **Multi-format** — JSON, OPML, and TXT for subscription import/export
-- **Dual database** — PostgreSQL for scale, SQLite for self-hosting
-- **Feed indexing** — automatic feed fetching, parsing, fuzzy search, podcast directory
-- **Dynamic migrations** — reads all `*.up.sql` from migrations directory, no hardcoded filenames
-- **Privacy** — private/paid feeds (with tokens in URL) hidden from public directory
-- **Lightweight** — single binary with embedded UI, low memory footprint
+- **Passwords** — self-service change and email reset, admin set/reset; any credential change or deactivation signs out the user's other sessions
+- **Privacy** — private/paid feeds (tokens in the URL) are hidden from the public directory
+
+### Discovery
+- **Directory and search** — full-text search over every podcast on the server, top podcasts, categories
+- **Podcast Index** — optional search across millions of podcasts and trending charts by language
+- **HTTPS upgrade suggestions** — finds HTTP subscriptions that have an HTTPS address
+
+### Operations
+- **Dual database** — PostgreSQL for scale, SQLite for self-hosting (Raspberry Pi friendly)
+- **Single binary**, multi-arch Docker images (amd64/arm64), Helm chart, Prometheus metrics
+- **Self-applying migrations** — every `*.up.sql` in the migrations directory, idempotent on both databases
+
+See the [documentation](https://thekoma.github.io/rpodder/) and the [changelog](CHANGELOG.md) for details.
 
 ## Quickstart
 

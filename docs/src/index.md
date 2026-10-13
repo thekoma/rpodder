@@ -31,6 +31,7 @@ rpodder aims to be the gpodder.net you'd build today: fast, secure, self-hostabl
 - **Built-in web UI** — embedded in the binary, light and dark themes, works on phones. Library with what you were listening to and which device holds each podcast, Discover, History, Devices, Settings, admin panel
 - **Web player** — listen in the browser; optionally it syncs listening positions as a gpodder device, so you resume where your phone stopped (and vice versa)
 - **Your data, your way** — add any feed by URL (private feeds included), download episodes, export OPML for the account or a single device
+- **Fresh episodes** — every feed is checked at its own publishing rhythm (hourly for a news show, daily for a weekly one), and opening a podcast re-reads a feed that hasn't been checked for an hour
 - **Podcast Index integration** — search millions of podcasts, trending charts with language filters
 - **SSO / OAuth2** — OIDC single sign-on with any provider (Authentik, Keycloak, Google, etc.)
 - **User roles** — admin/user system, first-user auto-admin, group-based admin mapping

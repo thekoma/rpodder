@@ -40,7 +40,7 @@ axum Router
 
 ## Background tasks
 
-- **Feed updater** — spawned via `tokio::spawn` at startup. Runs every 30 minutes. Respects adaptive intervals and retries.
+- **Feed updater** — spawned via `tokio::spawn` at startup. Runs every 30 minutes. Each feed is checked at its own publishing rhythm (1–24 hours for subscribed feeds, weekly otherwise), with retries. Opening a podcast page re-reads a feed that hasn't been checked for an hour.
 
 ## State management
 

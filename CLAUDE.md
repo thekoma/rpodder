@@ -125,7 +125,7 @@ config/             Example config, systemd service
 - **User roles**: Admin middleware on `/api/admin/*`. First registered user auto-admin. SSO group mapping via `RPODDER_OAUTH_ADMIN_GROUP`.
 - **Privacy**: URLs with detected tokens are hidden from public directory but visible to subscribed users.
 - **Web UI**: Svelte 5 SPA embedded via rust-embed, `ssr=false` + `prerender=false` globally, `$effect` for data loading (not `onMount`).
-- **Feed updater**: Background loop every 30min, adaptive intervals (1h-7d based on subscribers), retry with backoff, skips private feeds.
+- **Feed updater**: Background loop every 30min. Each feed's next check follows its publishing rhythm (a quarter of the median gap between recent episodes, 1–24h; at most 6h from 10 subscribers, 1h from 100; weekly when nobody subscribes), retry with backoff, skips private feeds. Opening a podcast page (`episodes.json` page 0) re-reads a feed not checked for an hour (`feed_updater::refresh_if_stale`).
 - **Episode actions**: Accepts both `{"actions":[...]}` and bare `[...]` array (Kasts compat). Timestamp as string or integer.
 - **AppState**: `{ db: Arc<Db>, config: Arc<AppConfig> }`.
 

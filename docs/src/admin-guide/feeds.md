@@ -6,22 +6,29 @@ rpodder automatically fetches and indexes podcast feeds in the background.
 
 The feed updater runs every **30 minutes** as a background task. It:
 
-1. Lists all podcasts with active subscribers
+1. Lists the podcasts whose next check is due
 2. Sorts by subscriber count (popular podcasts first)
-3. Skips podcasts that were recently updated (adaptive interval)
+3. Skips private feeds (see below)
 4. Fetches each feed with conditional GET (ETag, If-Modified-Since)
 5. Updates podcast metadata (title, description, author, logo)
 6. Creates/updates episodes from feed entries
 7. Extracts tags from feed categories
 
-### Adaptive intervals
+### When a feed is checked
 
-| Subscribers | Update interval |
-|-------------|----------------|
-| 5+ | Every 1 hour |
-| 2-4 | Every 4 hours |
-| 1 | Every 12 hours |
-| 0 | Every 7 days |
+Feeds follow their own publishing rhythm. After each read, rpodder looks at the release dates of the newest episodes and schedules the next check at a quarter of the typical gap between them, between 1 and 24 hours:
+
+| Feed | Typical gap | Checked every |
+|------|-------------|---------------|
+| News show, three editions a day | ~7 hours | 1 hour |
+| Daily show | 24 hours | 6 hours |
+| Weekly show | 7 days | 24 hours |
+| Show that stopped publishing | (time since the last episode) | 24 hours |
+| Nobody on this server subscribes | | 7 days |
+
+The gap is never taken shorter than the time since the newest episode, so a show that goes quiet drifts back to daily checks on its own. Popular feeds are checked at least every 6 hours (10+ subscribers) or every hour (100+ subscribers).
+
+Frequent checks are cheap: rpodder sends the feed's ETag and Last-Modified back, and an unchanged feed answers `304 Not Modified` without being downloaded again.
 
 ### Retry with backoff
 
@@ -58,6 +65,8 @@ This also works from the podcast detail page — click **Refresh Feed** when vie
 ## On-demand fetch
 
 When a user visits a podcast detail page and the podcast has no metadata yet (title equals URL, empty description), rpodder fetches the feed immediately. This provides instant results for newly added podcasts.
+
+Opening the page of a podcast whose feed hasn't been checked for an hour also re-reads it, so new episodes show up without waiting for the next scheduled check. The page waits up to 4 seconds; for a slower feed it shows *Checking the feed for new episodes…* and reloads the list once the update has had time to finish. A podcast is re-read this way at most once every 10 minutes.
 
 ## Feed URL handling
 
