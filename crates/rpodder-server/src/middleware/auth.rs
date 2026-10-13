@@ -154,11 +154,9 @@ fn verify_password(password: &str, hash: &str) -> bool {
 }
 
 pub fn hash_password(password: &str) -> std::result::Result<String, argon2::password_hash::Error> {
-    use argon2::password_hash::SaltString;
-    use argon2::password_hash::rand_core::OsRng;
-    use argon2::{Argon2, PasswordHasher};
-    let salt = SaltString::generate(&mut OsRng);
-    let hash = Argon2::default().hash_password(password.as_bytes(), &salt)?;
+    use argon2::{Argon2, PasswordHash, PasswordHasher};
+    // Generates a random 16-byte salt.
+    let hash: PasswordHash = Argon2::default().hash_password(password.as_bytes())?;
     Ok(hash.to_string())
 }
 

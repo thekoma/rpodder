@@ -44,7 +44,7 @@ pub fn parse_feed(xml: &str) -> Result<ParsedFeed, ParseError> {
         .map(|img| img.uri.clone())
         .or_else(|| feed.icon.as_ref().map(|img| img.uri.clone()));
 
-    let author = feed.authors.first().map(|a| a.name.clone());
+    let author = feed.authors.iter().find_map(|a| a.name.clone());
 
     let categories: Vec<String> = feed.categories.iter().map(|c| c.term.clone()).collect();
 

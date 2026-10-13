@@ -35,7 +35,7 @@ reqwest = { workspace = true }
 urlencoding = { workspace = true }
 rust-embed = { workspace = true, optional = true }
 mime_guess = { version = "2", optional = true }
-base64 = "0.22"
+base64 = "0.23"
 sha1 = "0.11"
 
 [features]

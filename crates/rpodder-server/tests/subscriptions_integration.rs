@@ -32,14 +32,11 @@ fn repo(db: &Db) -> SqliteRepo {
 }
 
 fn hash_password(password: &str) -> String {
-    use argon2::password_hash::SaltString;
-    use argon2::password_hash::rand_core::OsRng;
-    use argon2::{Argon2, PasswordHasher};
-    let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
-        .unwrap()
-        .to_string()
+    use argon2::{Argon2, PasswordHash, PasswordHasher};
+    let hash: PasswordHash = Argon2::default()
+        .hash_password(password.as_bytes())
+        .unwrap();
+    hash.to_string()
 }
 
 /// Create a user with a session and a device, returns (session_token, device_uid).
