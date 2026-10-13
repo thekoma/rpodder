@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026.10.0 — 2026-10-13
+
+### Added
+- **Web player** — play episodes in the browser from a podcast's page or from **Continue listening**, with a player bar that keeps playing while you browse and a full-screen *Now playing* view on phones. The player is a sync device (`rpodder-web`): with **Sync listening positions** on it resumes where your phone stopped (and vice versa); it can also join a device sync group from Settings. `episodes.json` items now carry the episode's `url` and `media` URL; new `GET /api/2/me/in-progress` and `GET /api/2/me/positions`.
+- **Add a feed by URL** — subscribe to any RSS/Atom address from the Library or by pasting it into Discover, private tokenized feeds included.
+- **OPML export from the web UI** — for the whole account (Library, Settings → Your data) or a single device (Devices). Outlines now carry the podcast title, and the download gets a proper file name (`Content-Disposition`).
+- **Per-episode download** button on the podcast page, plus played / minutes-left stamps.
+- **Light theme** — the interface follows the system theme, or pick Light/Dark in the account menu or Settings → Appearance.
+
+### Changed
+- **Redesigned web interface** — the Library is the home page once signed in (subscriptions filed by letter, which devices hold each podcast, last played, filter), the podcast page opens with a catalog card (feed address with copy, devices, listeners), History is grouped by day, Devices has a reworked sync-group editor, and phones get a bottom tab bar. Fonts and icons are bundled: no requests to outside services except podcast artwork and audio.
+- **Refresh feed** is shown to administrators only (it always required admin rights).
+- History timestamps from PostgreSQL are ISO 8601, like SQLite's.
+
+### Fixed
+- **Episode actions uploaded late never reached other devices** — `since` now filters on the time the server received an action instead of the client's timestamp, updated positions are delivered again, and returned cursors no longer skip rows committed during a read. The 1000-action cap is gone, `aggregated=true` returns the latest action per episode, unknown devices are auto-created on upload, and unknown `device`/`podcast` filters return nothing instead of everything.
+- **Subscription deltas could list the same URL in both `add` and `remove`.**
+- **Duplicate untitled episodes** when two feed fetches ran at once — creating a podcast or episode by URL is now atomic on both databases.
+
+### Security
+- **SSO login CSRF** — the OAuth `state` is now bound to the browser that started the login, and logins started on another host are redirected to `RPODDER_BASE_URL` first.
+- **Password reset and activation links worked as session cookies** — they are now rejected as logins.
+- **Sessions are revoked on credential changes** — password reset, admin set-password, your own password change and deactivation sign out the user's other sessions. A login that was being verified against the old password (or before the deactivation) can no longer slip a session in after the revocation.
+- Changing your password without the current one is allowed only from an SSO session.
+- Session and one-time tokens use a 64-character random generator.
+- Deactivated users' session cookies are rejected; the SSO callback escapes the username it embeds (XSS).
+
 ## 2026.5.4 — 2026-05-30
 
 ### Fixed

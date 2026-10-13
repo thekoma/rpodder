@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-core"
-version = "2026.5.4"
+version = "2026.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2170,7 +2170,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-db"
-version = "2026.5.4"
+version = "2026.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2185,7 +2185,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-feed"
-version = "2026.5.4"
+version = "2026.10.0"
 dependencies = [
  "chrono",
  "feed-rs",
@@ -2200,7 +2200,7 @@ dependencies = [
 
 [[package]]
 name = "rpodder-server"
-version = "2026.5.4"
+version = "2026.10.0"
 dependencies = [
  "anyhow",
  "argon2",
