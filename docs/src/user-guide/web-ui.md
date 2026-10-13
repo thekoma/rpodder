@@ -45,7 +45,7 @@ The header is the podcast's catalog card:
 - **On devices**: which of your devices hold the podcast.
 - **Listeners**: how many people on this server subscribe, and the language.
 
-**Subscribe** / **Subscribed** toggles your subscription. **Refresh feed** re-reads the feed immediately and is shown to administrators only. **Website** opens the publisher's site.
+**Subscribe** / **Subscribed** toggles your subscription. **Refresh feed** downloads the feed again right away and tells you how many new episodes it found; it is shown to administrators only. Opening a podcast whose feed hasn't been checked for an hour also re-reads it. **Website** opens the publisher's site.
 
 Each episode shows its date, its length (drawn to scale against the other episodes on the page), a **download** button for the audio file, and a stamp when you have played it or how many minutes are left.
 
@@ -61,7 +61,7 @@ Three tabs:
 
 ![The player bar](../assets/screenshots/player.png)
 
-On a podcast's page (signed in), each episode with an audio file has a **play** button. Playback continues in the player bar at the bottom while you browse other pages. The bar shows progress as a red line along its top edge, and has skip back 15 s / forward 30 s, a seek bar, playback speed, download and close.
+On a podcast's page (signed in), each episode with an audio file has a **play** button. Playback continues in the player bar at the bottom while you browse other pages. The bar shows progress as a red line along its top edge, and has skip back 15 s / forward 30 s, a seek bar, playback speed, volume with a mute button, download and close. The volume is remembered in this browser (on iPhone and iPad only muting is available: iOS doesn't let web pages set the volume).
 
 On a phone the bar is compact: tap it to open the full **Now playing** screen with large controls.
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.10.3 — 2026-10-13
+
+### Fixed
+- **New episodes of most podcasts stopped appearing (2026.10.1–2026.10.2)** — with feed-rs 3, an item's iTunes tags come before its `<enclosure>` as a separate media object, and rpodder only looked at the first one: items without a `<link>` were skipped, items with one were stored under their web page (not playable). The parser now looks through all media objects, preferring audio/video; the next read of each feed restores the missing episodes and removes the copies stored under the web page.
+- **Refresh feed did nothing visible** — it started the update in the background and reloaded the list after 3 seconds, often too early. It now downloads the feed in full (ignoring ETag/Last-Modified), waits for the result (up to 25 seconds) and reports how many new episodes it found, or the error.
+
+### Added
+- **Volume and mute in the web player**, on the player bar and the phone's Now playing screen, remembered in the browser. (iOS only allows muting.)
+
 ## 2026.10.2 — 2026-10-13
 
 ### Added

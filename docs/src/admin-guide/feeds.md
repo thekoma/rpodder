@@ -60,7 +60,7 @@ curl -X POST "http://localhost:3005/api/admin/feeds/update/single?url=https://ex
   -b "sessionid=admin-session"
 ```
 
-This also works from the podcast detail page — click **Refresh Feed** when viewing a podcast.
+This also works from the podcast detail page: **Refresh feed** (administrators only) downloads the feed in full, ignoring ETag and Last-Modified, waits for the update (up to 25 seconds) and tells you how many new episodes it found. The response is `{"status": "updated", "new_episodes": N}`, `"failed"` with an `error`, or `"running"` when the feed takes longer and finishes in the background.
 
 ## On-demand fetch
 
