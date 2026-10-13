@@ -471,9 +471,9 @@ impl repo::PodcastRepo for PgRepo {
     async fn update(&self, podcast: &Podcast) -> Result<()> {
         sqlx::query(
             "UPDATE podcasts SET title = $2, description = $3, link = $4, language = $5,
-                    logo_url = $6, author = $7, subscribers = $8, episode_count = $9,
-                    last_update = $10, update_interval_hours = $11,
-                    content_hash = $12, etag = $13, http_last_modified = $14, updated_at = $15
+                    logo_url = $6, author = $7, episode_count = $8,
+                    last_update = $9, update_interval_hours = $10,
+                    content_hash = $11, etag = $12, http_last_modified = $13, updated_at = $14
              WHERE id = $1",
         )
         .bind(podcast.id)
@@ -483,7 +483,6 @@ impl repo::PodcastRepo for PgRepo {
         .bind(&podcast.language)
         .bind(&podcast.logo_url)
         .bind(&podcast.author)
-        .bind(podcast.subscribers)
         .bind(podcast.episode_count)
         .bind(podcast.last_update)
         .bind(podcast.update_interval_hours)

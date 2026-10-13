@@ -110,6 +110,8 @@ export interface EpisodeListItem {
 
 export interface PodcastEpisodesResponse {
   podcast: PodcastInfo;
+  /** The server is re-reading the feed: ask again shortly for new episodes. */
+  refreshing?: boolean;
   episodes: EpisodeListItem[];
   total: number;
   page: number;

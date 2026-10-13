@@ -1,8 +1,10 @@
 //! Background feed updater — fetches and updates podcast metadata and episodes.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration as StdDuration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -101,8 +103,23 @@ async fn update_podcast_feed_inner(
         } => (body, etag, last_modified),
         rpodder_feed::FetchResult::NotModified => {
             info!(url = podcast_url, "feed not modified (304)");
-            // Still update last_update so we don't re-check too soon
+            // Still update last_update so we don't re-check too soon, and
+            // re-plan the next check: time since the newest episode grows and
+            // the subscriber count may have changed since the last download.
             podcast.last_update = Some(Utc::now());
+            match with_repo!(db, |repo| {
+                // More than the 11 dates used: future-dated items sort first
+                // on PostgreSQL and are dropped by update_interval.
+                EpisodeRepo::list_for_podcast(&repo, podcast.id, 50, 0).await
+            }) {
+                Ok(newest) => {
+                    let released: Vec<DateTime<Utc>> =
+                        newest.iter().filter_map(|e| e.released).collect();
+                    podcast.update_interval_hours =
+                        update_interval(podcast.subscribers, &released, Utc::now());
+                }
+                Err(e) => warn!(url = podcast_url, error = %e, "failed to list episodes after 304"),
+            }
             if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
                 warn!(url = podcast_url, error = %e, "failed to update last_update after 304");
             }
@@ -241,9 +258,10 @@ async fn update_podcast_feed_inner(
         episode_count += 1;
     }
 
-    // Update episode count and adaptive interval
+    // Update episode count and the interval to the next check
     podcast.episode_count = episode_count;
-    podcast.update_interval_hours = adaptive_interval(podcast.subscribers, episode_count);
+    let released: Vec<DateTime<Utc>> = parsed.episodes.iter().filter_map(|e| e.released).collect();
+    podcast.update_interval_hours = update_interval(podcast.subscribers, &released, Utc::now());
     // Write the podcast once (metadata + episode_count + etag + last_update)
     if let Err(e) = with_repo!(db, |repo| PodcastRepo::update(&repo, &podcast).await) {
         warn!(url = podcast_url, error = %e, "failed to update podcast");
@@ -286,29 +304,155 @@ pub async fn run_feed_update_loop(db: Arc<Db>, interval_secs: u64) {
     }
 }
 
-/// Calculate adaptive update interval based on subscriber count and activity.
-/// More subscribers or more episodes → shorter interval.
-fn adaptive_interval(subscribers: i64, episode_count: i64) -> i32 {
-    let base = if subscribers >= 100 {
-        1 // Very popular: every hour
+/// Hours until a feed is checked again.
+///
+/// Feeds nobody on this server subscribes to are checked weekly. Subscribed
+/// feeds follow their own publishing rhythm: a quarter of the typical gap
+/// between recent episodes, so a news show with three editions a day is
+/// checked hourly and a weekly show daily (between 1 and 24 hours). The gap is
+/// never taken shorter than the time since the newest episode, so a show that
+/// stopped publishing drifts back to daily checks. Popular feeds keep the
+/// subscriber-based ceiling (hourly from 100 subscribers, 6 hours from 10).
+fn update_interval(subscribers: i64, released: &[DateTime<Utc>], now: DateTime<Utc>) -> i32 {
+    if subscribers <= 0 {
+        return 168;
+    }
+    let ceiling: i64 = if subscribers >= 100 {
+        1
     } else if subscribers >= 10 {
-        6 // Popular: every 6 hours
-    } else if subscribers >= 1 {
-        24 // Has subscribers: daily
+        6
     } else {
-        168 // No subscribers: weekly
+        24
     };
 
-    // Active feeds (many episodes) get slightly faster updates
-    let activity_bonus = if episode_count > 500 {
-        base / 2
-    } else if episode_count > 100 {
-        base * 3 / 4
-    } else {
-        base
+    // Newest first, ignoring dates in the future (scheduled or mis-dated items).
+    let mut dates: Vec<DateTime<Utc>> = released
+        .iter()
+        .copied()
+        .filter(|d| *d <= now + Duration::hours(1))
+        .collect();
+    dates.sort_unstable_by(|a, b| b.cmp(a));
+    // Repeated timestamps (feeds that stamp every item with the build time,
+    // back catalogues published at once) are not a publishing rhythm.
+    dates.dedup();
+    dates.truncate(11);
+    if dates.len() < 2 {
+        return ceiling as i32;
+    }
+
+    let mut gaps: Vec<i64> = dates
+        .windows(2)
+        .map(|w| (w[0] - w[1]).num_minutes())
+        .collect();
+    gaps.sort_unstable();
+    let median = gaps[gaps.len() / 2];
+    let since_newest = (now - dates[0]).num_minutes();
+    let rhythm_hours = median.max(since_newest) / 4 / 60;
+
+    rhythm_hours.clamp(1, ceiling) as i32
+}
+
+/// How long a feed may go unchecked before opening its page re-reads it.
+pub const STALE_AFTER: Duration = Duration::hours(1);
+
+/// Page opens don't retry a feed more often than this, even when the last
+/// attempt failed (and so left `last_update` unchanged).
+const RETRY_AFTER: StdDuration = StdDuration::from_secs(10 * 60);
+
+/// How long a page request waits for the refresh before answering with what
+/// it has.
+const PAGE_WAIT: StdDuration = StdDuration::from_secs(4);
+
+/// Page-open refreshes running at once, server-wide. Beyond this a request
+/// answers with what it has: a crawler walking the directory can't pile up
+/// outbound fetches.
+const PAGE_REFRESH_SLOTS: usize = 4;
+
+static PAGE_REFRESH_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(PAGE_REFRESH_SLOTS)));
+
+/// One try with a short timeout: a dead host must not hold a slot for the
+/// background fetcher's 3 × 30 s. A missed refresh is retried after
+/// `RETRY_AFTER`.
+static PAGE_FETCHER: LazyLock<FeedFetcher> =
+    LazyLock::new(|| FeedFetcher::with_limits(StdDuration::from_secs(10), 1));
+
+/// A page-open refresh of one podcast: when it started, and whether it ended.
+struct PageAttempt {
+    at: Instant,
+    done: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Podcasts whose feed a page open re-read recently, by podcast id.
+static RECENT_PAGE_REFRESH: LazyLock<Mutex<HashMap<Uuid, PageAttempt>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Outcome of [`refresh_if_stale`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageRefresh {
+    /// Checked recently enough (or already being re-read): nothing to do.
+    Fresh,
+    /// Re-read within the wait; the stored data is current.
+    Done,
+    /// Still running in the background; the stored data may be behind.
+    Pending,
+}
+
+/// Re-read the feed of a podcast whose page is being opened, when it hasn't
+/// been checked for [`STALE_AFTER`]. Waits up to a few seconds, then lets the
+/// update finish in the background.
+pub async fn refresh_if_stale(
+    db: Arc<Db>,
+    podcast_id: Uuid,
+    url: &str,
+    last_update: Option<DateTime<Utc>>,
+) -> PageRefresh {
+    use std::sync::atomic::Ordering;
+
+    if last_update.is_some_and(|t| Utc::now() - t < STALE_AFTER) {
+        return PageRefresh::Fresh;
+    }
+    let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let permit = {
+        let mut recent = RECENT_PAGE_REFRESH
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        recent.retain(|_, a| now.duration_since(a.at) < RETRY_AFTER);
+        if let Some(attempt) = recent.get(&podcast_id) {
+            // Another viewer's refresh is still running: this one should
+            // check back too. A finished one isn't retried for a while.
+            return if attempt.done.load(Ordering::SeqCst) {
+                PageRefresh::Fresh
+            } else {
+                PageRefresh::Pending
+            };
+        }
+        let Ok(permit) = PAGE_REFRESH_PERMITS.clone().try_acquire_owned() else {
+            return PageRefresh::Fresh;
+        };
+        recent.insert(
+            podcast_id,
+            PageAttempt {
+                at: now,
+                done: done.clone(),
+            },
+        );
+        permit
     };
 
-    activity_bonus.clamp(1, 168)
+    let url = url.to_string();
+    let mut task = tokio::spawn(async move {
+        if let Err(e) = update_podcast_feed_forced(&db, &PAGE_FETCHER, &url).await {
+            warn!(url, error = %e, "page refresh of feed failed");
+        }
+        done.store(true, Ordering::SeqCst);
+        drop(permit);
+    });
+    match tokio::time::timeout(PAGE_WAIT, &mut task).await {
+        Ok(_) => PageRefresh::Done,
+        Err(_) => PageRefresh::Pending,
+    }
 }
 
 /// Get podcast URLs that are due for update based on their update_interval_hours.
@@ -353,5 +497,80 @@ async fn get_due_podcast_urls(db: &Db) -> Vec<String> {
             error!(error = %e, "failed to get podcast URLs");
             Vec::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(hours_ago: f64, now: DateTime<Utc>) -> DateTime<Utc> {
+        now - Duration::minutes((hours_ago * 60.0) as i64)
+    }
+
+    #[test]
+    fn unsubscribed_feeds_are_checked_weekly() {
+        let now = Utc::now();
+        let daily: Vec<_> = (0..10).map(|d| at(d as f64 * 24.0, now)).collect();
+        assert_eq!(update_interval(0, &daily, now), 168);
+    }
+
+    #[test]
+    fn a_news_show_with_three_editions_a_day_is_checked_hourly() {
+        // TG La7: 7:30, 13:30 and 20:00, newest edition 4 hours ago.
+        let now = Utc::now();
+        let mut editions = Vec::new();
+        for day in 0..4 {
+            for h in [4.0, 10.5, 17.0] {
+                editions.push(at(h + day as f64 * 24.0, now));
+            }
+        }
+        assert_eq!(update_interval(1, &editions, now), 1);
+    }
+
+    #[test]
+    fn a_daily_show_is_checked_every_six_hours() {
+        let now = Utc::now();
+        let daily: Vec<_> = (0..10).map(|d| at(2.0 + d as f64 * 24.0, now)).collect();
+        assert_eq!(update_interval(1, &daily, now), 6);
+    }
+
+    #[test]
+    fn weekly_and_finished_shows_are_checked_daily() {
+        let now = Utc::now();
+        let weekly: Vec<_> = (0..10).map(|w| at(30.0 + w as f64 * 168.0, now)).collect();
+        assert_eq!(update_interval(1, &weekly, now), 24);
+        // Published daily, but the newest episode is a month old.
+        let ended: Vec<_> = (0..10).map(|d| at(720.0 + d as f64 * 24.0, now)).collect();
+        assert_eq!(update_interval(1, &ended, now), 24);
+    }
+
+    #[test]
+    fn popular_feeds_keep_the_subscriber_ceiling() {
+        let now = Utc::now();
+        let weekly: Vec<_> = (0..10).map(|w| at(30.0 + w as f64 * 168.0, now)).collect();
+        assert_eq!(update_interval(10, &weekly, now), 6);
+        assert_eq!(update_interval(100, &weekly, now), 1);
+    }
+
+    #[test]
+    fn identical_dates_are_not_a_rhythm() {
+        let now = Utc::now();
+        // Every item stamped with the time the feed was generated.
+        assert_eq!(update_interval(1, &[now; 10], now), 24);
+        // A back catalogue published at once, then a daily show.
+        let mut dates = vec![at(500.0, now); 30];
+        dates.extend((0..10).map(|d| at(2.0 + d as f64 * 24.0, now)));
+        assert_eq!(update_interval(1, &dates, now), 6);
+    }
+
+    #[test]
+    fn feeds_without_dates_fall_back_to_the_ceiling() {
+        let now = Utc::now();
+        assert_eq!(update_interval(1, &[], now), 24);
+        assert_eq!(update_interval(1, &[at(3.0, now)], now), 24);
+        // Future-dated items are ignored rather than read as a tiny gap.
+        let future = [now + Duration::days(30), now + Duration::days(29)];
+        assert_eq!(update_interval(1, &future, now), 24);
     }
 }

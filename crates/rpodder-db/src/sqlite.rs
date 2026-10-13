@@ -519,7 +519,7 @@ impl repo::PodcastRepo for SqliteRepo {
     async fn update(&self, podcast: &Podcast) -> Result<()> {
         sqlx::query(
             "UPDATE podcasts SET title = ?, description = ?, link = ?, language = ?,
-                    logo_url = ?, author = ?, subscribers = ?, episode_count = ?,
+                    logo_url = ?, author = ?, episode_count = ?,
                     last_update = ?, update_interval_hours = ?,
                     content_hash = ?, etag = ?, http_last_modified = ?, updated_at = ?
              WHERE id = ?",
@@ -530,7 +530,6 @@ impl repo::PodcastRepo for SqliteRepo {
         .bind(&podcast.language)
         .bind(&podcast.logo_url)
         .bind(&podcast.author)
-        .bind(podcast.subscribers)
         .bind(podcast.episode_count)
         .bind(podcast.last_update.map(|t| t.to_rfc3339()))
         .bind(podcast.update_interval_hours)
@@ -2908,6 +2907,43 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(rows, 1, "no orphan episode rows");
+    }
+
+    #[tokio::test]
+    async fn podcast_update_keeps_the_subscriber_count() {
+        let repo = setup().await;
+        let user = UserRepo::create(&repo, "alice", "hash", None)
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let device = DeviceRepo::upsert(
+            &repo,
+            &Device {
+                id: Uuid::now_v7(),
+                user_id: user.id,
+                device_id: "phone".to_string(),
+                caption: "Phone".to_string(),
+                device_type: DeviceType::Mobile,
+                sync_group_id: None,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .await
+        .unwrap();
+        // A feed update holds a copy read before the subscription.
+        let (stale, _) = PodcastRepo::get_or_create_for_url(&repo, "http://a.example/feed")
+            .await
+            .unwrap();
+        SubscriptionRepo::subscribe(&repo, user.id, device.id, stale.id, "http://a.example/feed")
+            .await
+            .unwrap();
+        PodcastRepo::update(&repo, &stale).await.unwrap();
+        let podcast = PodcastRepo::find_by_id(&repo, stale.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(podcast.subscribers, 1);
     }
 
     #[tokio::test]

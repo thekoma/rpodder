@@ -178,6 +178,9 @@ pub trait PodcastRepo: Send + Sync {
         &self,
         id: Uuid,
     ) -> impl std::future::Future<Output = Result<Option<Podcast>>> + Send;
+    /// Write the podcast's feed metadata and update bookkeeping. `subscribers`
+    /// is not written: the subscription writes recount it, and a feed update
+    /// holding an older copy must not overwrite their count.
     fn update(&self, podcast: &Podcast) -> impl std::future::Future<Output = Result<()>> + Send;
     fn delete(&self, id: Uuid) -> impl std::future::Future<Output = Result<()>> + Send;
     fn toplist(

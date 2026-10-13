@@ -20,17 +20,27 @@ pub enum FetchResult {
 /// HTTP feed fetcher with conditional GET support.
 pub struct FeedFetcher {
     client: Client,
+    attempts: u32,
 }
 
 impl FeedFetcher {
     pub fn new() -> Self {
+        Self::with_limits(std::time::Duration::from_secs(30), 3)
+    }
+
+    /// A fetcher that gives up sooner: `timeout` per request and `attempts`
+    /// tries in all (at least one).
+    pub fn with_limits(timeout: std::time::Duration, attempts: u32) -> Self {
         let client = Client::builder()
             .user_agent("rpodder/0.1 (+https://github.com/TODO/rpodder)")
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(timeout)
             .redirect(reqwest::redirect::Policy::limited(10))
             .build()
             .expect("failed to build HTTP client");
-        Self { client }
+        Self {
+            client,
+            attempts: attempts.max(1),
+        }
     }
 
     /// Fetch a feed URL with retry (up to 3 attempts with exponential backoff).
@@ -43,7 +53,7 @@ impl FeedFetcher {
         last_modified: Option<&str>,
     ) -> Result<FetchResult, FetchError> {
         let mut last_err = None;
-        for attempt in 0..3u32 {
+        for attempt in 0..self.attempts {
             if attempt > 0 {
                 let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
                 debug!(

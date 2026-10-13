@@ -3,6 +3,7 @@
 
 mod auth_hardening;
 mod episode_sync;
+mod feed_refresh;
 mod opml_export;
 mod subscription_sync;
 mod web_player;

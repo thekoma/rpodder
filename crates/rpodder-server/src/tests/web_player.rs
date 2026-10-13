@@ -19,9 +19,11 @@ async fn podcast(app: &TestApp, url: &str) -> Podcast {
     let (mut p, _) = PodcastRepo::get_or_create_for_url(&repo, url)
         .await
         .unwrap();
-    // A title and description keep episodes.json from fetching the feed.
+    // A title, a description and a recent check keep episodes.json from
+    // fetching the feed.
     p.title = format!("Podcast {url}");
     p.description = "A podcast".to_string();
+    p.last_update = Some(chrono::Utc::now());
     PodcastRepo::update(&repo, &p).await.unwrap();
     p
 }

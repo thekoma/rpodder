@@ -220,10 +220,11 @@ pub async fn podcast_data(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // If podcast doesn't exist or has no metadata, fetch the feed on-demand
+    // If the podcast doesn't exist or its feed was never read, fetch it now.
+    // (A feed with an empty description must not be re-read on every request.)
     let needs_fetch = match &podcast {
         None => true,
-        Some(p) => p.title == params.url || p.description.is_empty(),
+        Some(p) => p.last_update.is_none() && (p.title == params.url || p.description.is_empty()),
     };
 
     let podcast = if needs_fetch {
@@ -277,6 +278,10 @@ pub struct EpisodeListItem {
 #[derive(Debug, Serialize)]
 pub struct PodcastEpisodesResponse {
     pub podcast: PodcastResponse,
+    /// The feed is being re-read in the background: ask again shortly for
+    /// episodes published since the last check.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub refreshing: bool,
     pub episodes: Vec<EpisodeListItem>,
     pub total: i64,
     pub page: i64,
@@ -292,12 +297,14 @@ pub async fn podcast_episodes(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // If podcast doesn't exist or has no metadata, fetch the feed on-demand
+    // If the podcast doesn't exist or its feed was never read, fetch it now.
+    // (A feed with an empty description must not be re-read on every request.)
     let needs_fetch = match &podcast {
         None => true,
-        Some(p) => p.title == params.url || p.description.is_empty(),
+        Some(p) => p.last_update.is_none() && (p.title == params.url || p.description.is_empty()),
     };
 
+    let mut refreshing = false;
     let podcast = if needs_fetch {
         let fetcher = rpodder_feed::FeedFetcher::new();
         let _ =
@@ -309,7 +316,33 @@ pub async fn podcast_episodes(
         .or(podcast)
         .ok_or(StatusCode::NOT_FOUND)?
     } else {
-        podcast.unwrap()
+        let podcast = podcast.unwrap();
+        // Opening the first page re-reads a feed that hasn't been checked for
+        // a while, so new episodes show up without waiting for the updater.
+        if params.page.unwrap_or(0) == 0 {
+            use crate::feed_updater::{PageRefresh, refresh_if_stale};
+            match refresh_if_stale(
+                state.db.clone(),
+                podcast.id,
+                &params.url,
+                podcast.last_update,
+            )
+            .await
+            {
+                PageRefresh::Fresh => podcast,
+                PageRefresh::Pending => {
+                    refreshing = true;
+                    podcast
+                }
+                PageRefresh::Done => with_repo!(state, |repo| {
+                    PodcastRepo::find_by_url(&repo, &params.url).await
+                })
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .unwrap_or(podcast),
+            }
+        } else {
+            podcast
+        }
     };
 
     let page = params.page.unwrap_or(0);
@@ -354,6 +387,7 @@ pub async fn podcast_episodes(
 
     Ok(Json(PodcastEpisodesResponse {
         podcast: podcast_to_response(podcast, &params.url),
+        refreshing,
         episodes: episode_items,
         total: 0, // TODO: count total episodes
         page,

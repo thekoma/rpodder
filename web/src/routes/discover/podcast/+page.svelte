@@ -31,7 +31,12 @@
   let holdings = $state.raw<HoldingsData | null>(null);
   let copied = $state(false);
   let showAbout = $state(false);
+  // The server is re-reading a stale feed; page 0 is fetched again once.
+  let checkingFeed = $state(false);
+  let recheckTimer: ReturnType<typeof setTimeout> | undefined;
   let lastUrl = '';
+
+  $effect(() => () => clearTimeout(recheckTimer));
 
   // React to URL changes
   $effect(() => {
@@ -40,6 +45,8 @@
     const url = params.get('url') || '';
     if (url === lastUrl) return;
     lastUrl = url;
+    clearTimeout(recheckTimer);
+    checkingFeed = false;
     podcastUrl = url;
     data = null;
     dataUrl = '';
@@ -57,12 +64,29 @@
     const url = podcastUrl;
     loading = true;
     currentPage = pg;
+    checkingFeed = false;
+    clearTimeout(recheckTimer);
     return getPodcastEpisodes(url, pg).then(d => {
       if (url !== podcastUrl) return;
       data = d;
       dataUrl = url;
       loading = false;
+      if (pg === 0 && d?.refreshing) recheckFeed(url);
     }).catch(() => { if (url === podcastUrl) loading = false; });
+  }
+
+  function recheckFeed(url: string) {
+    checkingFeed = true;
+    clearTimeout(recheckTimer);
+    recheckTimer = setTimeout(() => {
+      if (url !== podcastUrl || currentPage !== 0 || !checkingFeed) return;
+      getPodcastEpisodes(url, 0).then(d => {
+        if (url !== podcastUrl || currentPage !== 0 || !d) return;
+        data = d;
+      }).catch(() => {}).finally(() => {
+        if (url === podcastUrl) checkingFeed = false;
+      });
+    }, 6000);
   }
 
   async function loadPositions(url: string) {
@@ -282,7 +306,11 @@
     <section aria-labelledby="episodes-heading" class="space-y-3">
       <div class="flex items-baseline justify-between gap-3">
         <h2 id="episodes-heading" class="text-base font-bold">Episodes</h2>
-        {#if data.total > 0}<span class="text-sm text-brass font-semibold data">{data.total}</span>{/if}
+        {#if checkingFeed}
+          <span class="flex items-center gap-1.5 text-sm text-ink-3" role="status">
+            <RefreshCw class="w-3.5 h-3.5 animate-spin" /> Checking the feed for new episodes…
+          </span>
+        {:else if data.total > 0}<span class="text-sm text-brass font-semibold data">{data.total}</span>{/if}
       </div>
 
       {#if data.episodes.length === 0}
