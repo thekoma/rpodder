@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.10.4 — 2026-10-27
+
+### Added
+- **Cover art and website for feeds that have none** — when a feed carries no image, rpodder now looks on the podcast's website, in order, for an `apple-touch-icon`, the schema.org logo in the page's JSON-LD, `og:image`, the largest declared icon, then `/favicon.ico`. It looks at most once a day per podcast (**Refresh feed** looks again right away), keeps the cover it has if nothing turns up, never lets a favicon replace a real cover, and only fetches http(s) pages on the feed's own host or a public host — never loopback, private or link-local addresses or LAN names. Radio Capital's GR, for one, now shows the station's logo.
+
+### Fixed
+- **Website pointing at the feed itself** — some feeds put their own address in `<link>` (Radio Capital's echoes whatever URL it was requested with). rpodder now uses the root of the feed's site instead, without path or query, so a token in a private feed's URL never shows up as the website.
+- **Adding a feed pasted from an OPML file** — text such as `…/833" type="rss" text="…"` (or its percent-encoded form `…/833%22%20type=…`) is cut back to the feed address in **Add feed** and Discover.
+
 ## 2026.10.3 — 2026-10-13
 
 ### Fixed
