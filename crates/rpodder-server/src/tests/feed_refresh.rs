@@ -417,3 +417,217 @@ async fn an_admin_reread_shows_as_running_on_a_fresh_podcast() {
     let (_, refreshing) = episode_titles(&app, &alice, &url, 0).await;
     assert!(!refreshing);
 }
+
+/// A site that serves its own feed the way Radio Capital does: no image, and
+/// (when `echo`) the URL it was requested with as the channel <link>. Its
+/// home page is `home` (counted in `home_hits`); `/favicon.ico` is an icon
+/// when `favicon`.
+struct ArtlessSite {
+    home: &'static str,
+    echo: bool,
+    favicon: bool,
+    home_hits: Arc<AtomicUsize>,
+}
+
+async fn serve_artless_site(site: ArtlessSite) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base = format!("http://{addr}");
+    let link = if site.echo {
+        format!("<link>{base}/feed.xml</link>")
+    } else {
+        String::new()
+    };
+    let feed_base = base.clone();
+    let feed = move || {
+        let (base, link) = (feed_base.clone(), link.clone());
+        async move {
+            (
+                [("content-type", "application/rss+xml")],
+                format!(
+                    "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel>\
+                     <title>Site News</title><description>Bulletins</description>{link}\
+                     <item><title>Ed 1</title><guid>e1</guid>\
+                     <pubDate>Tue, 27 Oct 2026 09:00:00 +0000</pubDate>\
+                     <enclosure url=\"{base}/e1.mp3\" type=\"audio/mpeg\" length=\"1\"/></item>\
+                     </channel></rss>"
+                ),
+            )
+        }
+    };
+    let hits = site.home_hits.clone();
+    let home = site.home;
+    let favicon = site.favicon;
+    let router = Router::new()
+        .route("/feed.xml", get(feed))
+        .route(
+            "/",
+            get(move || {
+                hits.fetch_add(1, Ordering::SeqCst);
+                async move { ([("content-type", "text/html; charset=utf-8")], home) }
+            }),
+        )
+        .route(
+            "/favicon.ico",
+            get(move || async move {
+                if favicon {
+                    ([("content-type", "image/x-icon")], "ico").into_response()
+                } else {
+                    StatusCode::NOT_FOUND.into_response()
+                }
+            }),
+        );
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    base
+}
+
+async fn podcast_json(app: &TestApp, user: &super::TestUser, url: &str) -> serde_json::Value {
+    let uri = format!(
+        "/api/2/data/podcast/episodes.json?url={}",
+        urlencoding::encode(url)
+    );
+    let (status, body) = app.get(&user.cookie, &uri).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["podcast"].clone()
+}
+
+#[tokio::test]
+async fn a_feed_without_art_gets_its_site_and_icon() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let home_hits = Arc::new(AtomicUsize::new(0));
+    let base = serve_artless_site(ArtlessSite {
+        home: "<html><head><link rel=\"icon\" href=\"/favicon.ico\">\
+               <link rel=\"apple-touch-icon\" href=\"/touch.png\"></head></html>",
+        echo: true,
+        favicon: true,
+        home_hits: home_hits.clone(),
+    })
+    .await;
+    let url = format!("{base}/feed.xml");
+
+    let podcast = podcast_json(&app, &alice, &url).await;
+    assert_eq!(podcast["website"], format!("{base}/"), "{podcast}");
+    assert_eq!(
+        podcast["logo_url"],
+        format!("{base}/touch.png"),
+        "{podcast}"
+    );
+    assert_eq!(home_hits.load(Ordering::SeqCst), 1);
+
+    // Later reads keep the icon without asking the site again (daily at most).
+    mark_checked(&app, &url, Duration::hours(2)).await;
+    let podcast = podcast_json(&app, &alice, &url).await;
+    assert_eq!(podcast["logo_url"], format!("{base}/touch.png"));
+    assert_eq!(home_hits.load(Ordering::SeqCst), 1);
+
+    // An admin's Refresh feed looks at the site again.
+    rpodder_core::repo::UserRepo::set_admin(&app.repo(), alice.user.id, true)
+        .await
+        .unwrap();
+    let refresh = format!(
+        "/api/admin/feeds/update/single?url={}",
+        urlencoding::encode(&url)
+    );
+    let (status, body) = app
+        .post_json(&alice.cookie, &refresh, serde_json::json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(home_hits.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_site_without_declared_icons_falls_back_to_its_favicon() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let base = serve_artless_site(ArtlessSite {
+        home: "<html><head><title>No icons</title></head></html>",
+        echo: true,
+        favicon: true,
+        home_hits: Arc::new(AtomicUsize::new(0)),
+    })
+    .await;
+    let podcast = podcast_json(&app, &alice, &format!("{base}/feed.xml")).await;
+    assert_eq!(
+        podcast["logo_url"],
+        format!("{base}/favicon.ico"),
+        "{podcast}"
+    );
+}
+
+#[tokio::test]
+async fn no_link_means_no_website_and_no_lookup() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let home_hits = Arc::new(AtomicUsize::new(0));
+    let base = serve_artless_site(ArtlessSite {
+        home: "<link rel=\"apple-touch-icon\" href=\"/touch.png\">",
+        echo: false,
+        favicon: true,
+        home_hits: home_hits.clone(),
+    })
+    .await;
+    let podcast = podcast_json(&app, &alice, &format!("{base}/feed.xml")).await;
+    assert!(podcast["website"].is_null(), "{podcast}");
+    assert!(podcast["logo_url"].is_null(), "{podcast}");
+    assert_eq!(home_hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_feed_that_loses_its_art_keeps_its_cover() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    // A site with only a favicon: not enough to replace a real cover.
+    let base = serve_artless_site(ArtlessSite {
+        home: "<html></html>",
+        echo: true,
+        favicon: true,
+        home_hits: Arc::new(AtomicUsize::new(0)),
+    })
+    .await;
+    let url = format!("{base}/feed.xml");
+    podcast_json(&app, &alice, &url).await;
+    // The feed used to carry art.
+    let repo = app.repo();
+    let mut podcast = PodcastRepo::find_by_url(&repo, &url)
+        .await
+        .unwrap()
+        .unwrap();
+    podcast.logo_url = Some("https://cdn.example/old-cover.jpg".to_string());
+    podcast.last_update = Some(Utc::now() - Duration::hours(2));
+    PodcastRepo::update(&repo, &podcast).await.unwrap();
+
+    let podcast = podcast_json(&app, &alice, &url).await;
+    assert_eq!(
+        podcast["logo_url"], "https://cdn.example/old-cover.jpg",
+        "{podcast}"
+    );
+}
+
+#[tokio::test]
+async fn a_link_to_another_local_service_is_not_fetched() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    // An internal service the feed's <link> points at (another loopback port).
+    let internal_hits = Arc::new(AtomicUsize::new(0));
+    let internal = serve_artless_site(ArtlessSite {
+        home: "<link rel=\"apple-touch-icon\" href=\"/touch.png\">",
+        echo: false,
+        favicon: true,
+        home_hits: internal_hits.clone(),
+    })
+    .await;
+    let url = serve_xml(format!(
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>Probe</title>\
+         <description>Points elsewhere</description><link>{internal}/</link>\
+         <item><title>E</title><guid>p1</guid>\
+         <enclosure url=\"http://media.example/p1.mp3\" type=\"audio/mpeg\" length=\"1\"/></item>\
+         </channel></rss>"
+    ))
+    .await;
+
+    let podcast = podcast_json(&app, &alice, &url).await;
+    assert_eq!(podcast["website"], format!("{internal}/"), "{podcast}");
+    assert!(podcast["logo_url"].is_null(), "{podcast}");
+    assert_eq!(internal_hits.load(Ordering::SeqCst), 0);
+}

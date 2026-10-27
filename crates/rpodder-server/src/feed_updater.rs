@@ -211,9 +211,29 @@ async fn update_podcast_feed_with(
     // Update podcast metadata — only if content actually changed
     podcast.title = parsed.title;
     podcast.description = parsed.description;
-    podcast.link = parsed.link;
+    podcast.link = rpodder_feed::website(parsed.link.as_deref(), podcast_url);
     podcast.language = parsed.language;
-    podcast.logo_url = parsed.logo_url;
+    podcast.logo_url = match parsed.logo_url {
+        Some(logo) => Some(logo),
+        // No art in the feed: look on the website (at most daily), keeping
+        // the cover we had if nothing turns up.
+        None => match &podcast.link {
+            // An admin re-read (`!conditional`) looks again right away.
+            Some(site) => {
+                site_icon(
+                    podcast.id,
+                    site,
+                    podcast_url,
+                    !conditional,
+                    // A tiny favicon must not replace a real cover.
+                    podcast.logo_url.is_none(),
+                )
+                .await
+            }
+            None => None,
+        }
+        .or(podcast.logo_url.take()),
+    };
     podcast.author = parsed.author;
     podcast.last_update = Some(Utc::now());
     podcast.etag = new_etag;
@@ -385,6 +405,35 @@ pub async fn run_feed_update_loop(db: Arc<Db>, interval_secs: u64) {
         run_one_cycle(&db, &fetcher).await;
         tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
     }
+}
+
+/// Site icon lookups: one short try, and at most one per podcast a day (a
+/// site without an icon would otherwise be asked again on every read).
+static SITE_FETCHER: LazyLock<FeedFetcher> =
+    LazyLock::new(|| FeedFetcher::with_limits(StdDuration::from_secs(5), 1));
+const SITE_ICON_RETRY: StdDuration = StdDuration::from_secs(24 * 60 * 60);
+static SITE_ICON_TRIED: LazyLock<Mutex<HashMap<Uuid, Instant>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Cover art from the podcast's website, unless it was looked up in the last
+/// day (`force` looks anyway).
+async fn site_icon(
+    podcast_id: Uuid,
+    website: &str,
+    feed_url: &str,
+    force: bool,
+    favicon_fallback: bool,
+) -> Option<String> {
+    {
+        let mut tried = SITE_ICON_TRIED.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        tried.retain(|_, at| now.duration_since(*at) < SITE_ICON_RETRY);
+        if tried.contains_key(&podcast_id) && !force {
+            return None;
+        }
+        tried.insert(podcast_id, now);
+    }
+    rpodder_feed::discover_site_icon(&SITE_FETCHER, website, feed_url, favicon_fallback).await
 }
 
 /// Hours until a feed is checked again.

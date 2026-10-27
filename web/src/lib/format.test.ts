@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  dayLabel, feedFallbackTitle, fileKey, fileLetter, formatClock, formatDuration, groupByLetter, looksLikeFeedUrl, minutesLeft,
+  dayLabel, feedFallbackTitle, feedUrlFromText, fileKey, fileLetter, formatClock, formatDuration, groupByLetter,
+  looksLikeFeedUrl, minutesLeft,
   plainText, plural, uniqueByUrl,
 } from './format.ts';
 
@@ -13,6 +14,21 @@ test('looksLikeFeedUrl accepts http(s) addresses only', () => {
   assert.equal(looksLikeFeedUrl('feeds.example.com/show.xml'), false);
   assert.equal(looksLikeFeedUrl('https://exa mple.com/x'), false);
   assert.equal(looksLikeFeedUrl('ftp://example.com/x'), false);
+});
+
+test('feedUrlFromText drops what an OPML copy drags along', () => {
+  const feed = 'https://www.capital.it/api/pub/v1/rss/google-assistant/833';
+  assert.equal(feedUrlFromText(`${feed}" type="rss" text="Capital News GR"`), feed);
+  assert.equal(feedUrlFromText(`${feed}%22%20type=%22rss%22%20text=%22Capital%20News%20GR%22`), feed);
+  assert.equal(feedUrlFromText(`  ${feed}  `), feed);
+  assert.equal(feedUrlFromText('<https://example.com/rss>'), null);
+  assert.equal(feedUrlFromText('https://example.com/rss?a=1&b=2'), 'https://example.com/rss?a=1&b=2');
+  assert.equal(feedUrlFromText('capital news'), null);
+  // An encoded quote inside a query is part of the address.
+  assert.equal(feedUrlFromText('https://example.com/rss?q=%22news%22&x=1'), 'https://example.com/rss?q=%22news%22&x=1');
+  assert.equal(feedUrlFromText('https://example.com/rss?q=%22'), 'https://example.com/rss?q=%22');
+  // The search box only switches to "add feed" for a clean address.
+  assert.equal(looksLikeFeedUrl('https://example.com "foo"'), false);
 });
 
 test('fileLetter and fileKey ignore leading articles', () => {

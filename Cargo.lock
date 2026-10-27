@@ -2073,6 +2073,7 @@ dependencies = [
  "feed-rs",
  "reqwest",
  "rpodder-core",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",

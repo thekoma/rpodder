@@ -74,9 +74,24 @@ export function episodeFallbackTitle(url: string): string {
   }
 }
 
+/**
+ * The feed address in pasted text, or null. Text copied out of an OPML file
+ * or a web page drags the next attributes along (`…/833" type="rss" text="…"`,
+ * or percent-encoded `…/833%22%20type=…`): the address ends at a raw quote
+ * or angle bracket, or at an encoded quote followed by a space (`%22%20`).
+ * Spaces inside it still mean it isn't an address.
+ */
+export function feedUrlFromText(text: string): string | null {
+  const t = text.trim().split(/"|<|>|%22(?=%20|\s)/)[0].trim();
+  return isHttpUrl(t) ? t : null;
+}
+
 /** Whether the text typed in a search box is a feed address rather than a query. */
 export function looksLikeFeedUrl(text: string): boolean {
-  const t = text.trim();
+  return isHttpUrl(text.trim());
+}
+
+function isHttpUrl(t: string): boolean {
   if (!/^https?:\/\//i.test(t) || /\s/.test(t)) return false;
   try {
     return !!new URL(t).host;

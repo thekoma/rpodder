@@ -2,7 +2,7 @@
   import { Rss } from '@lucide/svelte';
   import { goto } from '$app/navigation';
   import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
-  import { looksLikeFeedUrl } from '#lib/format.js';
+  import { feedUrlFromText } from '#lib/format.js';
   import { notify } from '#lib/toast.svelte.js';
   import { subscribe } from '#lib/webDevice.js';
 
@@ -16,12 +16,14 @@
   async function submit(e: Event) {
     e.preventDefault();
     const username = auth.username;
-    const url = value.trim();
     if (!username || busy) return;
-    if (!looksLikeFeedUrl(url)) {
+    const url = feedUrlFromText(value);
+    if (!url) {
       error = 'Enter the full feed address, starting with https:// or http://';
       return;
     }
+    // Show what is actually added when a paste carried extra text.
+    value = url;
     busy = true;
     error = '';
     try {

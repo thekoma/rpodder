@@ -142,6 +142,60 @@ impl FeedFetcher {
     }
 }
 
+/// Most of a web page's `<head>` fits well within this; the rest is ignored.
+const MAX_PAGE_BYTES: usize = 1024 * 1024;
+
+impl FeedFetcher {
+    /// GET an HTML page once (no retries), reading at most `MAX_PAGE_BYTES`.
+    /// Returns the final URL after redirects and the text read.
+    pub async fn fetch_page(&self, url: &str) -> Result<(url::Url, String), FetchError> {
+        let mut response = self
+            .client
+            .get(url)
+            .header(header::ACCEPT, "text/html")
+            .send()
+            .await
+            .map_err(FetchError::Http)?;
+        if !response.status().is_success() {
+            return Err(FetchError::Status(response.status().as_u16()));
+        }
+        // A missing Content-Type is read as HTML; a declared other type isn't.
+        let is_html = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_none_or(|t| t.to_ascii_lowercase().contains("html"));
+        if !is_html {
+            return Err(FetchError::NotHtml);
+        }
+        let final_url = response.url().clone();
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(FetchError::Http)? {
+            let room = MAX_PAGE_BYTES - body.len();
+            body.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            if body.len() >= MAX_PAGE_BYTES {
+                break;
+            }
+        }
+        Ok((final_url, String::from_utf8_lossy(&body).into_owned()))
+    }
+
+    /// Whether `url` answers with an image (one try, body not read).
+    pub async fn is_image(&self, url: &str) -> bool {
+        // A one-byte range: servers that honour it send almost nothing.
+        let request = self.client.get(url).header(header::RANGE, "bytes=0-0");
+        let Ok(response) = request.send().await else {
+            return false;
+        };
+        response.status().is_success()
+            && response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|t| t.to_ascii_lowercase().starts_with("image/"))
+    }
+}
+
 impl Default for FeedFetcher {
     fn default() -> Self {
         Self::new()
@@ -154,4 +208,6 @@ pub enum FetchError {
     Http(reqwest::Error),
     #[error("HTTP status {0}")]
     Status(u16),
+    #[error("not an HTML page")]
+    NotHtml,
 }

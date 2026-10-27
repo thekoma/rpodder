@@ -7,7 +7,7 @@
   import { goto } from '$app/navigation';
   import Cover from '#lib/components/Cover.svelte';
   import AddFeed from '#lib/components/AddFeed.svelte';
-  import { looksLikeFeedUrl, plainText, uniqueByUrl } from '#lib/format.js';
+  import { feedUrlFromText, looksLikeFeedUrl, plainText, uniqueByUrl } from '#lib/format.js';
   import { notify, notifyError } from '#lib/toast.svelte.js';
 
   let query = $state('');
@@ -46,7 +46,7 @@
 
   function handleSearch() {
     clearTimeout(searchTimeout);
-    if (isUrl) { feedUrl = query.trim(); localResults = []; externalResults = []; searching = false; return; }
+    if (isUrl) { feedUrl = feedUrlFromText(query) ?? ''; localResults = []; externalResults = []; searching = false; return; }
     if (!query.trim()) { localResults = []; externalResults = []; searching = false; return; }
     searching = true;
     const q = query;

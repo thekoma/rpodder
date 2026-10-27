@@ -68,6 +68,14 @@ When a user visits a podcast detail page and the podcast has no metadata yet (ti
 
 Opening the page of a podcast whose feed hasn't been checked for an hour also re-reads it, so new episodes show up without waiting for the next scheduled check. The page waits up to 4 seconds; for a slower feed it shows *Checking the feed for new episodes…* and reloads the list once the update has had time to finish. A podcast is re-read this way at most once every 10 minutes.
 
+## Website and cover art
+
+The podcast's website is the feed's channel `<link>`. Some feeds put their own address there (the feed echoes the URL it was requested with); rpodder then uses the root of the feed's site instead, without any path or query, so a token in a private feed's URL never shows up as the website.
+
+When a feed has no image, rpodder looks for one on that website, in this order: `apple-touch-icon`, the schema.org logo in the page's JSON-LD, `og:image`, the largest `<link rel="icon">`, then `/favicon.ico`. It looks at most once a day per podcast (an admin's **Refresh feed** looks again right away), keeps the cover it already has if nothing turns up, and only fetches http(s) pages on the feed's own host or a public host — never loopback, private or link-local addresses or LAN names. A feed without a `<link>` gets no website and no lookup: its host may be a hosting platform whose home page has nothing to do with the show.
+
+The podcast is identified by its id, not by a URL, so none of this needs removing and re-adding a podcast: the next read of the feed (scheduled, on opening its page after an hour, or **Refresh feed**) updates the title, description, website and cover.
+
 ## Feed URL handling
 
 ### Normalization
