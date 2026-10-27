@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.10.5 — 2026-10-27
+
+### Fixed
+- **Subscribe did nothing on a podcast your devices already held under another address** — a feed can be known by several URLs (Radio Capital's GR as `…/833`, `…/833.rss` and an older address). The podcast page and the Library compared URLs as text, so a page opened on one address showed **Subscribe** although your devices held the feed under another, and clicking it changed nothing. Subscriptions are now matched by podcast: the page shows **Subscribed** with every device that holds it, and **Unsubscribe** removes it from all of them. New `GET /api/2/me/holdings`.
+
 ## 2026.10.4 — 2026-10-27
 
 ### Added
