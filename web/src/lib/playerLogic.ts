@@ -18,6 +18,18 @@ export function normalizeUrl(raw: string): string {
   return url.toString();
 }
 
+/** Normalized feed URL → ids of the devices holding that podcast, under every alias it is known by. */
+export function heldByUrl(holdings: { urls: string[]; devices: string[] }[]): Map<string, Set<string>> {
+  const held = new Map<string, Set<string>>();
+  for (const h of holdings) {
+    for (const url of h.urls) {
+      const key = normalizeUrl(url);
+      held.set(key, new Set([...(held.get(key) ?? []), ...h.devices]));
+    }
+  }
+  return held;
+}
+
 export function isSafeMediaUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   try {

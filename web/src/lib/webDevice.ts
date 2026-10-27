@@ -2,6 +2,7 @@
 import {
   fetchAccountSettings,
   fetchDevices,
+  fetchPodcastHoldings,
   fetchSubscriptions,
   fetchSyncStatus,
   postAccountSettings,
@@ -11,7 +12,7 @@ import {
   type Device,
   type SyncGroupInfo,
 } from './api';
-import { normalizeUrl } from './playerLogic';
+import { heldByUrl, normalizeUrl } from './playerLogic';
 
 export const WEB_DEVICE_ID = 'rpodder-web';
 export const WEB_DEVICE_CAPTION = 'Web player';
@@ -182,20 +183,16 @@ export interface Holdings {
   held: Map<string, Set<string>>;
 }
 
-/** Every device, its sync group, and which feeds each one holds. */
-export async function fetchHoldings(username: string): Promise<Holdings> {
-  const [devices, status] = await Promise.all([fetchDevices(username), fetchSyncStatus(username)]);
-  const lists = await Promise.all(devices.map(d => fetchSubscriptions(username, d.id)));
-  const held = new Map<string, Set<string>>();
-  devices.forEach((d, i) => {
-    for (const url of lists[i]) {
-      const key = normalizeUrl(url);
-      let set = held.get(key);
-      if (!set) { set = new Set(); held.set(key, set); }
-      set.add(d.id);
-    }
-  });
-  return { devices, groups: status.groups ?? [], held };
+/**
+ * Every device, its sync group, and which feeds each one holds (only
+ * `podcast`'s, when given). Matched by podcast on the server: devices may hold
+ * the same feed under different aliases.
+ */
+export async function fetchHoldings(username: string, podcast?: string): Promise<Holdings> {
+  const [devices, status, holdings] = await Promise.all([
+    fetchDevices(username), fetchSyncStatus(username), fetchPodcastHoldings(podcast),
+  ]);
+  return { devices, groups: status.groups ?? [], held: heldByUrl(holdings) };
 }
 
 /** Index of the device's sync group in `groups`, or -1. */

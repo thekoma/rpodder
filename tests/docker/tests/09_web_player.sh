@@ -1,4 +1,5 @@
-# Web player API — media URLs in episodes.json, /api/2/me/in-progress, /api/2/me/positions
+# Web player API — media URLs in episodes.json, /api/2/me/in-progress, /api/2/me/positions,
+# /api/2/me/holdings
 #
 # Requires mock-rss service in docker-compose (profile: test).
 
@@ -109,3 +110,17 @@ assert_status "in-progress requires auth" "401" "$status"
 
 body=$(http_body "${RPODDER_URL}/api/2/devices/${RPODDER_USER}.json" -u "$AUTH_HEADER")
 assert_json "uploading device listed" "$body" "[.[] | select(.id == \"${DEVICE}\")] | length" "1"
+
+# --- Holdings: which devices hold the player feed ---
+http_post_body "${RPODDER_URL}/api/2/subscriptions/${RPODDER_USER}/e2e-laptop.json" \
+  -u "$AUTH_HEADER" -d "{\"add\":[\"${PLAYER_FEED}\"],\"remove\":[]}" >/dev/null
+body=$(http_body "${RPODDER_URL}/api/2/me/holdings?podcast=${FEED_ENCODED}" -u "$AUTH_HEADER")
+assert_json_len "holdings: one podcast" "$body" '.' "1"
+assert_json "holdings: both devices" "$body" '.[0].devices | sort | tojson' "[\"e2e-laptop\",\"${DEVICE}\"]"
+body=$(http_body "${RPODDER_URL}/api/2/me/holdings" -u "$AUTH_HEADER")
+assert_json "holdings: the feed listed once" "$body" \
+  "[.[] | select(.urls | any(. == \"${PLAYER_FEED}\"))] | length" "1"
+body=$(http_body "${RPODDER_URL}/api/2/me/holdings?podcast=http%3A%2F%2Funknown.example%2Ffeed" -u "$AUTH_HEADER")
+assert_json_len "holdings: unknown feed" "$body" '.' "0"
+status=$(http_status "${RPODDER_URL}/api/2/me/holdings")
+assert_status "holdings requires auth" "401" "$status"

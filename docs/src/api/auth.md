@@ -124,6 +124,28 @@ Your latest `play` position for every episode of one podcast, finished or not. A
 
 Titles are `null` when rpodder only knows the URL (the episode or podcast was first seen in an action upload).
 
+## Subscriptions by podcast (rpodder extension)
+
+```
+GET /api/2/me/holdings
+GET /api/2/me/holdings?podcast={feed_url}
+```
+
+Which of your devices are subscribed to each podcast. The web UI uses it to show subscription state and to pick the devices to unsubscribe. Requires authentication; only your own devices are listed.
+
+A podcast can be known by several URLs (say a `.rss` and a bare variant of the same feed, which rpodder merges once it reads them): one device may have subscribed with one of them and another device with a second. Each entry groups them: `urls` are the URLs your devices subscribed with, `devices` the device ids. With `podcast`, only the podcast that URL is an address of is returned, and the URL is added to `urls`. The URL is normalized and looked up the way subscription uploads look it up, so removing it from the devices listed (`POST /api/2/subscriptions/{username}/{deviceid}.json` with `remove`) unsubscribes every one of them. A URL that is not a podcast address, or a podcast none of your devices holds, returns `[]`.
+
+**Response:**
+
+```json
+[
+  {
+    "urls": ["https://example.com/feed.rss", "https://example.com/feed"],
+    "devices": ["phone", "laptop"]
+  }
+]
+```
+
 ## Change password
 
 ```

@@ -16,6 +16,7 @@ import {
   buildPlayAction,
   sameUser,
   remoteAccepted,
+  heldByUrl,
   type KnownPosition,
   type UploadGuard,
 } from './playerLogic.ts';
@@ -31,6 +32,24 @@ test('normalizeUrl mirrors rpodder_core::url::normalize_url', () => {
   assert.equal(normalizeUrl('  http://example.com/feed  '), 'http://example.com/feed');
   assert.equal(normalizeUrl('http://example.com/'), 'http://example.com/');
   assert.equal(normalizeUrl('not a url'), 'not a url');
+});
+
+test('heldByUrl files every alias of a podcast under the same devices', () => {
+  const held = heldByUrl([
+    { urls: ['https://example.com/feed.rss', 'https://example.com/feed/'], devices: ['phone', 'laptop'] },
+    { urls: ['https://example.com/other'], devices: ['phone'] },
+  ]);
+  assert.deepEqual([...held.get('https://example.com/feed.rss')].sort(), ['laptop', 'phone']);
+  assert.deepEqual([...held.get(normalizeUrl('https://example.com/feed'))].sort(), ['laptop', 'phone']);
+  assert.deepEqual([...held.get('https://example.com/other')], ['phone']);
+  assert.equal(held.get('https://example.com/unheld'), undefined);
+
+  // One URL can sit in two holdings (two podcast rows): no device is dropped.
+  const twice = heldByUrl([
+    { urls: ['https://example.com/x'], devices: ['phone'] },
+    { urls: ['https://example.com/x/'], devices: ['web'] },
+  ]);
+  assert.deepEqual([...twice.get('https://example.com/x')].sort(), ['phone', 'web']);
 });
 
 test('isSafeMediaUrl accepts only http(s)', () => {

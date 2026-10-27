@@ -114,7 +114,7 @@
     if (!username) return;
     const url = podcastUrl;
     // One source for both: subscribed means some device holds the feed.
-    const h = await fetchHoldings(username);
+    const h = await fetchHoldings(username, url);
     if (url !== podcastUrl) return;
     isSubscribed = (h.held.get(normalizeUrl(url))?.size ?? 0) > 0;
     holdings = h;
@@ -131,7 +131,7 @@
     try {
       if (wasSubscribed) {
         // Fresh: an app may have synced since the page loaded.
-        const h = await fetchHoldings(username);
+        const h = await fetchHoldings(username, url);
         if (url !== podcastUrl) return;
         holdings = h;
         const owners = h.devices.filter(d => h.held.get(normalizeUrl(url))?.has(d.id));

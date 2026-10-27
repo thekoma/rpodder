@@ -517,6 +517,18 @@ export async function fetchSubscriptions(username: string, device: string): Prom
   return strictJson<string[]>(`/subscriptions/${enc(username)}/${enc(device)}.json`);
 }
 
+export interface PodcastHolding {
+  /** Aliases of one podcast: the URLs its devices subscribed with, plus the one asked about. */
+  urls: string[];
+  devices: string[];
+}
+
+/** The current user's devices per podcast; with `podcast`, only the podcast that URL is an address of. */
+export async function fetchPodcastHoldings(podcast?: string): Promise<PodcastHolding[]> {
+  const query = podcast ? `?podcast=${encodeURIComponent(podcast)}` : '';
+  return strictJson<PodcastHolding[]>(`/api/2/me/holdings${query}`);
+}
+
 export async function fetchSyncStatus(username: string): Promise<SyncStatus> {
   return strictJson<SyncStatus>(`/api/2/sync-devices/${enc(username)}.json`);
 }

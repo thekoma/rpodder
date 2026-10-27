@@ -8,7 +8,7 @@ use axum::{
 use chrono::{TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-use rpodder_core::repo::{EpisodeActionRepo, PodcastRepo, SubscriptionRepo};
+use rpodder_core::repo::{DeviceRepo, EpisodeActionRepo, PodcastRepo, SubscriptionRepo};
 use rpodder_core::types::{EpisodeActionType, SubscriptionAction, SubscriptionChange};
 use rpodder_core::url::normalize_url;
 
@@ -648,6 +648,88 @@ pub async fn combined_updates(
         updates,
         timestamp,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// rpodder: GET /api/2/me/holdings[?podcast=URL]
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct HoldingsQuery {
+    pub podcast: Option<String>,
+}
+
+/// One podcast and the user's devices subscribed to it. `urls` are the URLs
+/// those devices subscribed with (plus the queried one): aliases of a single
+/// feed, which a client comparing URLs alone would take for different feeds.
+#[derive(Debug, Serialize)]
+pub struct Holding {
+    pub urls: Vec<String>,
+    pub devices: Vec<String>,
+}
+
+pub async fn holdings(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(params): Query<HoldingsQuery>,
+) -> Result<Json<Vec<Holding>>, StatusCode> {
+    let user_id = auth_user.0.id;
+    let devices = with_repo!(state, |repo| DeviceRepo::list_for_user(&repo, user_id)
+        .await)
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut held = Vec::new();
+    for device in &devices {
+        let subs = with_repo!(state, |repo| {
+            SubscriptionRepo::list_for_device(&repo, user_id, device.id).await
+        })
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        held.extend(subs.into_iter().map(|sub| (&device.device_id, sub)));
+    }
+
+    // Resolved like a subscription upload: removing this URL from the devices
+    // listed unsubscribes every one of them.
+    let wanted = match params.podcast.as_deref().map(normalize_url) {
+        None => None,
+        Some(url) => {
+            let podcast = with_repo!(state, |repo| PodcastRepo::find_by_url(&repo, &url).await)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let Some(podcast) = podcast else {
+                return Ok(Json(Vec::new()));
+            };
+            Some((podcast.id, url))
+        }
+    };
+
+    let mut holdings: Vec<Holding> = Vec::new();
+    let mut index: std::collections::HashMap<uuid::Uuid, usize> = Default::default();
+    for (device_id, sub) in held {
+        if wanted.as_ref().is_some_and(|(id, _)| *id != sub.podcast_id) {
+            continue;
+        }
+        let i = *index.entry(sub.podcast_id).or_insert_with(|| {
+            holdings.push(Holding {
+                urls: Vec::new(),
+                devices: Vec::new(),
+            });
+            holdings.len() - 1
+        });
+        let holding = &mut holdings[i];
+        if !holding.urls.contains(&sub.ref_url) {
+            holding.urls.push(sub.ref_url);
+        }
+        if !holding.devices.contains(device_id) {
+            holding.devices.push(device_id.clone());
+        }
+    }
+
+    if let Some((_, url)) = wanted {
+        for holding in &mut holdings {
+            if !holding.urls.contains(&url) {
+                holding.urls.push(url.clone());
+            }
+        }
+    }
+    Ok(Json(holdings))
 }
 
 #[cfg(test)]
