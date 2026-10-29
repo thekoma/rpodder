@@ -9,6 +9,7 @@ license.workspace = true
 rpodder-core = { workspace = true }
 feed-rs = { workspace = true }
 reqwest = { workspace = true }
+encoding_rs = "0.8"
 tokio = { workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }

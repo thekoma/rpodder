@@ -7,8 +7,8 @@ mod fetcher;
 mod parser;
 mod site;
 
-pub use fetcher::{FeedFetcher, FetchResult};
-pub use parser::parse_feed;
+pub use fetcher::{FeedFetcher, FetchError, FetchResult, MAX_FEED_BYTES};
+pub use parser::{ParsedEpisode, parse_feed};
 pub use site::{lookup_allowed, website};
 
 /// Cover art for a podcast whose feed (at `feed_url`) has none, found on its

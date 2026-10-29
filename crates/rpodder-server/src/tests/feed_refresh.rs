@@ -631,3 +631,39 @@ async fn a_link_to_another_local_service_is_not_fetched() {
     assert!(podcast["logo_url"].is_null(), "{podcast}");
     assert_eq!(internal_hits.load(Ordering::SeqCst), 0);
 }
+
+#[tokio::test]
+async fn anonymous_data_requests_never_fetch_a_url() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let feed = Feed::default();
+    feed.episodes.store(1, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+    let enc = urlencoding::encode(&url);
+
+    // An unknown URL is neither fetched nor stored for an anonymous caller.
+    for uri in [
+        format!("/api/2/data/podcast.json?url={enc}"),
+        format!("/api/2/data/podcast/episodes.json?url={enc}"),
+    ] {
+        let (status, _) = app.get("", &uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+    assert_eq!(feed.served.load(Ordering::SeqCst), 0);
+    assert!(
+        PodcastRepo::find_by_url(&app.repo(), &url)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // A logged-in user still adds it, and anyone can then read it.
+    episode_titles(&app, &alice, &url, 0).await;
+    assert_eq!(feed.served.load(Ordering::SeqCst), 1);
+    let (status, body) = app
+        .get("", &format!("/api/2/data/podcast.json?url={enc}"))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["title"], "News");
+    assert_eq!(feed.served.load(Ordering::SeqCst), 1);
+}

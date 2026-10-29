@@ -41,30 +41,32 @@ pub fn require_auth_layer(
 
 async fn require_auth(state: AppState, mut req: Request, next: Next) -> Response {
     // Extract header values upfront (before any async work) since Request is not Sync
-    let session_token = extract_session_token(&req);
-    let basic_auth = extract_basic_auth(&req);
+    let headers = req.headers().clone();
+    match authenticate(&state, &headers).await {
+        Some(user) => {
+            req.extensions_mut().insert(AuthUser(user));
+            next.run(req).await
+        }
+        None => StatusCode::UNAUTHORIZED.into_response(),
+    }
+}
 
+/// The user a request authenticates as (session cookie, then HTTP Basic), if
+/// any. For public routes that do more for a logged-in caller.
+pub async fn authenticate(state: &AppState, headers: &axum::http::HeaderMap) -> Option<User> {
     // 1. Try session cookie first
-    if let Some(token) = &session_token
-        && let Some(user) = resolve_session(&state, token).await
+    if let Some(token) = session_token(headers)
+        && let Some(user) = resolve_session(state, &token).await
     {
-        req.extensions_mut().insert(AuthUser(user));
-        return next.run(req).await;
+        return Some(user);
     }
 
     // 2. Try HTTP Basic Auth
-    if let Some((username, password)) = &basic_auth
-        && let Some(user) = resolve_basic_auth(&state, username, password).await
-    {
-        req.extensions_mut().insert(AuthUser(user));
-        return next.run(req).await;
+    if let Some((username, password)) = extract_basic_auth(headers) {
+        return resolve_basic_auth(state, &username, &password).await;
     }
 
-    StatusCode::UNAUTHORIZED.into_response()
-}
-
-fn extract_session_token(req: &Request) -> Option<String> {
-    session_token(req.headers())
+    None
 }
 
 /// The `sessionid` cookie of the request, if any.
@@ -77,8 +79,8 @@ pub fn session_token(headers: &axum::http::HeaderMap) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn extract_basic_auth(req: &Request) -> Option<(String, String)> {
-    let auth_header = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
+fn extract_basic_auth(headers: &axum::http::HeaderMap) -> Option<(String, String)> {
+    let auth_header = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let encoded = auth_header.strip_prefix("Basic ")?;
     let decoded = String::from_utf8(base64_decode(encoded)?).ok()?;
     let (username, password) = decoded.split_once(':')?;

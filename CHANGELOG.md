@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.10.6 — 2026-10-29
+
+### Security
+- **Anonymous requests could make the server fetch any URL** — `GET /api/2/data/podcast.json` and `/api/2/data/podcast/episodes.json` are public, and for an unknown URL they created a podcast and fetched the URL right away. Anyone could make rpodder request internal or loopback addresses (SSRF), fill the database, or point it at a huge feed that got the process OOM-killed and, because the URL stayed in the database for the updater, kept it in a crash loop. These endpoints now fetch a new URL only for a logged-in user; an anonymous request for an unknown podcast gets `404`. Reported by Peter Gille.
+- **Feed size and episode count are capped** — a feed body larger than 32 MB is refused instead of read into memory, and a read stores at most the newest 5,000 episodes. This also covers feeds a logged-in user subscribes to.
+
 ## 2026.10.5 — 2026-10-27
 
 ### Fixed

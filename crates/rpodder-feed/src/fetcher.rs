@@ -125,7 +125,7 @@ impl FeedFetcher {
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string());
 
-                let body = response.text().await.map_err(FetchError::Http)?;
+                let body = read_capped(response, MAX_FEED_BYTES).await?;
 
                 Ok(FetchResult::Ok {
                     body,
@@ -140,6 +140,43 @@ impl FeedFetcher {
             }
         }
     }
+}
+
+/// Feeds larger than this are refused rather than read: the whole body is
+/// held in memory and parsed, so an unbounded one can exhaust the process.
+/// The largest real podcast feeds are a few MB.
+pub const MAX_FEED_BYTES: usize = 32 * 1024 * 1024;
+
+/// Read a response body as text, failing once it exceeds `limit` bytes.
+async fn read_capped(mut response: reqwest::Response, limit: usize) -> Result<String, FetchError> {
+    if response
+        .content_length()
+        .is_some_and(|len| len > limit as u64)
+    {
+        return Err(FetchError::TooLarge(limit));
+    }
+    // Decoded like `Response::text`: the Content-Type charset, else UTF-8.
+    let encoding = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|t| {
+            t.split(';')
+                .filter_map(|p| p.trim().split_once('='))
+                .find(|(k, _)| k.trim().eq_ignore_ascii_case("charset"))
+                .map(|(_, v)| v.trim().trim_matches('"').to_string())
+        })
+        .and_then(|label| encoding_rs::Encoding::for_label(label.as_bytes()))
+        .unwrap_or(encoding_rs::UTF_8);
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(FetchError::Http)? {
+        if body.len() + chunk.len() > limit {
+            return Err(FetchError::TooLarge(limit));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let (text, _, _) = encoding.decode(&body);
+    Ok(text.into_owned())
 }
 
 /// Most of a web page's `<head>` fits well within this; the rest is ignored.
@@ -210,4 +247,63 @@ pub enum FetchError {
     Status(u16),
     #[error("not an HTML page")]
     NotHtml,
+    #[error("response larger than {0} bytes")]
+    TooLarge(usize),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Serve one response with `body_len` bytes, optionally without a
+    /// Content-Length (chunked), and return its URL.
+    async fn serve(body_len: usize, declare_length: bool) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let head = if declare_length {
+                format!("HTTP/1.1 200 OK\r\ncontent-length: {body_len}\r\n\r\n")
+            } else {
+                "HTTP/1.1 200 OK\r\nconnection: close\r\n\r\n".to_string()
+            };
+            let _ = sock.write_all(head.as_bytes()).await;
+            let chunk = vec![b'a'; 64 * 1024];
+            let mut sent = 0;
+            while sent < body_len {
+                let n = chunk.len().min(body_len - sent);
+                if sock.write_all(&chunk[..n]).await.is_err() {
+                    return;
+                }
+                sent += n;
+            }
+        });
+        format!("http://{addr}/feed.xml")
+    }
+
+    #[tokio::test]
+    async fn an_oversized_feed_is_refused() {
+        let fetcher = FeedFetcher::with_limits(std::time::Duration::from_secs(30), 1);
+        for declare_length in [true, false] {
+            let url = serve(MAX_FEED_BYTES + 1, declare_length).await;
+            let result = fetcher.fetch(&url, None, None).await;
+            assert!(
+                matches!(result, Err(FetchError::TooLarge(_))),
+                "declare_length={declare_length}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_feed_within_the_limit_is_read() {
+        let fetcher = FeedFetcher::with_limits(std::time::Duration::from_secs(30), 1);
+        let url = serve(1000, false).await;
+        match fetcher.fetch(&url, None, None).await {
+            Ok(FetchResult::Ok { body, .. }) => assert_eq!(body.len(), 1000),
+            _ => panic!("expected the body"),
+        }
+    }
 }

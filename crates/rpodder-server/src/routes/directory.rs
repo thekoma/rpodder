@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use serde::{Deserialize, Serialize};
@@ -207,12 +207,34 @@ pub async fn toplist(
     Ok(Json(results))
 }
 
+/// Whether a data request should read the feed now: the podcast doesn't exist
+/// or its feed was never read (a feed with an empty description must not be
+/// re-read on every request). Only for a logged-in caller: these routes are
+/// public, and an anonymous request must not make the server fetch an
+/// arbitrary URL (SSRF) or store a new podcast.
+async fn needs_fetch(
+    state: &AppState,
+    headers: &HeaderMap,
+    podcast: Option<&rpodder_core::types::Podcast>,
+    url: &str,
+) -> bool {
+    let unread = match podcast {
+        None => true,
+        Some(p) => p.last_update.is_none() && (p.title == url || p.description.is_empty()),
+    };
+    unread
+        && crate::middleware::auth::authenticate(state, headers)
+            .await
+            .is_some()
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/2/data/podcast.json?url=X
 // ---------------------------------------------------------------------------
 
 pub async fn podcast_data(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<PodcastDataQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let podcast = with_repo!(state, |repo| {
@@ -220,12 +242,7 @@ pub async fn podcast_data(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // If the podcast doesn't exist or its feed was never read, fetch it now.
-    // (A feed with an empty description must not be re-read on every request.)
-    let needs_fetch = match &podcast {
-        None => true,
-        Some(p) => p.last_update.is_none() && (p.title == params.url || p.description.is_empty()),
-    };
+    let needs_fetch = needs_fetch(&state, &headers, podcast.as_ref(), &params.url).await;
 
     let podcast = if needs_fetch {
         let fetcher = rpodder_feed::FeedFetcher::new();
@@ -238,7 +255,8 @@ pub async fn podcast_data(
         .or(podcast)
         .ok_or(StatusCode::NOT_FOUND)?
     } else {
-        podcast.unwrap()
+        // Unknown and not fetched (anonymous caller).
+        podcast.ok_or(StatusCode::NOT_FOUND)?
     };
 
     Ok(Json(podcast_to_response(podcast, &params.url)))
@@ -290,6 +308,7 @@ pub struct PodcastEpisodesResponse {
 
 pub async fn podcast_episodes(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<PodcastEpisodesQuery>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let podcast = with_repo!(state, |repo| {
@@ -297,12 +316,7 @@ pub async fn podcast_episodes(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // If the podcast doesn't exist or its feed was never read, fetch it now.
-    // (A feed with an empty description must not be re-read on every request.)
-    let needs_fetch = match &podcast {
-        None => true,
-        Some(p) => p.last_update.is_none() && (p.title == params.url || p.description.is_empty()),
-    };
+    let needs_fetch = needs_fetch(&state, &headers, podcast.as_ref(), &params.url).await;
 
     let mut refreshing = false;
     let podcast = if needs_fetch {
@@ -316,7 +330,7 @@ pub async fn podcast_episodes(
         .or(podcast)
         .ok_or(StatusCode::NOT_FOUND)?
     } else {
-        let podcast = podcast.unwrap();
+        let podcast = podcast.ok_or(StatusCode::NOT_FOUND)?;
         // Opening the first page re-reads a feed that hasn't been checked for
         // a while, so new episodes show up without waiting for the updater.
         if params.page.unwrap_or(0) == 0 {

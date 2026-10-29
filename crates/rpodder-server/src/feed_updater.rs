@@ -43,6 +43,26 @@ pub enum FeedOutcome {
     Merged,
 }
 
+/// Episodes stored from one read of a feed, newest first. Long-running shows
+/// list a few thousand; a feed with more is cut, so one URL can't fill the
+/// database.
+pub const MAX_EPISODES_PER_FEED: usize = 5000;
+
+/// Keep the newest [`MAX_EPISODES_PER_FEED`] episodes (undated ones last).
+fn cap_episodes(episodes: &mut Vec<rpodder_feed::ParsedEpisode>, url: &str) {
+    if episodes.len() <= MAX_EPISODES_PER_FEED {
+        return;
+    }
+    warn!(
+        url,
+        total = episodes.len(),
+        kept = MAX_EPISODES_PER_FEED,
+        "feed lists too many episodes, keeping the newest"
+    );
+    episodes.sort_by_key(|e| std::cmp::Reverse(e.released));
+    episodes.truncate(MAX_EPISODES_PER_FEED);
+}
+
 /// Update a single podcast feed: fetch, parse, update metadata and episodes.
 /// Errors are logged but do not stop processing — each step is best-effort.
 /// If `force` is true, skips the private URL check (for authenticated user access).
@@ -164,7 +184,9 @@ async fn update_podcast_feed_with(
     };
 
     // Parse the feed
-    let parsed = parse_feed(&body)?;
+    let mut parsed = parse_feed(&body)?;
+    drop(body);
+    cap_episodes(&mut parsed.episodes, podcast_url);
 
     // Dedup: if this is a fresh podcast (no episodes yet), check if the episodes
     // already belong to another podcast. This catches duplicate URLs pointing to
@@ -723,5 +745,34 @@ mod tests {
         // Future-dated items are ignored rather than read as a tiny gap.
         let future = [now + Duration::days(30), now + Duration::days(29)];
         assert_eq!(update_interval(1, &future, now), 24);
+    }
+}
+
+#[cfg(test)]
+mod cap_tests {
+    use super::*;
+
+    fn ep(n: i64) -> rpodder_feed::ParsedEpisode {
+        rpodder_feed::ParsedEpisode {
+            guid: Some(n.to_string()),
+            title: format!("ep {n}"),
+            description: String::new(),
+            link: None,
+            media_url: Some(format!("http://media.example/{n}.mp3")),
+            released: DateTime::from_timestamp(n * 3600, 0),
+            duration: None,
+            filesize: None,
+            mimetype: None,
+        }
+    }
+
+    #[test]
+    fn a_huge_feed_keeps_the_newest_episodes() {
+        let total = MAX_EPISODES_PER_FEED as i64 + 10;
+        let mut episodes: Vec<_> = (0..total).map(ep).collect();
+        cap_episodes(&mut episodes, "http://feed.example");
+        assert_eq!(episodes.len(), MAX_EPISODES_PER_FEED);
+        assert_eq!(episodes[0].title, format!("ep {}", total - 1));
+        assert!(episodes.iter().all(|e| e.title != "ep 9"));
     }
 }
