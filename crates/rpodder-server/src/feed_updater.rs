@@ -561,11 +561,24 @@ const PAGE_REFRESH_SLOTS: usize = 4;
 static PAGE_REFRESH_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
     LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(PAGE_REFRESH_SLOTS)));
 
+/// First reads a request waits on (a logged-in user opening a podcast the
+/// server doesn't know yet) running at once, server-wide. Each holds a whole
+/// feed in memory while it is parsed. A user who keeps them busy with slow
+/// feeds delays other users' first opens; the bound is worth that.
+pub(crate) const FIRST_READ_SLOTS: usize = 2;
+
+/// How long a first read waits for a free slot before the request gives up,
+/// as if the feed couldn't be read.
+const FIRST_READ_WAIT: StdDuration = StdDuration::from_secs(10);
+
+static FIRST_READ_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
+    LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(FIRST_READ_SLOTS)));
+
 /// One try with a short timeout: a dead host must not hold a slot for the
 /// background fetcher's 3 × 30 s. A missed refresh is retried after
 /// `RETRY_AFTER`.
 /// Also used for a feed read while a request waits (first open of a podcast).
-pub(crate) static PAGE_FETCHER: LazyLock<FeedFetcher> =
+static PAGE_FETCHER: LazyLock<FeedFetcher> =
     LazyLock::new(|| FeedFetcher::with_limits(StdDuration::from_secs(10), 1));
 
 /// A page-open refresh of one podcast: when it started, and whether it ended.
@@ -662,6 +675,30 @@ pub async fn refresh_if_stale(
     match tokio::time::timeout(PAGE_WAIT, &mut task).await {
         Ok(_) => PageRefresh::Done,
         Err(_) => PageRefresh::Pending,
+    }
+}
+
+/// Read the feed of a podcast that was never read (creating the podcast if
+/// it is new) while a request waits. Gives up, as if the read had failed,
+/// when no slot frees up within [`FIRST_READ_WAIT`]. The read runs in a task
+/// of its own, so a client hanging up can't stop it halfway and leave a
+/// podcast that was never read behind.
+pub async fn first_read(db: Arc<Db>, url: &str) {
+    let permit =
+        tokio::time::timeout(FIRST_READ_WAIT, FIRST_READ_PERMITS.clone().acquire_owned()).await;
+    let Ok(Ok(permit)) = permit else {
+        warn!(url, "no free slot for a first feed read");
+        return;
+    };
+    let feed_url = url.to_string();
+    let task = tokio::spawn(async move {
+        if let Err(e) = update_podcast_feed_forced(&db, &PAGE_FETCHER, &feed_url).await {
+            warn!(url = feed_url, error = %e, "first read of feed failed");
+        }
+        drop(permit);
+    });
+    if let Err(e) = task.await {
+        error!(url, error = %e, "first read of feed panicked");
     }
 }
 

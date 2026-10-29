@@ -28,6 +28,7 @@ use rpodder_db::{Db, sqlite::SqliteRepo};
 use crate::config::AppConfig;
 use crate::state::AppState;
 
+#[derive(Clone)]
 pub struct TestApp {
     pub db: Arc<Db>,
     pub router: Router,

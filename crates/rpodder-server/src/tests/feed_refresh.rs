@@ -27,12 +27,18 @@ struct Feed {
     delay_ms: Arc<AtomicUsize>,
     /// Requests answered with 304 Not Modified.
     not_modified: Arc<AtomicUsize>,
+    /// Requests being answered right now, and the most at once.
+    in_flight: Arc<AtomicUsize>,
+    most_in_flight: Arc<AtomicUsize>,
 }
 
 async fn rss(State(feed): State<Feed>, headers: HeaderMap) -> Response {
     feed.served.fetch_add(1, Ordering::SeqCst);
+    let now = feed.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+    feed.most_in_flight.fetch_max(now, Ordering::SeqCst);
     let delay = feed.delay_ms.load(Ordering::SeqCst) as u64;
     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+    feed.in_flight.fetch_sub(1, Ordering::SeqCst);
     // The ETag is the episode count, so an unchanged feed answers 304.
     let etag = format!("\"v{}\"", feed.episodes.load(Ordering::SeqCst));
     if headers.get("if-none-match").and_then(|v| v.to_str().ok()) == Some(etag.as_str()) {
@@ -666,6 +672,36 @@ async fn anonymous_data_requests_never_fetch_a_url() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["title"], "News");
     assert_eq!(feed.served.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn first_reads_of_new_feeds_run_a_few_at_a_time() {
+    use crate::feed_updater::FIRST_READ_SLOTS;
+
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    let feed = Feed::default();
+    feed.episodes.store(1, Ordering::SeqCst);
+    feed.delay_ms.store(300, Ordering::SeqCst);
+    let url = serve_feed(feed.clone()).await;
+
+    // Many podcasts the server doesn't know yet, opened at once: each first
+    // read holds a whole feed in memory, so only a few run together.
+    let opens = FIRST_READ_SLOTS * 3;
+    let mut requests = tokio::task::JoinSet::new();
+    for n in 0..opens {
+        let (app, cookie) = (app.clone(), alice.cookie.clone());
+        let uri = format!(
+            "/api/2/data/podcast.json?url={}",
+            urlencoding::encode(&format!("{url}?n={n}"))
+        );
+        requests.spawn(async move { app.get(&cookie, &uri).await });
+    }
+    requests.join_all().await;
+
+    assert_eq!(feed.served.load(Ordering::SeqCst), opens);
+    let most = feed.most_in_flight.load(Ordering::SeqCst);
+    assert!(most <= FIRST_READ_SLOTS, "{most} read at once");
 }
 
 #[tokio::test]
