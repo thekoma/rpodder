@@ -76,7 +76,7 @@ pub fn lookup_allowed(website: &str, feed_url: &str) -> bool {
 
 /// Whether an IP literal is a public internet address. IPv6 forms that carry
 /// an IPv4 address (mapped, compatible, NAT64) are judged by that address.
-fn is_public_ip(ip: std::net::IpAddr) -> bool {
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
     use std::net::{IpAddr, Ipv4Addr};
     match ip {
         IpAddr::V4(v4) => {

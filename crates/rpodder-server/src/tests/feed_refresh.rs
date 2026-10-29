@@ -667,3 +667,23 @@ async fn anonymous_data_requests_never_fetch_a_url() {
     assert_eq!(body["title"], "News");
     assert_eq!(feed.served.load(Ordering::SeqCst), 1);
 }
+
+#[tokio::test]
+async fn a_url_whose_first_read_fails_is_not_kept() {
+    let app = TestApp::new().await;
+    let alice = app.create_user("alice").await;
+    // Nothing listens there.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/feed.xml", listener.local_addr().unwrap());
+    drop(listener);
+
+    let uri = format!("/api/2/data/podcast.json?url={}", urlencoding::encode(&url));
+    let (status, _) = app.get(&alice.cookie, &uri).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        PodcastRepo::find_by_url(&app.repo(), &url)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

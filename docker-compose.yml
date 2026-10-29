@@ -76,6 +76,7 @@ services:
       RPODDER_DATABASE_URL: postgres://rpodder:rpodder@postgres:5432/rpodder
       RPODDER_PORT: "3005"
       RPODDER_MIGRATIONS_DIR: migrations
+      RPODDER_ALLOW_PRIVATE_FEEDS: "true"
       RUST_LOG: rpodder=debug,tower_http=debug
       RUST_BACKTRACE: "1"
     depends_on:
@@ -107,6 +108,8 @@ services:
       RPODDER_METRICS_ENABLED: "true"
       RPODDER_METRICS_PORT: "9091"
       RPODDER_MIGRATIONS_DIR: /app/migrations
+      # Local dev/E2E: the mock feeds run on the compose network.
+      RPODDER_ALLOW_PRIVATE_FEEDS: "true"
     healthcheck:
       <<: *rpodder-healthcheck
     depends_on:
@@ -134,6 +137,8 @@ services:
       RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
       RPODDER_PORT: "3005"
       RPODDER_MIGRATIONS_DIR: /app/migrations
+      # Local dev/E2E: the mock feeds run on the compose network.
+      RPODDER_ALLOW_PRIVATE_FEEDS: "true"
     healthcheck:
       <<: *rpodder-healthcheck
     profiles:
@@ -192,6 +197,8 @@ services:
       RPODDER_DATABASE_URL: sqlite:///app/data/rpodder.db
       RPODDER_PORT: "3005"
       RPODDER_MIGRATIONS_DIR: /app/migrations
+      # Local dev/E2E: the mock feeds run on the compose network.
+      RPODDER_ALLOW_PRIVATE_FEEDS: "true"
     profiles:
       - frontend
 

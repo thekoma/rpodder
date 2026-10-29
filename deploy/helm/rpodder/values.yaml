@@ -23,6 +23,8 @@ controllers:
           # RPODDER_BASE_URL: https://podcasts.example.com
           # Session lifetime in days (default: 90)
           # RPODDER_SESSION_DURATION_DAYS: "90"
+          # Let feed fetches reach private/LAN addresses (default: false)
+          # RPODDER_ALLOW_PRIVATE_FEEDS: "false"
 
           # --- SMTP (required for "invite" registration / password reset) ---
           # RPODDER_SMTP_HOST: smtp.example.com

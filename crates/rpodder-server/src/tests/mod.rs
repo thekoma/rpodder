@@ -45,6 +45,8 @@ impl TestApp {
 
     /// `config` holds `AppConfig` fields; the rest keep their defaults.
     pub async fn with_config(config: Value) -> Self {
+        // Test feeds are served on loopback.
+        rpodder_feed::allow_private_addresses(true);
         let db = Db::connect("sqlite::memory:").await.unwrap();
         db.migrate("../../migrations").await.unwrap();
         let db = Arc::new(db);

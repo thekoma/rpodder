@@ -72,6 +72,15 @@ Required for `invite` registration mode, password reset emails, and admin-trigge
 | `RPODDER_OAUTH_PROVIDER_NAME` | `SSO` | Display name for the login button (e.g. `Authentik`, `Google`) |
 | `RPODDER_OAUTH_ADMIN_GROUP` | | OIDC group name that grants admin role. Users in this group are automatically made admin on every SSO login |
 
+### Feed fetching
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RPODDER_ALLOW_PRIVATE_FEEDS` | `false` | Let feed and website fetches reach loopback, private (RFC 1918, ULA), link-local and other non-public addresses, including host names that resolve to them. Turn it on only if you subscribe to feeds hosted on your own network. |
+
+!!! warning
+    Feed URLs come from users, from redirects and from feeds themselves. With this on, any user who can add a feed can make rpodder send GET requests to services on its network.
+
 ### Metrics
 
 rpodder can expose Prometheus-compatible metrics on a **dedicated port**, separate from the main API. This prevents metrics from being exposed to public traffic — in Kubernetes, only create a `Service` for the metrics port internally.

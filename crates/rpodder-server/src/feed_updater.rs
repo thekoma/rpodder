@@ -109,6 +109,42 @@ async fn update_podcast_feed_with(
     force: bool,
     conditional: bool,
 ) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
+    let known = with_repo!(db, |repo| {
+        PodcastRepo::find_by_url(&repo, podcast_url).await
+    })?
+    .is_some();
+    let result = update_podcast_feed_body(db, fetcher, podcast_url, force, conditional).await;
+    if !known && result.is_err() {
+        drop_failed_stub(db, podcast_url).await;
+    }
+    result
+}
+
+/// Remove the podcast created on demand for `podcast_url` when its first read
+/// failed, unless someone subscribed meanwhile or a read succeeded. Otherwise
+/// a URL that never worked stays in the database and the background updater
+/// fetches it again every cycle.
+async fn drop_failed_stub(db: &Db, podcast_url: &str) {
+    let stub = with_repo!(db, |repo| {
+        PodcastRepo::find_by_url(&repo, podcast_url).await
+    });
+    let Ok(Some(podcast)) = stub else { return };
+    if podcast.last_update.is_some() || podcast.subscribers > 0 {
+        return;
+    }
+    match with_repo!(db, |repo| PodcastRepo::delete(&repo, podcast.id).await) {
+        Ok(()) => info!(url = podcast_url, "removed podcast whose first read failed"),
+        Err(e) => warn!(url = podcast_url, error = %e, "failed to remove podcast stub"),
+    }
+}
+
+async fn update_podcast_feed_body(
+    db: &Db,
+    fetcher: &FeedFetcher,
+    podcast_url: &str,
+    force: bool,
+    conditional: bool,
+) -> Result<FeedOutcome, Box<dyn std::error::Error + Send + Sync>> {
     let podcast = with_repo!(db, |repo| {
         PodcastRepo::find_by_url(&repo, podcast_url).await
     })?;
@@ -528,7 +564,8 @@ static PAGE_REFRESH_PERMITS: LazyLock<Arc<tokio::sync::Semaphore>> =
 /// One try with a short timeout: a dead host must not hold a slot for the
 /// background fetcher's 3 × 30 s. A missed refresh is retried after
 /// `RETRY_AFTER`.
-static PAGE_FETCHER: LazyLock<FeedFetcher> =
+/// Also used for a feed read while a request waits (first open of a podcast).
+pub(crate) static PAGE_FETCHER: LazyLock<FeedFetcher> =
     LazyLock::new(|| FeedFetcher::with_limits(StdDuration::from_secs(10), 1));
 
 /// A page-open refresh of one podcast: when it started, and whether it ended.

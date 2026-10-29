@@ -66,6 +66,13 @@ pub struct AppConfig {
     #[serde(default)]
     pub podcastindex_secret: String,
 
+    // --- Feed fetching ---
+    /// Let feed and site fetches reach loopback, private and link-local
+    /// addresses (feeds on your LAN). Off by default: feed URLs come from
+    /// users, so the server must not be pointed at its own network.
+    #[serde(default)]
+    pub allow_private_feeds: bool,
+
     // --- Metrics server ---
     /// Enable the dedicated metrics server (default: false)
     #[serde(default)]

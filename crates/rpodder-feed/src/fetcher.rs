@@ -1,7 +1,71 @@
 //! HTTP feed fetcher with conditional GET and redirect handling.
 
+use std::net::{IpAddr, SocketAddr};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::{Client, StatusCode, header};
 use tracing::{debug, warn};
+use url::{Host, Url};
+
+use crate::site::is_public_ip;
+
+/// Whether fetches may reach loopback, private, link-local and other
+/// non-public addresses. Off by default: feed URLs come from users and from
+/// feeds themselves (redirects, `<link>`), so they must not point the server
+/// at its own network. Self-hosters with feeds on their LAN turn it on.
+static ALLOW_PRIVATE: AtomicBool = AtomicBool::new(false);
+
+/// Allow or forbid non-public addresses for fetchers built from now on.
+pub fn allow_private_addresses(allow: bool) {
+    ALLOW_PRIVATE.store(allow, Ordering::SeqCst);
+}
+
+/// Whether `url` may be fetched: http(s) only, and (unless `allow_private`)
+/// not an IP literal outside the public internet. Host names are checked
+/// after resolution by [`PublicResolver`], at connect time.
+fn check_target(url: &Url, allow_private: bool) -> Result<(), FetchError> {
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(FetchError::Forbidden(format!("scheme {}", url.scheme())));
+    }
+    let ip = match url.host() {
+        Some(Host::Ipv4(ip)) => IpAddr::V4(ip),
+        Some(Host::Ipv6(ip)) => IpAddr::V6(ip),
+        Some(Host::Domain(_)) => return Ok(()),
+        None => return Err(FetchError::Forbidden("no host".into())),
+    };
+    if allow_private || is_public_ip(ip) {
+        Ok(())
+    } else {
+        Err(FetchError::Forbidden(format!("address {ip}")))
+    }
+}
+
+fn check_url(url: &str, allow_private: bool) -> Result<(), FetchError> {
+    let parsed = Url::parse(url).map_err(|e| FetchError::Forbidden(format!("invalid URL: {e}")))?;
+    check_target(&parsed, allow_private)
+}
+
+/// System DNS resolution that drops non-public addresses, so a host name
+/// can't lead to the server's own network, on the first request, a redirect,
+/// or a DNS answer that changes between check and connect.
+struct PublicResolver;
+
+impl Resolve for PublicResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let public: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await?
+                .filter(|a| is_public_ip(a.ip()))
+                .collect();
+            if public.is_empty() {
+                return Err(format!("{host} has no public address").into());
+            }
+            Ok(Box::new(public.into_iter()) as Addrs)
+        })
+    }
+}
 
 /// Result of fetching a feed.
 pub enum FetchResult {
@@ -21,6 +85,7 @@ pub enum FetchResult {
 pub struct FeedFetcher {
     client: Client,
     attempts: u32,
+    allow_private: bool,
 }
 
 impl FeedFetcher {
@@ -31,15 +96,31 @@ impl FeedFetcher {
     /// A fetcher that gives up sooner: `timeout` per request and `attempts`
     /// tries in all (at least one).
     pub fn with_limits(timeout: std::time::Duration, attempts: u32) -> Self {
-        let client = Client::builder()
+        Self::build(timeout, attempts, ALLOW_PRIVATE.load(Ordering::SeqCst))
+    }
+
+    fn build(timeout: std::time::Duration, attempts: u32, allow_private: bool) -> Self {
+        // Every redirect hop is checked like the first URL.
+        let redirect = reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= 10 {
+                return attempt.error("too many redirects");
+            }
+            match check_target(attempt.url(), allow_private) {
+                Ok(()) => attempt.follow(),
+                Err(e) => attempt.error(e),
+            }
+        });
+        let mut builder = Client::builder()
             .user_agent("rpodder/0.1 (+https://github.com/TODO/rpodder)")
             .timeout(timeout)
-            .redirect(reqwest::redirect::Policy::limited(10))
-            .build()
-            .expect("failed to build HTTP client");
+            .redirect(redirect);
+        if !allow_private {
+            builder = builder.dns_resolver(std::sync::Arc::new(PublicResolver));
+        }
         Self {
-            client,
+            client: builder.build().expect("failed to build HTTP client"),
             attempts: attempts.max(1),
+            allow_private,
         }
     }
 
@@ -52,6 +133,7 @@ impl FeedFetcher {
         etag: Option<&str>,
         last_modified: Option<&str>,
     ) -> Result<FetchResult, FetchError> {
+        check_url(url, self.allow_private)?;
         let mut last_err = None;
         for attempt in 0..self.attempts {
             if attempt > 0 {
@@ -186,6 +268,7 @@ impl FeedFetcher {
     /// GET an HTML page once (no retries), reading at most `MAX_PAGE_BYTES`.
     /// Returns the final URL after redirects and the text read.
     pub async fn fetch_page(&self, url: &str) -> Result<(url::Url, String), FetchError> {
+        check_url(url, self.allow_private)?;
         let mut response = self
             .client
             .get(url)
@@ -219,6 +302,9 @@ impl FeedFetcher {
 
     /// Whether `url` answers with an image (one try, body not read).
     pub async fn is_image(&self, url: &str) -> bool {
+        if check_url(url, self.allow_private).is_err() {
+            return false;
+        }
         // A one-byte range: servers that honour it send almost nothing.
         let request = self.client.get(url).header(header::RANGE, "bytes=0-0");
         let Ok(response) = request.send().await else {
@@ -249,6 +335,8 @@ pub enum FetchError {
     NotHtml,
     #[error("response larger than {0} bytes")]
     TooLarge(usize),
+    #[error("target not allowed: {0}")]
+    Forbidden(String),
 }
 
 #[cfg(test)]
@@ -286,7 +374,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_oversized_feed_is_refused() {
-        let fetcher = FeedFetcher::with_limits(std::time::Duration::from_secs(30), 1);
+        let fetcher = FeedFetcher::build(std::time::Duration::from_secs(30), 1, true);
         for declare_length in [true, false] {
             let url = serve(MAX_FEED_BYTES + 1, declare_length).await;
             let result = fetcher.fetch(&url, None, None).await;
@@ -299,11 +387,98 @@ mod tests {
 
     #[tokio::test]
     async fn a_feed_within_the_limit_is_read() {
-        let fetcher = FeedFetcher::with_limits(std::time::Duration::from_secs(30), 1);
+        let fetcher = FeedFetcher::build(std::time::Duration::from_secs(30), 1, true);
         let url = serve(1000, false).await;
         match fetcher.fetch(&url, None, None).await {
             Ok(FetchResult::Ok { body, .. }) => assert_eq!(body.len(), 1000),
             _ => panic!("expected the body"),
         }
+    }
+
+    /// Serve a 302 to `location` and return its URL.
+    async fn redirect_to(location: String) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = sock.read(&mut buf).await;
+            let head =
+                format!("HTTP/1.1 302 Found\r\nlocation: {location}\r\ncontent-length: 0\r\n\r\n");
+            let _ = sock.write_all(head.as_bytes()).await;
+        });
+        format!("http://{addr}/r")
+    }
+
+    #[tokio::test]
+    async fn non_public_targets_are_refused() {
+        let fetcher = FeedFetcher::build(std::time::Duration::from_secs(5), 1, false);
+        for url in [
+            "http://127.0.0.1:1/feed.xml",
+            "http://[::1]:1/feed.xml",
+            "http://10.0.0.1/feed.xml",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://2130706433/feed.xml",
+            "http://[::ffff:127.0.0.1]/feed.xml",
+            "file:///etc/passwd",
+            "ftp://example.com/feed.xml",
+        ] {
+            let result = fetcher.fetch(url, None, None).await;
+            assert!(matches!(result, Err(FetchError::Forbidden(_))), "{url}");
+            assert!(fetcher.fetch_page(url).await.is_err(), "{url}");
+            assert!(!fetcher.is_image(url).await, "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_host_name_resolving_to_loopback_is_refused() {
+        let fetcher = FeedFetcher::build(std::time::Duration::from_secs(5), 1, false);
+        let url = serve(10, true).await.replace("127.0.0.1", "localhost");
+        assert!(fetcher.fetch(&url, None, None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_redirect_to_a_private_address_is_refused() {
+        // IP literals skip the resolver, so the strict client can reach the
+        // loopback redirector directly (bypassing the first-URL check, as a
+        // public host would pass it); the redirect policy must stop the hop.
+        let strict = FeedFetcher::build(std::time::Duration::from_secs(5), 1, false);
+        for target in [
+            serve(10, true).await,
+            "http://10.255.255.1/feed.xml".to_string(),
+            "http://[fd00::1]/feed.xml".to_string(),
+        ] {
+            let err = strict
+                .client
+                .get(redirect_to(target.clone()).await)
+                .send()
+                .await
+                .expect_err(&target);
+            assert!(err.is_redirect(), "{target}: {err}");
+        }
+
+        // The same redirect is followed when private targets are allowed.
+        let open = FeedFetcher::build(std::time::Duration::from_secs(5), 1, true);
+        let target = serve(10, true).await;
+        assert!(
+            open.fetch(&redirect_to(target).await, None, None)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn private_targets_can_be_allowed() {
+        let fetcher = FeedFetcher::build(std::time::Duration::from_secs(5), 1, true);
+        assert!(
+            fetcher
+                .fetch(&serve(10, true).await, None, None)
+                .await
+                .is_ok()
+        );
+        assert!(matches!(
+            fetcher.fetch("file:///etc/passwd", None, None).await,
+            Err(FetchError::Forbidden(_))
+        ));
     }
 }

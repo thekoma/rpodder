@@ -4,6 +4,9 @@
 
 ### Security
 - **Anonymous requests could make the server fetch any URL** — `GET /api/2/data/podcast.json` and `/api/2/data/podcast/episodes.json` are public, and for an unknown URL they created a podcast and fetched the URL right away. Anyone could make rpodder request internal or loopback addresses (SSRF), fill the database, or point it at a huge feed that got the process OOM-killed and, because the URL stayed in the database for the updater, kept it in a crash loop. These endpoints now fetch a new URL only for a logged-in user; an anonymous request for an unknown podcast gets `404`. Reported by Peter Gille.
+- **Fetches no longer reach the server's own network** — feed, website and icon fetches refuse loopback, private, link-local and other non-public addresses, whether given as an IP or as a host name that resolves to one, on the first request and on every redirect; only `http` and `https` are fetched. Set `RPODDER_ALLOW_PRIVATE_FEEDS=true` if you subscribe to feeds hosted on your LAN.
+- **A URL whose first read fails is not kept** — the podcast created for it is removed again (unless someone subscribed meanwhile), so the background updater doesn't retry it every cycle.
+- **First open of an unknown feed waits at most 10 seconds** — one try instead of three 30-second tries.
 - **Feed size and episode count are capped** — a feed body larger than 32 MB is refused instead of read into memory, and a read stores at most the newest 5,000 episodes. This also covers feeds a logged-in user subscribes to.
 
 ## 2026.10.5 — 2026-10-27

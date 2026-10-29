@@ -104,6 +104,8 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
+    // Before any fetcher is built.
+    rpodder_feed::allow_private_addresses(cfg.allow_private_feeds);
     let db = Db::connect(&cfg.database_url).await?;
 
     if cfg.run_migrations {
@@ -116,6 +118,7 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
         smtp = cfg.smtp_configured(),
         oauth = cfg.oauth_configured(),
         podcastindex = cfg.podcastindex_configured(),
+        allow_private_feeds = cfg.allow_private_feeds,
         "server config"
     );
 

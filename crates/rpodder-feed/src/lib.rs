@@ -7,7 +7,7 @@ mod fetcher;
 mod parser;
 mod site;
 
-pub use fetcher::{FeedFetcher, FetchError, FetchResult, MAX_FEED_BYTES};
+pub use fetcher::{FeedFetcher, FetchError, FetchResult, MAX_FEED_BYTES, allow_private_addresses};
 pub use parser::{ParsedEpisode, parse_feed};
 pub use site::{lookup_allowed, website};
 
