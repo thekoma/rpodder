@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026.10.7 — 2026-10-29
+
+### Security
+- **Opening many new podcasts at once could still exhaust memory** — since 2026.10.6 only a logged-in user makes rpodder read a feed it doesn't know yet, but nothing limited how many of those reads ran together, and each can hold a feed of up to 32 MB in memory while it is parsed. With open registration anyone can sign up, so one account opening dozens of new podcasts at once could still get the process killed. Now at most two of these first reads run at a time across the server; a request waits up to 10 seconds for its turn, then answers as if the feed couldn't be read. A read also finishes when the client hangs up, so the podcast created for a URL that doesn't work is always removed again.
+- **A proxy from the environment could reach the server's own network** — with `HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY` set, the proxy resolved feed host names itself, past the check that keeps fetches off internal addresses. Feed, website and icon fetches now ignore these variables unless `RPODDER_ALLOW_PRIVATE_FEEDS=true`, and rpodder logs a warning at startup when they are set.
+- **More non-public address ranges are refused** — multicast, IPv6 site-local (`fec0::/10`), local-use NAT64 (`64:ff9b:1::/48`), Teredo (`2001::/32`), the 6to4 relay (`192.88.99.0/24`), and 6to4 addresses (`2002::/16`) that carry a private IPv4 address.
+
 ## 2026.10.6 — 2026-10-29
 
 ### Security
