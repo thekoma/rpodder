@@ -76,7 +76,7 @@ Required for `invite` registration mode, password reset emails, and admin-trigge
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RPODDER_ALLOW_PRIVATE_FEEDS` | `false` | Let feed and website fetches reach loopback, private (RFC 1918, ULA), link-local and other non-public addresses, including host names that resolve to them. Turn it on only if you subscribe to feeds hosted on your own network. |
+| `RPODDER_ALLOW_PRIVATE_FEEDS` | `false` | Let feed and website fetches reach loopback, private (RFC 1918, ULA), link-local and other non-public addresses, including host names that resolve to them. Turn it on only if you subscribe to feeds hosted on your own network. While it is off, fetches ignore a proxy set with `HTTP_PROXY`, `HTTPS_PROXY` or `ALL_PROXY`: the proxy would resolve host names itself, past this check. |
 
 !!! warning
     Feed URLs come from users, from redirects and from feeds themselves. With this on, any user who can add a feed can make rpodder send GET requests to services on its network.

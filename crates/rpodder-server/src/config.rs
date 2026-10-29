@@ -69,7 +69,8 @@ pub struct AppConfig {
     // --- Feed fetching ---
     /// Let feed and site fetches reach loopback, private and link-local
     /// addresses (feeds on your LAN). Off by default: feed URLs come from
-    /// users, so the server must not be pointed at its own network.
+    /// users, so the server must not be pointed at its own network. While off,
+    /// fetches don't use a proxy set in the environment either.
     #[serde(default)]
     pub allow_private_feeds: bool,
 

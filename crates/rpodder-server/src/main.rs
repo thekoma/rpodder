@@ -106,6 +106,21 @@ async fn main() -> anyhow::Result<()> {
 async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
     // Before any fetcher is built.
     rpodder_feed::allow_private_addresses(cfg.allow_private_feeds);
+    let proxy_env = [
+        "HTTPS_PROXY",
+        "https_proxy",
+        "HTTP_PROXY",
+        "http_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ]
+    .iter()
+    .any(|name| std::env::var_os(name).is_some());
+    if proxy_env && !cfg.allow_private_feeds {
+        tracing::warn!(
+            "feed fetches ignore the proxy set in the environment unless RPODDER_ALLOW_PRIVATE_FEEDS=true"
+        );
+    }
     let db = Db::connect(&cfg.database_url).await?;
 
     if cfg.run_migrations {

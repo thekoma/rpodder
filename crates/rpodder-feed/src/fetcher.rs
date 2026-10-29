@@ -13,7 +13,8 @@ use crate::site::is_public_ip;
 /// Whether fetches may reach loopback, private, link-local and other
 /// non-public addresses. Off by default: feed URLs come from users and from
 /// feeds themselves (redirects, `<link>`), so they must not point the server
-/// at its own network. Self-hosters with feeds on their LAN turn it on.
+/// at its own network. Self-hosters with feeds on their LAN turn it on. While
+/// it is off, a proxy set in the environment (`HTTP_PROXY`, …) is not used.
 static ALLOW_PRIVATE: AtomicBool = AtomicBool::new(false);
 
 /// Allow or forbid non-public addresses for fetchers built from now on.
@@ -115,7 +116,10 @@ impl FeedFetcher {
             .timeout(timeout)
             .redirect(redirect);
         if !allow_private {
-            builder = builder.dns_resolver(std::sync::Arc::new(PublicResolver));
+            // A proxy would resolve host names itself, past the resolver.
+            builder = builder
+                .no_proxy()
+                .dns_resolver(std::sync::Arc::new(PublicResolver));
         }
         Self {
             client: builder.build().expect("failed to build HTTP client"),
