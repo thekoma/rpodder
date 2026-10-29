@@ -87,15 +87,17 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_documentation()
+                || v4.is_multicast()
                 || a == 0
                 || a >= 240
                 || (a == 100 && (64..128).contains(&b))
                 || (a == 198 && (18..20).contains(&b))
+                || (a == 192 && b == 88 && c == 99)
                 || (a == 192 && b == 0 && c == 0))
         }
         IpAddr::V6(v6) => {
             let seg = v6.segments();
-            if v6.is_loopback() || v6.is_unspecified() {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
                 return false;
             }
             if let Some(v4) = v6.to_ipv4_mapped() {
@@ -113,7 +115,23 @@ pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
             {
                 return is_public_ip(IpAddr::V4(embedded));
             }
-            !((seg[0] & 0xfe00) == 0xfc00 || (seg[0] & 0xffc0) == 0xfe80)
+            // 6to4 (2002::/16) carries the IPv4 address in the next 32 bits.
+            if seg[0] == 0x2002 {
+                return is_public_ip(IpAddr::V4(Ipv4Addr::new(
+                    (seg[1] >> 8) as u8,
+                    seg[1] as u8,
+                    (seg[2] >> 8) as u8,
+                    seg[2] as u8,
+                )));
+            }
+            // Unique local (fc00::/7), link-local (fe80::/10), site-local
+            // (fec0::/10), local-use NAT64 (64:ff9b:1::/48) and Teredo
+            // (2001::/32, an obfuscated IPv4 address).
+            !((seg[0] & 0xfe00) == 0xfc00
+                || (seg[0] & 0xffc0) == 0xfe80
+                || (seg[0] & 0xffc0) == 0xfec0
+                || seg[..3] == [0x64, 0xff9b, 1]
+                || seg[..2] == [0x2001, 0])
         }
     }
 }
@@ -498,6 +516,32 @@ mod tests {
             "not a url",
         ] {
             assert!(!lookup_allowed(internal, feed), "{internal}");
+        }
+    }
+
+    #[test]
+    fn special_purpose_addresses_are_not_public() {
+        use std::net::IpAddr;
+        for ip in [
+            "224.0.0.1",
+            "239.255.255.250",
+            "ff02::1",
+            "fec0::1",
+            "2002:7f00:1::",
+            "2002:a00:1::1",
+            "64:ff9b:1::a00:1",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "192.88.99.1",
+        ] {
+            assert!(!is_public_ip(ip.parse::<IpAddr>().unwrap()), "{ip}");
+        }
+        for ip in [
+            "8.8.8.8",
+            "2606:4700:4700::1111",
+            "2002:808:808::1",
+            "64:ff9b::808:808",
+        ] {
+            assert!(is_public_ip(ip.parse::<IpAddr>().unwrap()), "{ip}");
         }
     }
 
