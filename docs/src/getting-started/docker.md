@@ -99,7 +99,7 @@ The release Dockerfile is a multi-stage build:
 
 1. **Frontend stage** (`oven/bun:1`): installs dependencies, builds Svelte SPA to `web/dist/`
 2. **Backend stage** (`rust:bookworm`): compiles Rust binary with `mold` linker for faster builds. Dependencies are cached in a separate layer
-3. **Runtime stage** (`debian:bookworm-slim`): ~80MB final image with just the binary, CA certificates, and migrations
+3. **Runtime stage** (`debian:bookworm-slim`): ~80MB final image with just the binary (database migrations built in) and CA certificates
 
 ```bash
 # Build with custom tags

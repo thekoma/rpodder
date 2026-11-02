@@ -38,7 +38,7 @@ All tests use in-memory SQLite databases — no external services needed.
 
 ## Adding a new feature
 
-1. If it needs new data, add a migration in `migrations/postgresql/` and `migrations/sqlite/`
+1. If it needs new data, add a migration in `migrations/postgresql/` and `migrations/sqlite/`, and list it in `MIGRATIONS` (`crates/rpodder-db/src/lib.rs`)
 2. If it needs a new domain type, add it to `rpodder-core/src/types.rs`
 3. If it needs DB access, add a trait method to `rpodder-core/src/repo.rs` and implement it in both `postgres.rs` and `sqlite.rs`
 4. Add the HTTP handler in `rpodder-server/src/routes/`

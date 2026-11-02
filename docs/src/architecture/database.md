@@ -37,11 +37,10 @@ rpodder supports PostgreSQL and SQLite with identical feature sets. The database
 
 ## Migrations
 
-Migrations live in `migrations/postgresql/` and `migrations/sqlite/`. The migration system:
-
-1. Reads all `*.up.sql` files from the appropriate subdirectory
-2. Sorts them alphabetically (so `001_*` runs before `002_*`)
-3. Executes them in order
+Migrations live in `migrations/postgresql/` and `migrations/sqlite/`. The `*.up.sql` files are
+compiled into the binary (the `MIGRATIONS` list in `crates/rpodder-db/src/lib.rs`), so a release
+binary needs no files next to it. On every start (and with `rpodder migrate`) the backend's
+migrations run in list order, `001_*` before `002_*`.
 
 ### Idempotency
 
@@ -55,7 +54,8 @@ All migrations are written to be idempotent (safe to re-run):
 1. Create `migrations/postgresql/003_my_change.up.sql` and `migrations/sqlite/003_my_change.up.sql`
 2. Make them idempotent
 3. Optionally create `.down.sql` files for rollback
-4. The migration system picks them up automatically — no code changes needed
+4. Add `"003_my_change"` to the end of `MIGRATIONS` in `crates/rpodder-db/src/lib.rs`. The build fails if
+   either backend's file is missing, and a `rpodder-db` test fails if a file is not in the list
 
 ## IDs
 

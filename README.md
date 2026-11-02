@@ -58,7 +58,7 @@ Sync your podcast subscriptions and episode progress across [AntennaPod](https:/
 ### Operations
 - **Dual database** — PostgreSQL for scale, SQLite for self-hosting (Raspberry Pi friendly)
 - **Single binary**, multi-arch Docker images (amd64/arm64), Helm chart, Prometheus metrics
-- **Self-applying migrations** — every `*.up.sql` in the migrations directory, idempotent on both databases
+- **Self-applying migrations** — built into the binary, idempotent on both databases
 
 See the [documentation](https://thekoma.github.io/rpodder/) and the [changelog](CHANGELOG.md) for details.
 
@@ -223,8 +223,7 @@ See [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md) for the complete API surfac
 sudo cp target/release/rpodder /usr/local/bin/
 sudo cp config/rpodder.service /etc/systemd/system/
 sudo useradd -r -s /bin/false rpodder
-sudo mkdir -p /var/lib/rpodder /usr/share/rpodder
-sudo cp -r migrations /usr/share/rpodder/
+sudo mkdir -p /var/lib/rpodder
 sudo chown rpodder:rpodder /var/lib/rpodder
 sudo systemctl enable --now rpodder
 ```

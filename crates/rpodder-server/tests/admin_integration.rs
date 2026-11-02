@@ -20,7 +20,7 @@ use rpodder_db::{Db, sqlite::SqliteRepo};
 
 async fn setup_db() -> Db {
     let db = Db::connect("sqlite::memory:").await.unwrap();
-    db.migrate("../../migrations").await.unwrap();
+    db.migrate().await.unwrap();
     db
 }
 

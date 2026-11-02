@@ -49,7 +49,7 @@ impl TestApp {
         // Test feeds are served on loopback.
         rpodder_feed::allow_private_addresses(true);
         let db = Db::connect("sqlite::memory:").await.unwrap();
-        db.migrate("../../migrations").await.unwrap();
+        db.migrate().await.unwrap();
         let db = Arc::new(db);
         let config: AppConfig = serde_json::from_value(config).unwrap();
         let router = crate::api_router(AppState {

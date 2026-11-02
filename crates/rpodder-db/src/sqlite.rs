@@ -1963,7 +1963,7 @@ mod tests {
 
     async fn setup() -> SqliteRepo {
         let db = crate::Db::connect("sqlite::memory:").await.unwrap();
-        db.migrate("../../migrations").await.unwrap();
+        db.migrate().await.unwrap();
         match db {
             crate::Db::Sqlite(pool) => SqliteRepo::new(pool),
             _ => unreachable!(),

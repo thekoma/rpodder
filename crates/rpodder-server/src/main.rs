@@ -124,8 +124,8 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
     let db = Db::connect(&cfg.database_url).await?;
 
     if cfg.run_migrations {
-        tracing::info!("running migrations from {}", cfg.migrations_dir);
-        db.migrate(&cfg.migrations_dir).await?;
+        tracing::info!("running migrations");
+        db.migrate().await?;
     }
 
     tracing::info!(
@@ -188,8 +188,8 @@ async fn cmd_serve(cfg: config::AppConfig) -> anyhow::Result<()> {
 
 async fn cmd_migrate(cfg: config::AppConfig) -> anyhow::Result<()> {
     let db = Db::connect(&cfg.database_url).await?;
-    tracing::info!("running migrations from {}", cfg.migrations_dir);
-    db.migrate(&cfg.migrations_dir).await?;
+    tracing::info!("running migrations");
+    db.migrate().await?;
     tracing::info!("migrations complete");
     Ok(())
 }

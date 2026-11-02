@@ -16,7 +16,6 @@ controllers:
 
           # --- General ---
           RPODDER_PORT: "3005"
-          RPODDER_MIGRATIONS_DIR: /app/migrations
           # Registration mode: open (anyone) | closed (admin only) | invite (email confirmation)
           RPODDER_REGISTRATION: open
           # Public URL — required for OAuth/SSO callbacks and email links.

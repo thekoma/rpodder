@@ -11,9 +11,6 @@ database_url = "sqlite://rpodder.db"
 # host = "0.0.0.0"
 port = 3005
 
-# Path to migrations directory
-migrations_dir = "migrations"
-
 # Run migrations on startup (disable only if you manage migrations manually)
 # run_migrations = true
 

@@ -72,6 +72,34 @@ pub(crate) fn meaningful_title(title: Option<String>, url: &str) -> Option<Strin
 
 use tracing::info;
 
+/// A schema migration: `migrations/{postgresql,sqlite}/<name>.up.sql`, compiled
+/// into the binary so it runs without the repo's `migrations/` directory (#36).
+struct Migration {
+    name: &'static str,
+    postgres: &'static str,
+    sqlite: &'static str,
+}
+
+/// Includes both backends' file for each name, so a missing one fails the build.
+macro_rules! migrations {
+    ($($name:literal),+ $(,)?) => {
+        &[$(Migration {
+            name: $name,
+            postgres: include_str!(concat!("../../../migrations/postgresql/", $name, ".up.sql")),
+            sqlite: include_str!(concat!("../../../migrations/sqlite/", $name, ".up.sql")),
+        }),+]
+    };
+}
+
+/// Every migration, in the order it runs. Add a new one here too.
+const MIGRATIONS: &[Migration] = migrations![
+    "001_initial",
+    "002_add_user_roles",
+    "003_sync_group_name",
+    "004_content_hash",
+    "005_episode_actions_created_at_index",
+];
+
 /// Database backend, determined from the connection URL.
 #[derive(Debug, Clone)]
 pub enum Db {
@@ -121,68 +149,41 @@ impl Db {
         }
     }
 
-    /// Run all `*.up.sql` migrations from the appropriate subdirectory, sorted by filename.
+    /// Run every migration compiled into the binary, in order.
     /// Migrations must be idempotent (e.g. `IF NOT EXISTS`, `DO $$ ... EXCEPTION`).
-    pub async fn migrate(&self, migrations_dir: &str) -> anyhow::Result<()> {
-        let (subdir, pool_kind) = match self {
-            Db::Postgres(_) => ("postgresql", "PostgreSQL"),
-            Db::Sqlite(_) => ("sqlite", "SQLite"),
+    pub async fn migrate(&self) -> anyhow::Result<()> {
+        let pool_kind = match self {
+            Db::Postgres(_) => "PostgreSQL",
+            Db::Sqlite(_) => "SQLite",
         };
 
-        let files = Self::list_migrations(migrations_dir, subdir)?;
-
-        for path in &files {
-            let sql = std::fs::read_to_string(path)?;
-            let fname = path.file_name().unwrap_or_default().to_string_lossy();
+        for migration in MIGRATIONS {
+            let name = migration.name;
             match self {
                 Db::Postgres(pool) => {
-                    sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
-                        .execute(pool)
-                        .await?;
+                    sqlx::raw_sql(migration.postgres).execute(pool).await?;
                 }
                 Db::Sqlite(pool) => {
                     // SQLite ALTER TABLE ADD COLUMN is not idempotent — ignore
                     // "duplicate column" errors so migrations can be re-run safely.
-                    match sqlx::raw_sql(sqlx::AssertSqlSafe(sql)).execute(pool).await {
+                    match sqlx::raw_sql(migration.sqlite).execute(pool).await {
                         Ok(_) => {}
                         Err(e) if e.to_string().contains("duplicate column") => {
-                            info!("{pool_kind} migration skipped (already applied): {fname}");
+                            info!("{pool_kind} migration skipped (already applied): {name}");
                             continue;
                         }
                         Err(e) => return Err(e.into()),
                     }
                 }
             }
-            info!("{pool_kind} migration applied: {fname}");
+            info!("{pool_kind} migration applied: {name}");
         }
 
         info!(
             "{pool_kind}: {count} migrations applied",
-            count = files.len()
+            count = MIGRATIONS.len()
         );
         Ok(())
-    }
-
-    /// List migration files that would be applied for the given directory.
-    /// Useful for testing and debugging.
-    pub fn list_migrations(
-        migrations_dir: &str,
-        subdir: &str,
-    ) -> anyhow::Result<Vec<std::path::PathBuf>> {
-        let dir = format!("{migrations_dir}/{subdir}");
-        let mut files: Vec<_> = std::fs::read_dir(&dir)?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| {
-                p.extension().is_some_and(|ext| ext == "sql")
-                    && p.file_name()
-                        .unwrap_or_default()
-                        .to_str()
-                        .is_some_and(|n| n.ends_with(".up.sql"))
-            })
-            .collect();
-        files.sort();
-        Ok(files)
     }
 
     /// Repair SQLite FTS5 index if corrupted.
@@ -233,52 +234,23 @@ impl Db {
 mod tests {
     use super::*;
 
+    /// A migration file left out of `MIGRATIONS` would never run.
     #[test]
-    fn list_migrations_finds_sqlite_files_sorted() {
-        let files = Db::list_migrations("../../migrations", "sqlite").unwrap();
-        assert!(
-            files.len() >= 2,
-            "expected at least 2 sqlite migrations, got {}",
-            files.len()
-        );
-        // All files must end with .up.sql
-        for f in &files {
-            let name = f.file_name().unwrap().to_str().unwrap();
-            assert!(name.ends_with(".up.sql"), "unexpected file: {name}");
-        }
-        // Files must be sorted (001 before 002)
-        for w in files.windows(2) {
-            assert!(
-                w[0] < w[1],
-                "migrations not sorted: {:?} >= {:?}",
-                w[0],
-                w[1]
-            );
-        }
-    }
+    fn compiled_migrations_match_the_migration_files() {
+        let compiled: Vec<&str> = MIGRATIONS.iter().map(|m| m.name).collect();
+        let mut sorted = compiled.clone();
+        sorted.sort_unstable();
+        assert_eq!(compiled, sorted, "MIGRATIONS must be in filename order");
 
-    #[test]
-    fn list_migrations_finds_postgresql_files_sorted() {
-        let files = Db::list_migrations("../../migrations", "postgresql").unwrap();
-        assert!(
-            files.len() >= 2,
-            "expected at least 2 pg migrations, got {}",
-            files.len()
-        );
-        for w in files.windows(2) {
-            assert!(w[0] < w[1]);
-        }
-    }
-
-    #[test]
-    fn list_migrations_excludes_down_files() {
-        let files = Db::list_migrations("../../migrations", "sqlite").unwrap();
-        for f in &files {
-            let name = f.file_name().unwrap().to_str().unwrap();
-            assert!(
-                !name.contains(".down."),
-                "down migration should be excluded: {name}"
-            );
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../migrations");
+        for backend in ["postgresql", "sqlite"] {
+            let mut on_disk: Vec<String> = std::fs::read_dir(format!("{root}/{backend}"))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .filter_map(|file| file.strip_suffix(".up.sql").map(str::to_owned))
+                .collect();
+            on_disk.sort_unstable();
+            assert_eq!(compiled, on_disk, "migrations/{backend} vs MIGRATIONS");
         }
     }
 
@@ -286,8 +258,8 @@ mod tests {
     async fn sqlite_migrate_is_idempotent() {
         let db = Db::connect("sqlite::memory:").await.unwrap();
         // Run migrations twice — should not error
-        db.migrate("../../migrations").await.unwrap();
-        db.migrate("../../migrations").await.unwrap();
+        db.migrate().await.unwrap();
+        db.migrate().await.unwrap();
 
         // Verify is_admin column exists and works
         if let Db::Sqlite(pool) = &db {

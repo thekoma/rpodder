@@ -15,7 +15,6 @@ RestartSec=5
 # Environment
 Environment=RPODDER_DATABASE_URL=sqlite:///var/lib/rpodder/rpodder.db
 Environment=RPODDER_PORT=3005
-Environment=RPODDER_MIGRATIONS_DIR=/usr/share/rpodder/migrations
 Environment=RUST_LOG=rpodder=info
 
 # Hardening

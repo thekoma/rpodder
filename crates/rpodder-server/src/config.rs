@@ -12,9 +12,6 @@ pub struct AppConfig {
     #[serde(default = "default_port")]
     pub port: u16,
 
-    #[serde(default = "default_migrations_dir")]
-    pub migrations_dir: String,
-
     #[serde(default = "default_true")]
     pub run_migrations: bool,
 
@@ -96,9 +93,6 @@ fn default_host() -> String {
 }
 fn default_port() -> u16 {
     3005
-}
-fn default_migrations_dir() -> String {
-    "migrations".into()
 }
 fn default_registration() -> String {
     "open".into()

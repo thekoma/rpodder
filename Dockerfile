@@ -35,6 +35,7 @@ ENV RPODDER_BUILD_SHA=${RPODDER_BUILD_SHA}
 # Copy everything needed for the build
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY migrations/ migrations/
 COPY --from=frontend /web/dist/ web/dist/
 
 # Build with cargo cache mounts for registry + target dir
@@ -72,9 +73,6 @@ COPY --from=builder /usr/local/bin/rpodder /usr/local/bin/rpodder
 
 # Create data directory for SQLite mode (volume mount target)
 RUN mkdir -p /app/data && chown rpodder:rpodder /app/data
-
-# Migrations are needed at runtime for the CLI `rpodder migrate` command
-COPY --chown=rpodder:rpodder migrations/ /app/migrations/
 
 # Logo for container management UIs (Portainer, Dockge, etc.)
 COPY --chown=rpodder:rpodder web/static/logo.svg /app/logo.svg

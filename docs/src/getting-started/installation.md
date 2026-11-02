@@ -90,8 +90,7 @@ For running rpodder as a system service on Linux:
 sudo cp target/release/rpodder /usr/local/bin/
 sudo cp config/rpodder.service /etc/systemd/system/
 sudo useradd -r -s /bin/false rpodder
-sudo mkdir -p /var/lib/rpodder /usr/share/rpodder
-sudo cp -r migrations /usr/share/rpodder/
+sudo mkdir -p /var/lib/rpodder
 sudo chown rpodder:rpodder /var/lib/rpodder
 sudo systemctl enable --now rpodder
 ```
@@ -100,7 +99,6 @@ The default service file expects:
 
 - Binary at `/usr/local/bin/rpodder`
 - Data directory at `/var/lib/rpodder`
-- Migrations at `/usr/share/rpodder/migrations`
 - Config at `/etc/rpodder/config.toml` (optional)
 
 ## Verify installation
