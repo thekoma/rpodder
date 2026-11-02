@@ -2,6 +2,7 @@
 //! `main.rs`) over in-memory SQLite.
 
 mod auth_hardening;
+mod directory_access;
 mod episode_sync;
 mod feed_refresh;
 mod holdings;

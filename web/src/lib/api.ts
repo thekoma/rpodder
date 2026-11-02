@@ -160,14 +160,17 @@ export interface MeInfo {
   is_active: boolean;
 }
 
+/** `null` when the server can't answer; throws `ApiError` (401) when the session no longer holds. */
 export async function getMe(): Promise<MeInfo | null> {
+  let resp: Response;
   try {
-    const resp = await request('/api/2/me');
-    if (!resp.ok) return null;
-    return resp.json();
+    resp = await request('/api/2/me');
   } catch {
     return null;
   }
+  if (resp.status === 401 || resp.status === 403) throw new ApiError(resp.status);
+  if (!resp.ok) return null;
+  return resp.json();
 }
 
 export async function getAdminUsers(): Promise<AdminUser[]> {
@@ -313,15 +316,21 @@ export interface SsoInfo {
   provider_name: string;
   registration: string;
   podcastindex: boolean;
+  /** `false` (RPODDER_PUBLIC_DIRECTORY): the directory answers only a logged-in user. */
+  public_directory: boolean;
 }
+
+const SSO_INFO_FALLBACK: SsoInfo = {
+  enabled: false, provider_name: 'SSO', registration: 'open', podcastindex: false, public_directory: true,
+};
 
 export async function getSsoInfo(): Promise<SsoInfo> {
   try {
     const resp = await fetch(`${API_BASE}/auth/sso/info`);
-    if (!resp.ok) return { enabled: false, provider_name: 'SSO', registration: 'open', podcastindex: false };
-    return resp.json();
+    if (!resp.ok) return SSO_INFO_FALLBACK;
+    return { ...SSO_INFO_FALLBACK, ...(await resp.json()) };
   } catch {
-    return { enabled: false, provider_name: 'SSO', registration: 'open', podcastindex: false };
+    return SSO_INFO_FALLBACK;
   }
 }
 

@@ -3,7 +3,7 @@
   import {
     LibraryBig, Compass, History, MonitorSmartphone, ShieldCheck, Settings, BookOpen, LogOut, ChevronDown, CircleUserRound,
   } from '@lucide/svelte';
-  import { auth } from '#lib/auth.svelte.js';
+  import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
   import { logout as apiLogout, getBuildInfo, getMe, type BuildInfo } from '#lib/api.js';
   import { goto } from '$app/navigation';
   import { browser } from '$app/env';
@@ -41,8 +41,12 @@
   $effect(() => {
     if (!browser) return;
     if (auth.loggedIn) {
+      const username = auth.username;
       getMe().then(me => {
         if (me) auth.setAdmin(me.is_admin);
+      }).catch((e) => {
+        // Pages that swallow a 401 (the directory, when private) would otherwise show empty lists.
+        if (isAuthError(e)) sessionExpired(username);
       });
       getBuildInfo().then(h => { buildInfo = h; });
     } else {

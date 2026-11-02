@@ -210,8 +210,8 @@ pub async fn toplist(
 /// Whether a data request should read the feed now: the podcast doesn't exist
 /// or its feed was never read (a feed with an empty description must not be
 /// re-read on every request). Only for a logged-in caller: these routes are
-/// public, and an anonymous request must not make the server fetch an
-/// arbitrary URL (SSRF) or store a new podcast.
+/// public by default, and an anonymous request must not make the server fetch
+/// an arbitrary URL (SSRF) or store a new podcast.
 async fn needs_fetch(
     state: &AppState,
     headers: &HeaderMap,

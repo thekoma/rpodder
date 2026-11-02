@@ -44,6 +44,10 @@ All settings use the `RPODDER_` prefix. The prefix is stripped and the remainder
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RPODDER_REGISTRATION` | `open` | Registration mode: `open` (anyone can register), `closed` (admin creates users), `invite` (email activation required) |
+| `RPODDER_PUBLIC_DIRECTORY` | `true` | Let anyone browse and search the podcasts this server's users subscribe to, as on gpodder.net. Set `false` on a private instance: the directory, search, toplist, tag and podcast-data endpoints then answer only a logged-in user (`401` otherwise), and the web UI sends logged-out visitors to the login page |
+
+!!! note "Podcast apps and a private directory"
+    With `RPODDER_PUBLIC_DIRECTORY=false`, an app that searches or opens the toplist without sending its credentials gets `401`. Syncing is unaffected, since it always authenticates.
 
 !!! note "First user exception"
     If no active users exist in the database, registration is always allowed regardless of this setting. The first user automatically becomes an admin.

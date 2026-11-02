@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { KeyRound, Clock } from '@lucide/svelte';
   import { auth } from '#lib/auth.svelte.js';
   import { login as apiLogin, getSsoInfo, getMe, type SsoInfo } from '#lib/api.js';
@@ -16,6 +17,8 @@
 
   $effect(() => {
     if (!browser) return;
+    // Already signed in when the page opens (not after the login below): the library is home.
+    if (untrack(() => auth.loggedIn)) { goto('/subscriptions', { replaceState: true }); return; }
     getSsoInfo().then(info => { ssoInfo = info; });
   });
 
@@ -28,7 +31,7 @@
 
     if (result.ok) {
       auth.login(username);
-      const me = await getMe();
+      const me = await getMe().catch(() => null);
       if (me) auth.setAdmin(me.is_admin);
       goto('/subscriptions');
     } else {

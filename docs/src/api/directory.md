@@ -1,6 +1,8 @@
 # Directory & Search API
 
-These endpoints are public (no authentication required).
+These endpoints are public (no authentication required) unless the server sets
+[`RPODDER_PUBLIC_DIRECTORY=false`](../getting-started/configuration.md#registration): then they need a
+session cookie or Basic Auth, and answer `401` without one.
 
 ## Search (local)
 

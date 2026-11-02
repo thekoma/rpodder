@@ -1,7 +1,28 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
+  import { browser } from '$app/env';
+  import { auth } from '#lib/auth.svelte.js';
+  import { getSsoInfo } from '#lib/api.js';
 
   let { children } = $props();
+
+  // Logged out, the directory may be private (RPODDER_PUBLIC_DIRECTORY=false): ask before showing it.
+  let publicDirectory = $state<boolean | null>(null);
+  let visible = $derived(auth.loggedIn || publicDirectory === true);
+
+  // Checked for a visitor who arrives logged out. A session that ends here already navigates
+  // (sessionExpired goes to /login?expired=1); redirecting again would drop that notice.
+  $effect(() => {
+    if (!browser || untrack(() => auth.loggedIn) || publicDirectory !== null) return;
+    getSsoInfo().then((info) => {
+      publicDirectory = info.public_directory;
+      if (!info.public_directory && page.url.pathname.startsWith('/discover')) {
+        goto('/login', { replaceState: true });
+      }
+    });
+  });
 
   const tabs = [
     { href: '/discover', label: 'Browse', match: (p: string) => p === '/discover' || p.startsWith('/discover/tag') },
@@ -12,6 +33,7 @@
   let onPodcast = $derived(page.url.pathname.startsWith('/discover/podcast'));
 </script>
 
+{#if visible}
 <div class="space-y-6">
   {#if !onPodcast}
     <div class="space-y-4">
@@ -32,3 +54,4 @@
 
   {@render children()}
 </div>
+{/if}

@@ -18,6 +18,8 @@ controllers:
           RPODDER_PORT: "3005"
           # Registration mode: open (anyone) | closed (admin only) | invite (email confirmation)
           RPODDER_REGISTRATION: open
+          # Directory & search open to anonymous visitors (default: true); "false" keeps them behind login
+          # RPODDER_PUBLIC_DIRECTORY: "true"
           # Public URL — required for OAuth/SSO callbacks and email links.
           # RPODDER_BASE_URL: https://podcasts.example.com
           # Session lifetime in days (default: 90)

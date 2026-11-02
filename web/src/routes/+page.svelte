@@ -1,6 +1,6 @@
 <script lang="ts">
   import { auth } from '#lib/auth.svelte.js';
-  import { getToplist, type PodcastInfo } from '#lib/api.js';
+  import { getSsoInfo, getToplist, type PodcastInfo } from '#lib/api.js';
   import { goto } from '$app/navigation';
   import { browser } from '$app/env';
   import Cover from '#lib/components/Cover.svelte';
@@ -8,6 +8,8 @@
   let topPodcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);
   let loaded = $state(false);
+  // Shown once the server says its directory is public; a private one sends visitors to /login.
+  let publicDirectory = $state(false);
 
   $effect(() => {
     if (!browser) return;
@@ -15,7 +17,11 @@
     if (auth.loggedIn) { goto('/subscriptions', { replaceState: true }); return; }
     if (loaded) return;
     loaded = true;
-    getToplist(12).then((top) => { topPodcasts = top; }).catch(() => {}).finally(() => { loading = false; });
+    getSsoInfo().then((info) => {
+      if (!info.public_directory) { goto('/login', { replaceState: true }); return; }
+      publicDirectory = true;
+      getToplist(12).then((top) => { topPodcasts = top; }).catch(() => {}).finally(() => { loading = false; });
+    });
   });
 
   // An illustrative catalog card (not real data): how rpodder records one feed.
@@ -33,7 +39,7 @@
 
 <svelte:head><title>rpodder</title></svelte:head>
 
-{#if !auth.loggedIn}
+{#if !auth.loggedIn && publicDirectory}
   <div class="space-y-14">
     <section class="grid gap-8 lg:grid-cols-[1.1fr_1fr] items-center pt-4 sm:pt-10">
       <div class="space-y-5">

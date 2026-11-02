@@ -453,8 +453,10 @@ fn api_router(state: AppState) -> Router {
         // SSO/OAuth2 (public)
         .route("/auth/sso/login", get(routes::oauth::sso_login))
         .route("/auth/sso/callback", get(routes::oauth::sso_callback))
-        .route("/auth/sso/info", get(routes::oauth::sso_info))
-        // Directory & search (public)
+        .route("/auth/sso/info", get(routes::oauth::sso_info));
+
+    // Directory & search: public unless RPODDER_PUBLIC_DIRECTORY=false
+    let directory = Router::new()
         .route("/search.json", get(routes::directory::search))
         .route("/api/2/search/all", get(routes::directory::search_all))
         .route(
@@ -480,11 +482,19 @@ fn api_router(state: AppState) -> Router {
             "/api/2/tag/{tag}/{count_json}",
             get(routes::directory::podcasts_for_tag),
         );
+    let directory = if state.config.public_directory {
+        directory
+    } else {
+        directory.route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
+            state.clone(),
+        )))
+    };
 
     #[allow(unused_mut)]
     let mut app = authenticated
         .merge(admin)
         .merge(public)
+        .merge(directory)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .layer(ConcurrencyLimitLayer::new(200)) // Max 200 concurrent requests

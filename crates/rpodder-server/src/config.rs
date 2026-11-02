@@ -19,6 +19,12 @@ pub struct AppConfig {
     #[serde(default = "default_registration")]
     pub registration: String,
 
+    /// Directory and search routes answer anonymous callers, as on gpodder.net.
+    /// `false` keeps them behind login: they show what this server's users
+    /// subscribe to.
+    #[serde(default = "default_true")]
+    pub public_directory: bool,
+
     /// Base URL for links in emails and OAuth callbacks (e.g. "https://pod.example.com")
     #[serde(default)]
     pub base_url: String,

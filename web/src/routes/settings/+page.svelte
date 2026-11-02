@@ -39,7 +39,7 @@
     if (!browser || loaded) return;
     loaded = true;
     if (!auth.username) { goto('/login'); return; }
-    getMe().then(m => { me = m; });
+    getMe().then(m => { me = m; }).catch(() => {});
     loadWebSettings(auth.username);
   });
 

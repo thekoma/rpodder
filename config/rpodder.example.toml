@@ -20,6 +20,10 @@ port = 3005
 # Registration mode: "open" (anyone), "closed" (admin only), "invite" (email confirmation)
 registration = "open"
 
+# Let anyone browse and search the podcasts this server's users subscribe to
+# (default: true). false keeps the directory and search behind login.
+# public_directory = true
+
 # Session duration in days (applies to both regular and SSO login)
 # session_duration_days = 90
 
