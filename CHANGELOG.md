@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.11.0 — 2026-11-03
+
+### Added
+- **Keep the directory behind login** — the directory, search, toplist, trending, tag and podcast-data endpoints are public, as on gpodder.net, so on a private instance anyone could see which podcasts its users follow. Set `RPODDER_PUBLIC_DIRECTORY=false` and they answer only a logged-in user (`401` otherwise); the web UI then sends logged-out visitors from the landing page and Discover to the login page. Syncing is unaffected; a podcast app that searches without sending its credentials gets `401`. Requested by Peter Gille.
+
+### Fixed
+- **Release binaries needed the repo's `migrations/` directory** — `rpodder migrate` and `rpodder serve` read the SQL migrations from disk, so a downloaded binary failed with "No such file or directory" outside a checkout. The migrations are now built into the binary and `RPODDER_MIGRATIONS_DIR` is gone; a leftover setting is ignored, and systemd installs no longer need `/usr/share/rpodder/migrations`. Reported by Frans de Jonge.
+- **Login page while logged in** — opening `/login` with a live session now goes to your subscriptions, and a session that ended while the tab was closed sends you to the login page with the "session expired" notice instead of showing empty lists.
+
 ## 2026.10.7 — 2026-10-29
 
 ### Security
