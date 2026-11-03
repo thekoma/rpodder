@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026.11.1 — 2026-11-03
+
+### Changed
+- **Dependency updates** — tokio 1.54, uuid 1.29 and encoding_rs 0.8.44, all compatible releases; no configuration or behaviour changes (#27).
+
 ## 2026.11.0 — 2026-11-03
 
 ### Added
