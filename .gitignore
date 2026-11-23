@@ -12,7 +12,6 @@
 /web/dist/
 /web/node_modules/
 /web/.svelte-kit/
-/web/bun.lock
 
 # Reference projects (separate git repos, not part of rpodder)
 /mygpo/

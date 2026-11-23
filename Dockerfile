@@ -11,7 +11,7 @@
 FROM --platform=$BUILDPLATFORM oven/bun:1 AS frontend
 
 WORKDIR /web
-COPY web/package.json web/bun.lock* ./
+COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY web/ .
 RUN bun run build
