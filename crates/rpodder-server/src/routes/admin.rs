@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use rpodder_core::repo::{DeviceRepo, PodcastRepo, SubscriptionRepo, UserRepo};
 
 use crate::middleware::auth::{
-    ACTIVATE_TOKEN_PREFIX, AuthUser, RESET_TOKEN_PREFIX, SSO_SESSION_PREFIX,
+    ACTIVATE_TOKEN_PREFIX, AuthUser, AuthVia, RESET_TOKEN_PREFIX, SSO_SESSION_PREFIX,
 };
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
@@ -420,6 +420,11 @@ pub async fn admin_set_password(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     revoke_sessions(&state, user.id, Revoke::Logins { keep }).await?;
+    // Setting another user's password is recovery. An admin's own keeps its
+    // app passwords, as `change_password` does.
+    if user.id != auth_user.0.id {
+        revoke_app_passwords(&state, user.id).await?;
+    }
 
     tracing::info!(username = %username, "admin set password");
     Ok(StatusCode::OK)
@@ -440,9 +445,13 @@ pub struct ChangePasswordRequest {
 pub async fn change_password(
     State(state): State<AppState>,
     Extension(auth_user): Extension<AuthUser>,
+    Extension(AuthVia(method)): Extension<AuthVia>,
     headers: axum::http::HeaderMap,
     Json(body): Json<ChangePasswordRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    if method.is_app() {
+        return Ok(app_password_refused().into_response());
+    }
     let user = &auth_user.0;
     let current = crate::middleware::auth::session_token(&headers);
 
@@ -579,9 +588,28 @@ pub async fn confirm_password_reset(
     })
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     revoke_sessions(&state, session.user_id, Revoke::Logins { keep: None }).await?;
+    revoke_app_passwords(&state, session.user_id).await?;
 
     tracing::info!(user_id = %session.user_id, "password reset confirmed");
     Ok(Json(serde_json::json!({ "status": "password reset" })))
+}
+
+/// Recovery after a reset. The user's app passwords, their sessions and
+/// pending login flows go, so a credential an intruder minted doesn't survive.
+async fn revoke_app_passwords(state: &AppState, user_id: uuid::Uuid) -> Result<(), StatusCode> {
+    with_repo!(state, |repo| {
+        rpodder_core::repo::AppPasswordRepo::delete_all_for_user(&repo, user_id).await
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(())
+}
+
+/// The `403` for app-password callers on routes that manage credentials.
+pub fn app_password_refused() -> (StatusCode, Json<serde_json::Value>) {
+    (
+        StatusCode::FORBIDDEN,
+        Json(serde_json::json!({ "error": "not allowed with an app password" })),
+    )
 }
 
 /// What `revoke_sessions` deletes.

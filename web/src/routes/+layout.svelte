@@ -29,7 +29,7 @@
   ];
 
   let path = $derived(page.url.pathname);
-  let authPage = $derived(['/login', '/register', '/reset-password'].includes(path));
+  let authPage = $derived(['/login', '/login/flow', '/register', '/reset-password'].includes(path));
   let hasPlayer = $derived(auth.loggedIn && !!player.episode);
 
   // Close the account menu on navigation.

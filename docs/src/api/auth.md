@@ -165,6 +165,42 @@ POST /api/2/me/password
 
 On success every other session of the user is revoked: other browsers and apps that use cookies must log in again. The session making the change stays logged in (with Basic Auth there is none to keep). A pending activation link stays valid.
 
+App passwords keep working, sessions created with them are revoked like the others. Callers authenticated by an app password get 403 `{"error": "not allowed with an app password"}`.
+
+## App passwords
+
+App passwords are per-app credentials. They work wherever HTTP Basic Auth works, except on the routes below, `POST /api/2/me/password`, the [login flow](nextcloud.md) answers and the admin API, which answer 403 `{"error": "not allowed with an app password"}`. A session created with `login.json` and an app password is treated the same and ends when the app password is revoked.
+
+Changing your own password keeps them. Completing a password reset, or an admin setting the password of another user, deletes all of the user's app passwords, their sessions and pending login requests.
+
+### List
+
+```
+GET /api/2/me/app-passwords
+```
+
+**Response**: `[{"id": "…", "name": "AntennaPod/3.4.0", "created_at": "…", "last_used_at": "…"}]`, newest first. `last_used_at` is updated at most once an hour and is `null` before the first use.
+
+### Create
+
+```
+POST /api/2/me/app-passwords
+```
+
+**Body**: `{"name": "Kasts", "current_password": "…"}`
+
+`name` is 1 to 100 characters. `current_password` may be omitted only in a session opened through SSO, as for changing the password. Errors are 400 for the name and 403 with `{"error": "current password required"}` or `{"error": "wrong password"}`.
+
+**Response** (201): `{"id": "…", "name": "Kasts", "created_at": "…", "password": "…"}`. The password is shown only here.
+
+### Revoke
+
+```
+DELETE /api/2/me/app-passwords/{id}
+```
+
+204 on success, 404 when the id isn't one of yours, 400 for a malformed id.
+
 ## Password reset (request)
 
 ```
@@ -184,6 +220,8 @@ POST /api/2/password-reset/confirm
 **Body**: `{"token": "token-from-email", "new_password": "newpass123"}`
 
 On success every session of the user is revoked, so all web browsers and apps that use cookies must log in again (Basic Auth clients just use the new password). Reset and activation tokens are single-purpose: sending one as the `sessionid` cookie returns 401.
+
+The user's [app passwords](#app-passwords) and pending login requests are deleted too.
 
 ## HTTPS upgrades
 

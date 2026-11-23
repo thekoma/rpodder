@@ -10,7 +10,7 @@ use uuid::Uuid;
 use rpodder_core::repo::SessionRepo;
 use rpodder_core::types::Session;
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{APP_SESSION_PREFIX, AuthUser, AuthVia};
 use crate::state::AppState;
 use rpodder_db::{Db, postgres::PgRepo, sqlite::SqliteRepo};
 
@@ -22,17 +22,25 @@ pub async fn login(
     State(state): State<AppState>,
     Path(username): Path<String>,
     Extension(auth_user): Extension<AuthUser>,
+    Extension(AuthVia(method)): Extension<AuthVia>,
 ) -> Result<Response, StatusCode> {
     // Verify the path username matches the authenticated user
     if auth_user.0.username.to_lowercase() != username.to_lowercase() {
         return Err(StatusCode::FORBIDDEN);
     }
 
+    // A session created with an app password stays tied to it, so it can't
+    // outlive a revoke or be used to manage credentials.
+    let token = match method.app_password_id() {
+        Some(id) => format!("{APP_SESSION_PREFIX}{id}-{}", generate_token()),
+        None => generate_token(),
+    };
+
     let duration_days = state.config.session_duration_days;
     let session = Session {
         id: Uuid::now_v7(),
         user_id: auth_user.0.id,
-        token: generate_token(),
+        token,
         expires_at: Utc::now() + Duration::days(i64::from(duration_days)),
         created_at: Utc::now(),
     };

@@ -113,6 +113,11 @@ Every device that synced with rpodder, with its id, type and number of subscript
 - **Web player**: position sync and sync group, see above.
 - **Your data**: download all your subscriptions as OPML, a plain list of URLs, or JSON.
 - **Password**: change your password. Changing it signs out every other browser and app that uses a session. Leave "Current password" empty only if you signed in with single sign-on and never set one.
+- **App passwords**: passwords for single apps, listed with when each was last used. Create one for an app that asks for a password, or revoke one to sign an app out. Apps that sign in through the Nextcloud provider get one automatically.
+
+### Granting access to an app
+
+When an app signs in with the Nextcloud provider, the browser opens a page that asks you to grant it access. Sign in first if needed, and the page comes back after the login. It shows your account, the name the app reported and when it asked. Only grant access if you just started signing in to that app. The app then receives its own app password and syncs.
 
 ### Admin Panel
 

@@ -11,6 +11,8 @@ Any authenticated user can change their password from **Settings** (`/settings`)
 
 Changing the password logs out every other browser and app that uses a session cookie; they have to log in again. Apps that send the password with every request (HTTP Basic Auth) just need the new password. The same happens after a password reset or when an admin sets the password.
 
+App passwords keep working after a self-service change. A password reset by email, or an admin setting the password of another user, deletes all of the user's app passwords and the sessions created with them, so an app password an intruder created doesn't survive the recovery.
+
 API:
 
 ```bash

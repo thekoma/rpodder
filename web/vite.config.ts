@@ -30,6 +30,7 @@ export default defineConfig({
       '/health': 'http://localhost:3006',
       '/suggestions': 'http://localhost:3006',
       '/auth': 'http://localhost:3006',
+      '/index.php': 'http://localhost:3006',
     }
   }
 });

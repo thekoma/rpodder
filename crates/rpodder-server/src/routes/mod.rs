@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod app_passwords;
 pub mod auth;
 pub mod chapters;
 pub mod devices;
@@ -8,6 +9,7 @@ pub mod favorites;
 pub mod health;
 pub mod helpers;
 pub mod lists;
+pub mod nextcloud;
 pub mod oauth;
 pub mod registration;
 pub mod settings;

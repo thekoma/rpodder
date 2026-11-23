@@ -367,3 +367,32 @@ pub struct Session {
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
+
+// ---------------------------------------------------------------------------
+// App passwords and Nextcloud Login Flow v2
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppPassword {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    /// SHA-256 of the token, lowercase hex.
+    pub token_hash: String,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginFlow {
+    pub id: Uuid,
+    pub poll_token_hash: String,
+    pub login_token_hash: String,
+    /// The requesting app's User-Agent, as reported by the app.
+    pub client_name: String,
+    /// The user who granted access, `None` while pending.
+    pub user_id: Option<Uuid>,
+    pub redeemed_at: Option<DateTime<Utc>>,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
