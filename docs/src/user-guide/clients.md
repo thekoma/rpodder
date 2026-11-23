@@ -6,7 +6,7 @@ rpodder implements the [gpodder.net API](https://gpoddernet.readthedocs.io/), so
 
 ### AntennaPod (Android)
 
-**Status**: Fully tested and working with the gpodder.net provider. The Nextcloud provider is implemented against AntennaPod's client code and covered by tests that replay its requests, but has not been tested on a device yet.
+**Status**: Fully tested and working with both providers. The Nextcloud provider was tested with AntennaPod 3.12.3 on Android (sign-in, subscriptions and play positions in both directions, revoking).
 
 **Nextcloud** signs in through the browser, so it works with SSO and never stores your password in the app.
 
