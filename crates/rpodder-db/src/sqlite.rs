@@ -1949,6 +1949,346 @@ impl From<SqliteSessionRow> for Session {
 }
 
 // ---------------------------------------------------------------------------
+// AppPasswordRepo
+// ---------------------------------------------------------------------------
+
+fn sqlite_err(e: sqlx::Error) -> AppError {
+    AppError::Internal(e.to_string())
+}
+
+impl repo::AppPasswordRepo for SqliteRepo {
+    async fn create(&self, p: &AppPassword) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO app_passwords (id, user_id, name, token_hash, created_at, last_used_at)
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid_str(&p.id))
+        .bind(uuid_str(&p.user_id))
+        .bind(&p.name)
+        .bind(&p.token_hash)
+        .bind(p.created_at.to_rfc3339())
+        .bind(p.last_used_at.map(|t| t.to_rfc3339()))
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<AppPassword>> {
+        let rows: Vec<SqliteAppPasswordRow> = sqlx::query_as(
+            "SELECT id, user_id, name, token_hash, created_at, last_used_at FROM app_passwords
+             WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+        )
+        .bind(uuid_str(&user_id))
+        .fetch_all(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn find_by_token_hash(&self, token_hash: &str) -> Result<Option<AppPassword>> {
+        let row: Option<SqliteAppPasswordRow> = sqlx::query_as(
+            "SELECT id, user_id, name, token_hash, created_at, last_used_at FROM app_passwords WHERE token_hash = ?"
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn exists_for_user(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT 1 FROM app_passwords WHERE id = ? AND user_id = ?")
+                .bind(uuid_str(&id))
+                .bind(uuid_str(&user_id))
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(sqlite_err)?;
+        Ok(row.is_some())
+    }
+
+    async fn touch(&self, id: Uuid, now: DateTime<Utc>) -> Result<()> {
+        let stale = (now - chrono::Duration::hours(1)).to_rfc3339();
+        sqlx::query(
+            "UPDATE app_passwords SET last_used_at = ?
+             WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)",
+        )
+        .bind(now.to_rfc3339())
+        .bind(uuid_str(&id))
+        .bind(stale)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, user_id: Uuid, id: Uuid) -> Result<bool> {
+        // Every statement runs on `tx` because the pool has a single connection.
+        let mut tx = self.pool.begin().await.map_err(sqlite_err)?;
+        let removed = sqlx::query("DELETE FROM app_passwords WHERE id = ? AND user_id = ?")
+            .bind(uuid_str(&id))
+            .bind(uuid_str(&user_id))
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_err)?
+            .rows_affected();
+        if removed == 0 {
+            return Ok(false);
+        }
+        sqlx::query(
+            "DELETE FROM sessions WHERE user_id = ?1 AND substr(token, 1, length(?2)) = ?2",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(format!("app-{id}-"))
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_err)?;
+        tx.commit().await.map_err(sqlite_err)?;
+        Ok(true)
+    }
+
+    async fn delete_all_for_user(&self, user_id: Uuid) -> Result<u64> {
+        let user = uuid_str(&user_id);
+        let mut tx = self.pool.begin().await.map_err(sqlite_err)?;
+        let removed = sqlx::query("DELETE FROM app_passwords WHERE user_id = ?")
+            .bind(&user)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_err)?
+            .rows_affected();
+        sqlx::query("DELETE FROM sessions WHERE user_id = ? AND substr(token, 1, 4) = 'app-'")
+            .bind(&user)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_err)?;
+        sqlx::query("DELETE FROM login_flows WHERE user_id = ?")
+            .bind(&user)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlite_err)?;
+        tx.commit().await.map_err(sqlite_err)?;
+        Ok(removed)
+    }
+
+    async fn create_flow(&self, f: &LoginFlow) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO login_flows (id, poll_token_hash, login_token_hash, client_name,
+                                      user_id, redeemed_at, expires_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(uuid_str(&f.id))
+        .bind(&f.poll_token_hash)
+        .bind(&f.login_token_hash)
+        .bind(&f.client_name)
+        .bind(f.user_id.as_ref().map(uuid_str))
+        .bind(f.redeemed_at.map(|t| t.to_rfc3339()))
+        .bind(f.expires_at.to_rfc3339())
+        .bind(f.created_at.to_rfc3339())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(())
+    }
+
+    async fn delete_expired_flows(&self, now: DateTime<Utc>) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM login_flows WHERE expires_at <= ?")
+            .bind(now.to_rfc3339())
+            .execute(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+        Ok(result.rows_affected())
+    }
+
+    async fn evict_flows_over(&self, keep: i64, now: DateTime<Utc>) -> Result<u64> {
+        let now_s = now.to_rfc3339();
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM login_flows WHERE expires_at > ?")
+                .bind(&now_s)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(sqlite_err)?;
+        let excess = count - keep;
+        if excess <= 0 {
+            return Ok(0);
+        }
+        let result = sqlx::query(
+            "DELETE FROM login_flows WHERE id IN (
+                 SELECT id FROM login_flows
+                 WHERE user_id IS NULL AND expires_at > ?
+                 ORDER BY created_at, id LIMIT ?)",
+        )
+        .bind(&now_s)
+        .bind(excess)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(result.rows_affected())
+    }
+
+    async fn find_flow_by_login_hash(
+        &self,
+        login_token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LoginFlow>> {
+        let row: Option<SqliteLoginFlowRow> = sqlx::query_as(
+            "SELECT id, poll_token_hash, login_token_hash, client_name, user_id,
+                    redeemed_at, expires_at, created_at FROM login_flows
+             WHERE login_token_hash = ? AND expires_at > ?",
+        )
+        .bind(login_token_hash)
+        .bind(now.to_rfc3339())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn approve_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>> {
+        let now_s = now.to_rfc3339();
+        sqlx::query(
+            "UPDATE login_flows SET user_id = ?
+             WHERE login_token_hash = ? AND user_id IS NULL AND expires_at > ?",
+        )
+        .bind(uuid_str(&user_id))
+        .bind(login_token_hash)
+        .bind(&now_s)
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        let row: Option<(Option<String>,)> = sqlx::query_as(
+            "SELECT user_id FROM login_flows WHERE login_token_hash = ? AND expires_at > ?",
+        )
+        .bind(login_token_hash)
+        .bind(&now_s)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(row.and_then(|(u,)| u).and_then(|u| u.parse().ok()))
+    }
+
+    async fn deny_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM login_flows
+             WHERE login_token_hash = ? AND expires_at > ? AND redeemed_at IS NULL
+               AND (user_id IS NULL OR user_id = ?)",
+        )
+        .bind(login_token_hash)
+        .bind(now.to_rfc3339())
+        .bind(uuid_str(&user_id))
+        .execute(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    async fn redeem_flow(
+        &self,
+        poll_token_hash: &str,
+        password_id: Uuid,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>> {
+        let now_s = now.to_rfc3339();
+        // Every statement runs on `tx` because the pool has a single connection.
+        // Returning early drops `tx`, which rolls back.
+        let mut tx = self.pool.begin().await.map_err(sqlite_err)?;
+        let flow: Option<(String, String)> = sqlx::query_as(
+            "UPDATE login_flows SET redeemed_at = ?1
+             WHERE poll_token_hash = ?2 AND user_id IS NOT NULL
+               AND redeemed_at IS NULL AND expires_at > ?1
+             RETURNING user_id, client_name",
+        )
+        .bind(&now_s)
+        .bind(poll_token_hash)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlite_err)?;
+        let Some((user, client_name)) = flow else {
+            return Ok(None);
+        };
+        let inserted = sqlx::query(
+            "INSERT INTO app_passwords (id, user_id, name, token_hash, created_at, last_used_at)
+             SELECT ?, id, ?, ?, ?, NULL FROM users WHERE id = ? AND is_active = 1",
+        )
+        .bind(uuid_str(&password_id))
+        .bind(&client_name)
+        .bind(token_hash)
+        .bind(&now_s)
+        .bind(&user)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlite_err)?
+        .rows_affected();
+        if inserted != 1 {
+            return Ok(None);
+        }
+        tx.commit().await.map_err(sqlite_err)?;
+        Ok(user.parse().ok())
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteAppPasswordRow {
+    id: String,
+    user_id: String,
+    name: String,
+    token_hash: String,
+    created_at: String,
+    last_used_at: Option<String>,
+}
+
+impl From<SqliteAppPasswordRow> for AppPassword {
+    fn from(r: SqliteAppPasswordRow) -> Self {
+        AppPassword {
+            id: r.id.parse().unwrap_or_default(),
+            user_id: r.user_id.parse().unwrap_or_default(),
+            name: r.name,
+            token_hash: r.token_hash,
+            created_at: r.created_at.parse().unwrap_or_default(),
+            last_used_at: r.last_used_at.and_then(|t| t.parse().ok()),
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct SqliteLoginFlowRow {
+    id: String,
+    poll_token_hash: String,
+    login_token_hash: String,
+    client_name: String,
+    user_id: Option<String>,
+    redeemed_at: Option<String>,
+    expires_at: String,
+    created_at: String,
+}
+
+impl From<SqliteLoginFlowRow> for LoginFlow {
+    fn from(r: SqliteLoginFlowRow) -> Self {
+        LoginFlow {
+            id: r.id.parse().unwrap_or_default(),
+            poll_token_hash: r.poll_token_hash,
+            login_token_hash: r.login_token_hash,
+            client_name: r.client_name,
+            user_id: r.user_id.and_then(|u| u.parse().ok()),
+            redeemed_at: r.redeemed_at.and_then(|t| t.parse().ok()),
+            expires_at: r.expires_at.parse().unwrap_or_default(),
+            created_at: r.created_at.parse().unwrap_or_default(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -3295,5 +3635,291 @@ mod tests {
         .await
         .unwrap();
         assert!(since_after.is_empty());
+    }
+
+    // === AppPasswordRepo tests ===
+
+    use rpodder_core::repo::AppPasswordRepo;
+
+    fn app_password(user_id: Uuid, token_hash: &str) -> AppPassword {
+        AppPassword {
+            id: Uuid::now_v7(),
+            user_id,
+            name: "AntennaPod".into(),
+            token_hash: token_hash.into(),
+            created_at: Utc::now(),
+            last_used_at: None,
+        }
+    }
+
+    fn flow(poll: &str, login: &str, expires_in: Duration) -> LoginFlow {
+        let now = Utc::now();
+        LoginFlow {
+            id: Uuid::now_v7(),
+            poll_token_hash: poll.into(),
+            login_token_hash: login.into(),
+            client_name: "AntennaPod/3.4".into(),
+            user_id: None,
+            redeemed_at: None,
+            expires_at: now + expires_in,
+            created_at: now,
+        }
+    }
+
+    async fn session(repo: &SqliteRepo, user_id: Uuid, token: &str) {
+        SessionRepo::create(
+            repo,
+            &Session {
+                id: Uuid::now_v7(),
+                user_id,
+                token: token.into(),
+                expires_at: Utc::now() + Duration::hours(1),
+                created_at: Utc::now(),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn has_session(repo: &SqliteRepo, token: &str) -> bool {
+        SessionRepo::find_by_token(repo, token)
+            .await
+            .unwrap()
+            .is_some()
+    }
+
+    #[tokio::test]
+    async fn app_password_create_find_list() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let first = app_password(alice.id, "hash-1");
+        let second = app_password(alice.id, "hash-2");
+        AppPasswordRepo::create(&repo, &first).await.unwrap();
+        AppPasswordRepo::create(&repo, &second).await.unwrap();
+
+        let found = repo.find_by_token_hash("hash-1").await.unwrap().unwrap();
+        assert_eq!(found.id, first.id);
+        assert!(repo.find_by_token_hash("nope").await.unwrap().is_none());
+
+        let listed = AppPasswordRepo::list_for_user(&repo, alice.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            listed.iter().map(|p| p.id).collect::<Vec<_>>(),
+            vec![second.id, first.id]
+        );
+        assert!(repo.exists_for_user(first.id, alice.id).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn app_password_delete_is_scoped_to_owner_and_its_sessions() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let bob = UserRepo::create(&repo, "bob", "h", None).await.unwrap();
+        let mine = app_password(alice.id, "hash-a");
+        let other = app_password(alice.id, "hash-b");
+        AppPasswordRepo::create(&repo, &mine).await.unwrap();
+        AppPasswordRepo::create(&repo, &other).await.unwrap();
+        let mine_session = format!("app-{}-x", mine.id);
+        let other_session = format!("app-{}-x", other.id);
+        session(&repo, alice.id, &mine_session).await;
+        session(&repo, alice.id, &other_session).await;
+        session(&repo, alice.id, "plain").await;
+
+        assert!(
+            !AppPasswordRepo::delete(&repo, bob.id, mine.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            AppPasswordRepo::delete(&repo, alice.id, mine.id)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !AppPasswordRepo::delete(&repo, alice.id, mine.id)
+                .await
+                .unwrap()
+        );
+
+        assert!(!repo.exists_for_user(mine.id, alice.id).await.unwrap());
+        assert!(!has_session(&repo, &mine_session).await);
+        assert!(has_session(&repo, &other_session).await);
+        assert!(has_session(&repo, "plain").await);
+    }
+
+    #[tokio::test]
+    async fn app_password_touch_writes_once_per_hour() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let p = app_password(alice.id, "hash");
+        AppPasswordRepo::create(&repo, &p).await.unwrap();
+        let t0 = Utc::now();
+
+        repo.touch(p.id, t0).await.unwrap();
+        repo.touch(p.id, t0 + Duration::minutes(30)).await.unwrap();
+        let used = repo.find_by_token_hash("hash").await.unwrap().unwrap();
+        assert_eq!(used.last_used_at.unwrap().timestamp(), t0.timestamp());
+
+        repo.touch(p.id, t0 + Duration::minutes(61)).await.unwrap();
+        let used = repo.find_by_token_hash("hash").await.unwrap().unwrap();
+        assert_eq!(
+            used.last_used_at.unwrap().timestamp(),
+            (t0 + Duration::minutes(61)).timestamp()
+        );
+    }
+
+    #[tokio::test]
+    async fn login_flow_approve_redeem_once() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let bob = UserRepo::create(&repo, "bob", "h", None).await.unwrap();
+        repo.create_flow(&flow("poll", "login", Duration::minutes(10)))
+            .await
+            .unwrap();
+        let now = Utc::now();
+
+        assert!(
+            repo.redeem_flow("poll", Uuid::now_v7(), "pw", now)
+                .await
+                .unwrap()
+                .is_none(),
+            "a pending flow can't be redeemed"
+        );
+        assert_eq!(
+            repo.approve_flow("login", alice.id, now).await.unwrap(),
+            Some(alice.id)
+        );
+        assert_eq!(
+            repo.approve_flow("login", bob.id, now).await.unwrap(),
+            Some(alice.id),
+            "the first grant wins"
+        );
+        assert!(!repo.deny_flow("login", bob.id, now).await.unwrap());
+
+        assert_eq!(
+            repo.redeem_flow("poll", Uuid::now_v7(), "pw-1", now)
+                .await
+                .unwrap(),
+            Some(alice.id)
+        );
+        assert!(
+            repo.redeem_flow("poll", Uuid::now_v7(), "pw-2", now)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let created = repo.find_by_token_hash("pw-1").await.unwrap().unwrap();
+        assert_eq!(created.user_id, alice.id);
+        assert_eq!(created.name, "AntennaPod/3.4");
+        assert!(repo.find_by_token_hash("pw-2").await.unwrap().is_none());
+
+        let after = repo
+            .find_flow_by_login_hash("login", now)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(after.redeemed_at.is_some());
+        assert!(
+            !repo.deny_flow("login", alice.id, now).await.unwrap(),
+            "a redeemed flow can't be denied"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_flow_not_redeemed_when_expired_or_user_inactive() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let now = Utc::now();
+
+        repo.create_flow(&flow("p-old", "l-old", Duration::minutes(-1)))
+            .await
+            .unwrap();
+        assert!(
+            repo.approve_flow("l-old", alice.id, now)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        repo.create_flow(&flow("p", "l", Duration::minutes(10)))
+            .await
+            .unwrap();
+        repo.approve_flow("l", alice.id, now).await.unwrap();
+        UserRepo::set_active(&repo, alice.id, false).await.unwrap();
+        assert!(
+            repo.redeem_flow("p", Uuid::now_v7(), "pw", now)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let flow = repo
+            .find_flow_by_login_hash("l", now)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(flow.redeemed_at.is_none(), "rolled back");
+        assert!(repo.find_by_token_hash("pw").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_all_for_user_also_kills_granted_flows() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let bob = UserRepo::create(&repo, "bob", "h", None).await.unwrap();
+        let p = app_password(alice.id, "hash");
+        AppPasswordRepo::create(&repo, &p).await.unwrap();
+        AppPasswordRepo::create(&repo, &app_password(bob.id, "bob-hash"))
+            .await
+            .unwrap();
+        session(&repo, alice.id, &format!("app-{}-x", p.id)).await;
+        session(&repo, alice.id, "plain").await;
+        repo.create_flow(&flow("p", "l", Duration::minutes(10)))
+            .await
+            .unwrap();
+        let now = Utc::now();
+        repo.approve_flow("l", alice.id, now).await.unwrap();
+
+        assert_eq!(repo.delete_all_for_user(alice.id).await.unwrap(), 1);
+        assert!(repo.find_by_token_hash("hash").await.unwrap().is_none());
+        assert!(repo.find_by_token_hash("bob-hash").await.unwrap().is_some());
+        assert!(!has_session(&repo, &format!("app-{}-x", p.id)).await);
+        assert!(has_session(&repo, "plain").await);
+        assert!(
+            repo.redeem_flow("p", Uuid::now_v7(), "pw", now)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn evict_flows_over_drops_oldest_pending_only() {
+        let repo = setup().await;
+        let alice = UserRepo::create(&repo, "alice", "h", None).await.unwrap();
+        let base = Utc::now();
+        for i in 0..5 {
+            let mut f = flow(&format!("p{i}"), &format!("l{i}"), Duration::minutes(10));
+            f.created_at = base + Duration::seconds(i);
+            repo.create_flow(&f).await.unwrap();
+        }
+        repo.approve_flow("l0", alice.id, base).await.unwrap();
+
+        assert_eq!(repo.evict_flows_over(3, base).await.unwrap(), 2);
+        let left = |h: &'static str| {
+            let repo = repo.clone();
+            async move {
+                repo.find_flow_by_login_hash(h, base)
+                    .await
+                    .unwrap()
+                    .is_some()
+            }
+        };
+        assert!(left("l0").await, "a granted flow is never evicted");
+        assert!(!left("l1").await);
+        assert!(!left("l2").await);
+        assert!(left("l3").await);
+        assert!(left("l4").await);
+        assert_eq!(repo.evict_flows_over(3, base).await.unwrap(), 0);
     }
 }

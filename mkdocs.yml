@@ -89,6 +89,7 @@ nav:
     - Episodes: api/episodes.md
     - Devices: api/devices.md
     - Directory & Search: api/directory.md
+    - Nextcloud: api/nextcloud.md
     - Admin API: api/admin.md
   - Architecture:
     - Overview: architecture/overview.md

@@ -104,7 +104,7 @@ docker compose --profile frontend up -d
 ```
 crates/
   rpodder-core/     Domain types, error types, repo traits, URL normalization, privacy detection
-  rpodder-db/       sqlx implementations for PostgreSQL + SQLite (all 13 repo traits)
+  rpodder-db/       sqlx implementations for PostgreSQL + SQLite (all 14 repo traits)
   rpodder-feed/     Feed fetching (reqwest + retry) & parsing (feed-rs)
   rpodder-server/   axum HTTP server, route handlers, auth, CLI, email, OAuth, web UI embed
 web/                Svelte 5 + SvelteKit + Tailwind v4 (adapter-static → dist/)
@@ -118,7 +118,7 @@ config/             Example config, systemd service
 
 ## Key Design Decisions
 
-- **Repo trait pattern**: `rpodder-core/src/repo.rs` defines 13 async traits. `rpodder-db` implements them for PG + SQLite.
+- **Repo trait pattern**: `rpodder-core/src/repo.rs` defines 14 async traits. `rpodder-db` implements them for PG + SQLite.
 - **Multi-DB via sqlx**: Raw queries with `query_as::<_, Row>()` + `FromRow`. No compile-time macros (no DATABASE_URL needed).
 - **UUID v7**: all entity IDs, time-sorted.
 - **Auth**: HTTP Basic Auth + session cookies (gpodder compat) + OAuth2/OIDC SSO. Admin/user roles with `is_admin` flag.

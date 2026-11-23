@@ -404,3 +404,93 @@ pub trait FavoriteRepo: Send + Sync {
         user_id: Uuid,
     ) -> impl std::future::Future<Output = Result<Vec<Episode>>> + Send;
 }
+
+// ---------------------------------------------------------------------------
+// App passwords and Nextcloud Login Flow v2
+// ---------------------------------------------------------------------------
+
+pub trait AppPasswordRepo: Send + Sync {
+    fn create(
+        &self,
+        password: &AppPassword,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Newest first.
+    fn list_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<Vec<AppPassword>>> + Send;
+    fn find_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> impl std::future::Future<Output = Result<Option<AppPassword>>> + Send;
+    fn exists_for_user(
+        &self,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
+    /// Record a use, at most one write per hour per password.
+    fn touch(
+        &self,
+        id: Uuid,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<()>> + Send;
+    /// Delete the user's password `id` and the sessions created with it.
+    /// `false` (nothing changed) when the user has no such password.
+    fn delete(
+        &self,
+        user_id: Uuid,
+        id: Uuid,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
+    /// Delete all of the user's app passwords, the sessions created with them
+    /// and the user's login flows. Returns the number of passwords removed.
+    fn delete_all_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> impl std::future::Future<Output = Result<u64>> + Send;
+
+    fn create_flow(&self, flow: &LoginFlow)
+    -> impl std::future::Future<Output = Result<()>> + Send;
+    fn delete_expired_flows(
+        &self,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<u64>> + Send;
+    /// Delete the oldest pending flows until at most `keep` unexpired flows
+    /// remain. Approved flows are never evicted. Returns how many were deleted.
+    fn evict_flows_over(
+        &self,
+        keep: i64,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<u64>> + Send;
+    /// The unexpired flow with this login token, in any state.
+    fn find_flow_by_login_hash(
+        &self,
+        login_token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<Option<LoginFlow>>> + Send;
+    /// Grant a pending flow to `user_id`. Returns the flow's user afterwards,
+    /// which differs from `user_id` when someone else granted it first, or
+    /// `None` when there is no unexpired flow.
+    fn approve_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<Option<Uuid>>> + Send;
+    /// Delete an unredeemed flow that is pending or granted by `user_id`.
+    fn deny_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<bool>> + Send;
+    /// Mark the granted flow redeemed and create its app password for the
+    /// granting user, both or neither, and only while that user is active.
+    /// A poll token yields at most one password. Returns the user's id.
+    fn redeem_flow(
+        &self,
+        poll_token_hash: &str,
+        password_id: Uuid,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> impl std::future::Future<Output = Result<Option<Uuid>>> + Send;
+}

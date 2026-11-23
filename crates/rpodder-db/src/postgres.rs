@@ -1843,3 +1843,332 @@ impl repo::SessionRepo for PgRepo {
         Ok(result.rows_affected())
     }
 }
+
+// ---------------------------------------------------------------------------
+// AppPasswordRepo
+// ---------------------------------------------------------------------------
+
+#[derive(sqlx::FromRow)]
+struct AppPasswordRow {
+    id: Uuid,
+    user_id: Uuid,
+    name: String,
+    token_hash: String,
+    created_at: DateTime<Utc>,
+    last_used_at: Option<DateTime<Utc>>,
+}
+
+impl From<AppPasswordRow> for AppPassword {
+    fn from(r: AppPasswordRow) -> Self {
+        AppPassword {
+            id: r.id,
+            user_id: r.user_id,
+            name: r.name,
+            token_hash: r.token_hash,
+            created_at: r.created_at,
+            last_used_at: r.last_used_at,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct LoginFlowRow {
+    id: Uuid,
+    poll_token_hash: String,
+    login_token_hash: String,
+    client_name: String,
+    user_id: Option<Uuid>,
+    redeemed_at: Option<DateTime<Utc>>,
+    expires_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
+impl From<LoginFlowRow> for LoginFlow {
+    fn from(r: LoginFlowRow) -> Self {
+        LoginFlow {
+            id: r.id,
+            poll_token_hash: r.poll_token_hash,
+            login_token_hash: r.login_token_hash,
+            client_name: r.client_name,
+            user_id: r.user_id,
+            redeemed_at: r.redeemed_at,
+            expires_at: r.expires_at,
+            created_at: r.created_at,
+        }
+    }
+}
+
+impl repo::AppPasswordRepo for PgRepo {
+    async fn create(&self, p: &AppPassword) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO app_passwords (id, user_id, name, token_hash, created_at, last_used_at)
+             VALUES ($1, $2, $3, $4, $5, $6)",
+        )
+        .bind(p.id)
+        .bind(p.user_id)
+        .bind(&p.name)
+        .bind(&p.token_hash)
+        .bind(p.created_at)
+        .bind(p.last_used_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_for_user(&self, user_id: Uuid) -> Result<Vec<AppPassword>> {
+        let rows: Vec<AppPasswordRow> = sqlx::query_as(
+            "SELECT id, user_id, name, token_hash, created_at, last_used_at FROM app_passwords
+             WHERE user_id = $1 ORDER BY created_at DESC, id DESC",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+
+    async fn find_by_token_hash(&self, token_hash: &str) -> Result<Option<AppPassword>> {
+        let row: Option<AppPasswordRow> = sqlx::query_as(
+            "SELECT id, user_id, name, token_hash, created_at, last_used_at FROM app_passwords WHERE token_hash = $1"
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn exists_for_user(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        let row: Option<(i32,)> =
+            sqlx::query_as("SELECT 1 FROM app_passwords WHERE id = $1 AND user_id = $2")
+                .bind(id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(db_err)?;
+        Ok(row.is_some())
+    }
+
+    async fn touch(&self, id: Uuid, now: DateTime<Utc>) -> Result<()> {
+        sqlx::query(
+            "UPDATE app_passwords SET last_used_at = $1
+             WHERE id = $2 AND (last_used_at IS NULL OR last_used_at < $3)",
+        )
+        .bind(now)
+        .bind(id)
+        .bind(now - chrono::Duration::hours(1))
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete(&self, user_id: Uuid, id: Uuid) -> Result<bool> {
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        let removed = sqlx::query("DELETE FROM app_passwords WHERE id = $1 AND user_id = $2")
+            .bind(id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+        if removed == 0 {
+            return Ok(false);
+        }
+        sqlx::query(
+            "DELETE FROM sessions WHERE user_id = $1 AND left(token, length($2::text)) = $2::text",
+        )
+        .bind(user_id)
+        .bind(format!("app-{id}-"))
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        tx.commit().await.map_err(db_err)?;
+        Ok(true)
+    }
+
+    async fn delete_all_for_user(&self, user_id: Uuid) -> Result<u64> {
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        let removed = sqlx::query("DELETE FROM app_passwords WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?
+            .rows_affected();
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND left(token, 4) = 'app-'")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        sqlx::query("DELETE FROM login_flows WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err)?;
+        tx.commit().await.map_err(db_err)?;
+        Ok(removed)
+    }
+
+    async fn create_flow(&self, f: &LoginFlow) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO login_flows (id, poll_token_hash, login_token_hash, client_name,
+                                      user_id, redeemed_at, expires_at, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(f.id)
+        .bind(&f.poll_token_hash)
+        .bind(&f.login_token_hash)
+        .bind(&f.client_name)
+        .bind(f.user_id)
+        .bind(f.redeemed_at)
+        .bind(f.expires_at)
+        .bind(f.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete_expired_flows(&self, now: DateTime<Utc>) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM login_flows WHERE expires_at <= $1")
+            .bind(now)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(result.rows_affected())
+    }
+
+    async fn evict_flows_over(&self, keep: i64, now: DateTime<Utc>) -> Result<u64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM login_flows WHERE expires_at > $1")
+                .bind(now)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(db_err)?;
+        let excess = count - keep;
+        if excess <= 0 {
+            return Ok(0);
+        }
+        let result = sqlx::query(
+            "DELETE FROM login_flows WHERE id IN (
+                 SELECT id FROM login_flows
+                 WHERE user_id IS NULL AND expires_at > $1
+                 ORDER BY created_at, id LIMIT $2)",
+        )
+        .bind(now)
+        .bind(excess)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(result.rows_affected())
+    }
+
+    async fn find_flow_by_login_hash(
+        &self,
+        login_token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<LoginFlow>> {
+        let row: Option<LoginFlowRow> = sqlx::query_as(
+            "SELECT id, poll_token_hash, login_token_hash, client_name, user_id,
+                    redeemed_at, expires_at, created_at FROM login_flows
+             WHERE login_token_hash = $1 AND expires_at > $2",
+        )
+        .bind(login_token_hash)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.map(Into::into))
+    }
+
+    async fn approve_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>> {
+        sqlx::query(
+            "UPDATE login_flows SET user_id = $1
+             WHERE login_token_hash = $2 AND user_id IS NULL AND expires_at > $3",
+        )
+        .bind(user_id)
+        .bind(login_token_hash)
+        .bind(now)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        let row: Option<(Option<Uuid>,)> = sqlx::query_as(
+            "SELECT user_id FROM login_flows WHERE login_token_hash = $1 AND expires_at > $2",
+        )
+        .bind(login_token_hash)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(row.and_then(|(u,)| u))
+    }
+
+    async fn deny_flow(
+        &self,
+        login_token_hash: &str,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM login_flows
+             WHERE login_token_hash = $1 AND expires_at > $2 AND redeemed_at IS NULL
+               AND (user_id IS NULL OR user_id = $3)",
+        )
+        .bind(login_token_hash)
+        .bind(now)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(db_err)?;
+        Ok(result.rows_affected() == 1)
+    }
+
+    async fn redeem_flow(
+        &self,
+        poll_token_hash: &str,
+        password_id: Uuid,
+        token_hash: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Option<Uuid>> {
+        // Returning early drops `tx`, which rolls back.
+        let mut tx = self.pool.begin().await.map_err(db_err)?;
+        let flow: Option<(Uuid, String)> = sqlx::query_as(
+            "UPDATE login_flows SET redeemed_at = $1
+             WHERE poll_token_hash = $2 AND user_id IS NOT NULL
+               AND redeemed_at IS NULL AND expires_at > $1
+             RETURNING user_id, client_name",
+        )
+        .bind(now)
+        .bind(poll_token_hash)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_err)?;
+        let Some((user_id, client_name)) = flow else {
+            return Ok(None);
+        };
+        let inserted = sqlx::query(
+            "INSERT INTO app_passwords (id, user_id, name, token_hash, created_at, last_used_at)
+             SELECT $1, id, $2, $3, $4, NULL FROM users WHERE id = $5 AND is_active",
+        )
+        .bind(password_id)
+        .bind(&client_name)
+        .bind(token_hash)
+        .bind(now)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err)?
+        .rows_affected();
+        if inserted != 1 {
+            return Ok(None);
+        }
+        tx.commit().await.map_err(db_err)?;
+        Ok(Some(user_id))
+    }
+}

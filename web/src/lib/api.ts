@@ -623,3 +623,80 @@ export async function getInProgress(limit: number): Promise<PlayItem[]> {
 export async function getPositions(podcastUrl: string): Promise<PlayItem[]> {
   return strictJson<PlayItem[]>(`/api/2/me/positions?podcast=${enc(podcastUrl)}`);
 }
+
+// App passwords and the Nextcloud Login Flow v2
+
+export interface AppPassword {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+/** `'forbidden'` when this session was opened with an app password. */
+export async function getAppPasswords(): Promise<AppPassword[] | 'forbidden'> {
+  const resp = await request('/api/2/me/app-passwords');
+  if (resp.status === 403) return 'forbidden';
+  if (!resp.ok) throw new ApiError(resp.status);
+  return resp.json();
+}
+
+export async function createAppPassword(name: string, currentPassword?: string):
+  Promise<{ ok: true; password: string } | { ok: false; status: number; error: string }> {
+  const body: Record<string, string> = { name };
+  if (currentPassword) body.current_password = currentPassword;
+  const resp = await request('/api/2/me/app-passwords', { method: 'POST', body: JSON.stringify(body) });
+  if (resp.ok) {
+    const data = await resp.json();
+    return { ok: true, password: data.password };
+  }
+  let error = 'Could not create the app password.';
+  try {
+    const data = await resp.json();
+    if (data?.error) error = data.error;
+  } catch { /* keep the generic message */ }
+  return { ok: false, status: resp.status, error };
+}
+
+export async function deleteAppPassword(id: string): Promise<boolean> {
+  const resp = await request(`/api/2/me/app-passwords/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return resp.ok;
+}
+
+export interface FlowInfo {
+  client_name: string;
+  created_at: string;
+  approved: boolean;
+  username: string;
+}
+
+export type FlowFailure = 'gone' | 'unauthenticated' | 'forbidden' | 'error';
+
+function flowFailure(status: number): FlowFailure {
+  if (status === 401) return 'unauthenticated';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'gone';
+  return 'error';
+}
+
+export async function lookupLoginFlow(token: string): Promise<FlowInfo | FlowFailure> {
+  let resp: Response;
+  try {
+    resp = await request('/api/2/me/login-flows/lookup', { method: 'POST', body: JSON.stringify({ token }) });
+  } catch {
+    return 'error';
+  }
+  return resp.ok ? resp.json() : flowFailure(resp.status);
+}
+
+export async function answerLoginFlow(token: string, approve: boolean): Promise<'ok' | 'taken' | FlowFailure> {
+  let resp: Response;
+  try {
+    resp = await request('/api/2/me/login-flows/answer', { method: 'POST', body: JSON.stringify({ token, approve }) });
+  } catch {
+    return 'error';
+  }
+  if (resp.ok) return 'ok';
+  if (resp.status === 409) return 'taken';
+  return flowFailure(resp.status);
+}

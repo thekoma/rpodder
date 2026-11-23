@@ -6,6 +6,7 @@ mod directory_access;
 mod episode_sync;
 mod feed_refresh;
 mod holdings;
+mod nextcloud_login;
 mod opml_export;
 mod subscription_sync;
 mod web_player;

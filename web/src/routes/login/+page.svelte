@@ -7,6 +7,7 @@
   import { browser } from '$app/env';
   import { page } from '$app/state';
   import AuthFrame from '#lib/components/AuthFrame.svelte';
+  import { takeNext } from '#lib/navigation.js';
 
   let username = $state('');
   let password = $state('');
@@ -18,7 +19,7 @@
   $effect(() => {
     if (!browser) return;
     // Already signed in when the page opens (not after the login below): the library is home.
-    if (untrack(() => auth.loggedIn)) { goto('/subscriptions', { replaceState: true }); return; }
+    if (untrack(() => auth.loggedIn)) { goto(takeNext(location.origin) ?? '/subscriptions', { replaceState: true }); return; }
     getSsoInfo().then(info => { ssoInfo = info; });
   });
 
@@ -33,7 +34,7 @@
       auth.login(username);
       const me = await getMe().catch(() => null);
       if (me) auth.setAdmin(me.is_admin);
-      goto('/subscriptions');
+      goto(takeNext(location.origin) ?? '/subscriptions');
     } else {
       error = "That username and password don't match an account.";
     }

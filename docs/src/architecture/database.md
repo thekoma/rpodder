@@ -9,7 +9,7 @@ rpodder supports PostgreSQL and SQLite with identical feature sets. The database
 | Table | Description |
 |-------|-------------|
 | `users` | User accounts (username, password hash, email, is_active, is_admin) |
-| `sessions` | Login sessions and token storage (auth, activation, password reset) |
+| `sessions` | Login sessions and token storage (auth, activation, password reset). Sessions created with an app password start with `app-{id}-` |
 | `devices` | User devices with device_id, caption, type |
 | `podcasts` | Podcast metadata (title, description, author, logo, subscribers) |
 | `podcast_urls` | Maps feed URLs to podcasts (supports redirects, multiple URLs) |
@@ -24,6 +24,8 @@ rpodder supports PostgreSQL and SQLite with identical feature sets. The database
 | `podcast_lists` | User-created podcast lists |
 | `chapters` | Podcast chapter marks |
 | `favorites` | Favorited episodes |
+| `app_passwords` | Per-app credentials, SHA-256 of the token only |
+| `login_flows` | Nextcloud Login Flow v2 requests, pending or granted |
 
 ### SQLite-specific
 

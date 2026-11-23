@@ -483,6 +483,9 @@ async fn basic_login_opens_a_session_while_the_credentials_hold() {
         axum::extract::State(state),
         axum::extract::Path("alice".to_string()),
         axum::Extension(verified),
+        axum::Extension(crate::middleware::auth::AuthVia(
+            crate::middleware::auth::AuthMethod::Password,
+        )),
     )
     .await;
     assert_eq!(refused.unwrap_err(), StatusCode::UNAUTHORIZED);

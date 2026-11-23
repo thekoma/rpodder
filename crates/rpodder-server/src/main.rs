@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use axum::{
     Router, middleware as axum_mw,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use clap::{Parser, Subcommand};
 use tower::limit::ConcurrencyLimitLayer;
@@ -382,6 +382,40 @@ fn api_router(state: AppState) -> Router {
             "/api/2/me/upgrades",
             get(routes::admin::subscription_upgrades),
         )
+        // App passwords and the browser side of the Nextcloud Login Flow v2
+        .route(
+            "/api/2/me/app-passwords",
+            get(routes::app_passwords::list).post(routes::app_passwords::create),
+        )
+        .route(
+            "/api/2/me/app-passwords/{id}",
+            delete(routes::app_passwords::delete),
+        )
+        .route(
+            "/api/2/me/login-flows/lookup",
+            post(routes::app_passwords::flow_lookup),
+        )
+        .route(
+            "/api/2/me/login-flows/answer",
+            post(routes::app_passwords::flow_answer),
+        )
+        // Nextcloud gPodder Sync API (AntennaPod, Podcini)
+        .route(
+            "/index.php/apps/gpoddersync/subscriptions",
+            get(routes::nextcloud::subscriptions),
+        )
+        .route(
+            "/index.php/apps/gpoddersync/subscription_change/create",
+            post(routes::nextcloud::subscription_change),
+        )
+        .route(
+            "/index.php/apps/gpoddersync/episode_action",
+            get(routes::nextcloud::episode_actions),
+        )
+        .route(
+            "/index.php/apps/gpoddersync/episode_action/create",
+            post(routes::nextcloud::episode_action_create),
+        )
         .route_layer(axum_mw::from_fn(middleware::auth::require_auth_layer(
             state.clone(),
         )));
@@ -453,7 +487,16 @@ fn api_router(state: AppState) -> Router {
         // SSO/OAuth2 (public)
         .route("/auth/sso/login", get(routes::oauth::sso_login))
         .route("/auth/sso/callback", get(routes::oauth::sso_callback))
-        .route("/auth/sso/info", get(routes::oauth::sso_info));
+        .route("/auth/sso/info", get(routes::oauth::sso_info))
+        // Nextcloud Login Flow v2
+        .route(
+            "/index.php/login/v2",
+            post(routes::nextcloud::start_login_flow),
+        )
+        .route(
+            "/index.php/login/v2/poll",
+            post(routes::nextcloud::poll_login_flow),
+        );
 
     // Directory & search: public unless RPODDER_PUBLIC_DIRECTORY=false
     let directory = Router::new()

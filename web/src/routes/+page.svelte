@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { browser } from '$app/env';
   import Cover from '#lib/components/Cover.svelte';
+  import { takeNext } from '#lib/navigation.js';
 
   let topPodcasts = $state<PodcastInfo[]>([]);
   let loading = $state(true);
@@ -13,8 +14,8 @@
 
   $effect(() => {
     if (!browser) return;
-    // Signed in, the library is home.
-    if (auth.loggedIn) { goto('/subscriptions', { replaceState: true }); return; }
+    // The SSO callback lands here, so a login started elsewhere returns there.
+    if (auth.loggedIn) { goto(takeNext(location.origin) ?? '/subscriptions', { replaceState: true }); return; }
     if (loaded) return;
     loaded = true;
     getSsoInfo().then((info) => {

@@ -1,7 +1,11 @@
 <script lang="ts">
   import { FileDown, FileText, Braces, TriangleAlert } from '@lucide/svelte';
   import { auth, isAuthError, sessionExpired } from '#lib/auth.svelte.js';
-  import { changeMyPassword, getMe, type MeInfo } from '#lib/api.js';
+  import {
+    changeMyPassword, createAppPassword, deleteAppPassword, getAppPasswords, getMe,
+    type AppPassword, type MeInfo,
+  } from '#lib/api.js';
+  import { formatDate } from '#lib/format.js';
   import { goto } from '$app/navigation';
   import { browser } from '$app/env';
   import { player } from '#lib/player.svelte.js';
@@ -41,7 +45,75 @@
     if (!auth.username) { goto('/login'); return; }
     getMe().then(m => { me = m; }).catch(() => {});
     loadWebSettings(auth.username);
+    loadAppPasswords(auth.username);
   });
+
+  // App passwords
+  let appPasswords = $state<AppPassword[] | null>(null);
+  let appPasswordsForbidden = $state(false);
+  let appPasswordsLoadError = $state('');
+  let appName = $state('');
+  let appCurrentPassword = $state('');
+  let appError = $state('');
+  let creatingApp = $state(false);
+  let newAppPassword = $state<string | null>(null);
+
+  async function loadAppPasswords(username: string) {
+    try {
+      const result = await getAppPasswords();
+      // Checked before isAuthError, which would treat this 403 as an expired session.
+      if (result === 'forbidden') { appPasswordsForbidden = true; return; }
+      appPasswords = result;
+      appPasswordsLoadError = '';
+    } catch (e) {
+      if (isAuthError(e)) { sessionExpired(username); return; }
+      appPasswordsLoadError = "Couldn't load your app passwords.";
+    }
+  }
+
+  async function handleCreateAppPassword(e: Event) {
+    e.preventDefault();
+    const username = auth.username;
+    if (!username) return;
+    appError = '';
+    newAppPassword = null;
+    creatingApp = true;
+    const result = await createAppPassword(appName.trim(), appCurrentPassword || undefined);
+    creatingApp = false;
+    if (result.ok) {
+      newAppPassword = result.password;
+      appName = '';
+      appCurrentPassword = '';
+      await loadAppPasswords(username);
+    } else if (result.status === 401) {
+      sessionExpired(username);
+    } else {
+      appError = result.error === 'current password required'
+        ? 'Enter your current password.'
+        : result.error === 'wrong password'
+          ? 'The current password is wrong.'
+          : result.error;
+    }
+  }
+
+  async function revokeAppPassword(p: AppPassword) {
+    const username = auth.username;
+    if (!username) return;
+    if (!confirm(`Revoke “${p.name}”? Apps using it stop syncing until you sign in again.`)) return;
+    if (await deleteAppPassword(p.id)) notify('App password revoked');
+    else notify("Couldn't revoke the app password");
+    await loadAppPasswords(username);
+  }
+
+  async function copyNewAppPassword() {
+    if (!newAppPassword) return;
+    try {
+      await navigator.clipboard.writeText(newAppPassword);
+      notify('Copied');
+    } catch {
+      notify("Couldn't copy, select it instead");
+    }
+  }
 
   async function loadWebSettings(username: string) {
     try {
@@ -238,6 +310,63 @@
           {loading ? 'Changing…' : 'Change password'}
         </button>
       </form>
+    </section>
+
+    <!-- App passwords -->
+    <section class="grid gap-4 md:grid-cols-[16rem_1fr] py-7">
+      {@render section('App passwords', 'Let a podcast app sync without your password. Apps that sign in through Nextcloud sync get one automatically.')}
+      <div class="space-y-5 max-w-lg">
+        {#if appPasswordsForbidden}
+          <p class="text-sm">Sign in with your password to manage app passwords.</p>
+        {:else if appPasswordsLoadError}
+          <p class="text-sm text-danger">{appPasswordsLoadError}</p>
+        {:else if !appPasswords}
+          <div class="space-y-3" aria-busy="true"><div class="skeleton h-5 w-2/3"></div></div>
+        {:else}
+          {#if appPasswords.length === 0}
+            <p class="text-sm text-ink-2">No app passwords yet.</p>
+          {:else}
+            <ul class="panel divide-y divide-rule text-sm">
+              {#each appPasswords as p (p.id)}
+                <li class="flex items-center gap-3 p-3">
+                  <div class="flex-1 min-w-0">
+                    <p class="font-semibold truncate">{p.name}</p>
+                    <p class="text-ink-3">Created {formatDate(p.created_at)} · last used {p.last_used_at ? formatDate(p.last_used_at) : 'never'}</p>
+                  </div>
+                  <button type="button" onclick={() => revokeAppPassword(p)} class="btn btn-sm btn-secondary shrink-0">Revoke</button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+
+          {#if newAppPassword}
+            <div class="space-y-1.5">
+              <label for="new-app-password" class="label">New app password</label>
+              <div class="flex gap-2">
+                <input id="new-app-password" type="text" readonly value={newAppPassword} class="field flex-1 min-w-0 font-mono" />
+                <button type="button" onclick={copyNewAppPassword} class="btn btn-secondary shrink-0">Copy</button>
+              </div>
+              <p class="hint">Shown once. Use it instead of your password in podcast apps.</p>
+            </div>
+          {/if}
+
+          <form onsubmit={handleCreateAppPassword} class="space-y-4 max-w-sm">
+            <div>
+              <label for="app-name" class="label">Name</label>
+              <input id="app-name" type="text" bind:value={appName} required maxlength="100" placeholder="Kasts on my laptop" class="field" />
+            </div>
+            <div>
+              <label for="app-current-password" class="label">Current password</label>
+              <input id="app-current-password" type="password" bind:value={appCurrentPassword} autocomplete="current-password" class="field" />
+              <p class="hint mt-1">Not needed if you signed in with single sign-on.</p>
+            </div>
+            {#if appError}<p class="text-sm text-danger" role="alert">{appError}</p>{/if}
+            <button type="submit" disabled={creatingApp} class="btn btn-primary">
+              {creatingApp ? 'Creating…' : 'Create app password'}
+            </button>
+          </form>
+        {/if}
+      </div>
     </section>
   </div>
 </div>

@@ -18,7 +18,7 @@ No external dependencies beyond `chrono`, `uuid`, `serde`, `url`, `thiserror`. T
 ### Key files
 
 - `types.rs` — all domain structs: `User`, `Device`, `Podcast`, `Episode`, `Subscription`, `EpisodeAction`, `Session`, `SyncGroup`, `Setting`, `PodcastList`, `Chapter`, `Favorite`
-- `repo.rs` — 13 async traits: `UserRepo`, `SessionRepo`, `DeviceRepo`, `PodcastRepo`, `EpisodeRepo`, `SubscriptionRepo`, `EpisodeActionRepo`, `SyncGroupRepo`, `TagRepo`, `SettingsRepo`, `PodcastListRepo`, `ChapterRepo`, `FavoriteRepo`
+- `repo.rs` — 14 async traits: `UserRepo`, `SessionRepo`, `DeviceRepo`, `PodcastRepo`, `EpisodeRepo`, `SubscriptionRepo`, `EpisodeActionRepo`, `SyncGroupRepo`, `TagRepo`, `SettingsRepo`, `PodcastListRepo`, `ChapterRepo`, `FavoriteRepo`, `AppPasswordRepo`
 - `error.rs` — `AppError` enum with `NotFound`, `Conflict`, `Internal` variants
 - `url.rs` — URL normalization (lowercase host, strip trailing slashes)
 - `privacy.rs` — heuristic detection of private/token URLs
@@ -27,7 +27,7 @@ No external dependencies beyond `chrono`, `uuid`, `serde`, `url`, `thiserror`. T
 
 **Database implementations for PostgreSQL and SQLite.**
 
-Implements all 13 repository traits from `rpodder-core` for both backends. Uses `sqlx` with runtime queries (no compile-time macros).
+Implements all 14 repository traits from `rpodder-core` for both backends. Uses `sqlx` with runtime queries (no compile-time macros).
 
 ### Key files
 

@@ -12,6 +12,7 @@ Most endpoints require authentication. rpodder supports:
 
 - **HTTP Basic Auth** — standard for podcast clients
 - **Session cookies** — used by the web UI after login
+- **App passwords**, per-app credentials sent like a password over Basic Auth
 
 See [Authentication](auth.md) for details.
 
@@ -28,6 +29,7 @@ All API responses use JSON. The `.json` suffix in endpoint paths is for gpodder.
 | [Episodes](episodes.md) | Yes | Upload/download episode actions |
 | [Devices](devices.md) | Yes | Device management, sync groups |
 | [Directory](directory.md) | No | Search, toplist, tags, trending |
+| [Nextcloud](nextcloud.md) | Partial | Login Flow v2 and gPodder Sync for AntennaPod and Podcini |
 | [Admin](admin.md) | Admin only | User management, stats, feeds |
 
 ## gpodder.net compatibility

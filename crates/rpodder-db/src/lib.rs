@@ -98,6 +98,7 @@ const MIGRATIONS: &[Migration] = migrations![
     "003_sync_group_name",
     "004_content_hash",
     "005_episode_actions_created_at_index",
+    "006_app_passwords",
 ];
 
 /// Database backend, determined from the connection URL.
