@@ -30,6 +30,7 @@
 
   let path = $derived(page.url.pathname);
   let authPage = $derived(['/login', '/login/flow', '/register', '/reset-password'].includes(path));
+  let showNav = $derived(auth.loggedIn && !authPage);
   let hasPlayer = $derived(auth.loggedIn && !!player.episode);
 
   // Close the account menu on navigation.
@@ -93,6 +94,7 @@
       </a>
 
       {#if auth.loggedIn}
+        {#if showNav}
         <nav aria-label="Main" class="hidden md:flex items-stretch h-full gap-1">
           {#each nav as item (item.href)}
             {@const active = item.match(path)}
@@ -113,6 +115,7 @@
             </a>
           {/if}
         </nav>
+        {/if}
 
         <div class="ml-auto">
           <button popovertarget="account-menu"
@@ -162,7 +165,7 @@
   <Toasts />
 
   <main class="flex-1 w-full max-w-6xl mx-auto px-4 pt-6 sm:pt-8
-    {auth.loggedIn ? (hasPlayer ? 'pb-44 md:pb-28' : 'pb-24 md:pb-10') : 'pb-10'}">
+    {showNav ? (hasPlayer ? 'pb-44 md:pb-28' : 'pb-24 md:pb-10') : 'pb-10'}">
     {@render children()}
 
     {#if buildInfo}
@@ -178,7 +181,7 @@
   <MiniPlayer />
 
   <!-- Phone tab bar -->
-  {#if auth.loggedIn}
+  {#if showNav}
     <nav aria-label="Main" class="md:hidden fixed inset-x-0 bottom-0 z-40 bg-panel border-t border-rule pb-[env(safe-area-inset-bottom)]">
       <div class="grid grid-cols-4 h-14">
         {#each nav as item (item.href)}
